@@ -1,0 +1,18 @@
+[package]
+name = "pp-trainer"
+description = "Trainer interface, Bluetooth FTMS client, and simulated rider for Penguin Pass"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+pp-core = { path = "../pp-core" }
+pp-ftms = { path = "../pp-ftms" }
+btleplug = "0.13"
+futures-util = "0.3"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+uuid = "1"
+
+[lints]
+workspace = true

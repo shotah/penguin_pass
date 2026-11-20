@@ -1,0 +1,15 @@
+[package]
+name = "pp-core"
+description = "Shared rider, telemetry, and trainer types for Penguin Pass"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

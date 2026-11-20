@@ -1,0 +1,142 @@
+{
+  "grade": [
+    {
+      "grade_pct": 0.0,
+      "length_m": 246.046101907376,
+      "type": "hold"
+    },
+    {
+      "length_m": 268.01605205976676,
+      "to_grade_pct": 8.515817628666175,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 8.515817628666175,
+      "length_m": 1697.434996378523,
+      "type": "hold"
+    },
+    {
+      "length_m": 268.01605205976676,
+      "to_grade_pct": 0.0,
+      "type": "smooth"
+    },
+    {
+      "amplitude_pct": 7.0,
+      "cycles": 2,
+      "length_m": 528.9991191008585,
+      "type": "wave"
+    },
+    {
+      "length_m": 207.4887109905521,
+      "to_grade_pct": -11.0,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -11.0,
+      "length_m": 1314.09516960683,
+      "type": "hold"
+    },
+    {
+      "length_m": 207.4887109905521,
+      "to_grade_pct": 0.0,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 0.0,
+      "length_m": 246.0461019073764,
+      "type": "hold"
+    }
+  ],
+  "name": "Penguin Pass",
+  "segments": [
+    {
+      "length_m": 246.046101907376,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 44.28829834332768,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.55762738422,
+      "type": "line"
+    },
+    {
+      "angle_rad": 3.141592653589793,
+      "radius_m": 44.28829834332768,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.55762738422,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 44.28829834332768,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.55762738422,
+      "type": "line"
+    },
+    {
+      "angle_rad": 3.141592653589793,
+      "radius_m": 44.28829834332768,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.55762738422,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 44.28829834332768,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.55762738422,
+      "type": "line"
+    },
+    {
+      "length_m": 528.9991191008584,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 73.8138305722128,
+      "type": "arc"
+    },
+    {
+      "length_m": 344.4645426703264,
+      "type": "line"
+    },
+    {
+      "angle_rad": 3.141592653589793,
+      "radius_m": 73.8138305722128,
+      "type": "arc"
+    },
+    {
+      "length_m": 344.4645426703264,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 73.8138305722128,
+      "type": "arc"
+    },
+    {
+      "length_m": 344.4645426703264,
+      "type": "line"
+    },
+    {
+      "length_m": 246.046101907376,
+      "type": "line"
+    }
+  ],
+  "start": {
+    "heading_rad": 3.141592653589793,
+    "x": -186.9951171875,
+    "z": -221.4414978027342
+  }
+}

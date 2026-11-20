@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=https://lefthook.dev/schema.json
+
+# Penguin Pass git hooks. Cargo runs through ./x because the host has no
+# C toolchain. Install with `lefthook install` after `git init`.
+# Skip once with `LEFTHOOK=0 git commit` or `git commit --no-verify`.
+# Skip one job with `LEFTHOOK_EXCLUDE=<tag>`.
+
+glob_matcher: doublestar
+
+# fmt does not compile, so it overlaps clippy instead of waiting on
+# cargo's build lock. workflows and whitespace do not touch target/.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: fmt
+      tags:
+        - fmt
+      glob:
+        - "**/*.rs"
+        - "**/Cargo.toml"
+        - "**/Cargo.lock"
+        - "**/rust-toolchain.toml"
+        - "**/rustfmt.toml"
+        - "**/clippy.toml"
+        - "**/.cargo/config"
+        - "**/.cargo/config.toml"
+      run: ./x fmt
+
+    - name: clippy
+      tags:
+        - clippy
+      glob:
+        - "**/*.rs"
+        - "**/Cargo.toml"
+        - "**/Cargo.lock"
+        - "**/rust-toolchain.toml"
+        - "**/rustfmt.toml"
+        - "**/clippy.toml"
+        - "**/.cargo/config"
+        - "**/.cargo/config.toml"
+      run: ./x clippy
+
+    - name: workflows
+      tags:
+        - workflows
+      glob:
+        - ".github/**/*.yml"
+        - ".github/**/*.yaml"
+      run: podman run --rm -v "$PWD:/repo:ro" -w /repo docker.io/rhysd/actionlint:1.7.12 -color
+
+    - name: whitespace
+      tags:
+        - whitespace
+      run: git diff --cached --check
+
+# One after the other. typecheck and test share target/ and cargo's
+# build lock, so two containers at once wait on each other.
+# piped skips test when typecheck fails.
+pre-push:
+  parallel: false
+  piped: true
+  jobs:
+    - name: typecheck
+      tags:
+        - typecheck
+      run: ./x typecheck
+
+    - name: test
+      tags:
+        - test
+      run: ./x test

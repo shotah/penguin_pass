@@ -1,0 +1,52 @@
+# Steam Runtime 4 (steamrt4) SDK.
+# Valve's SDK README and the Steam Linux Runtime game-developer guide
+# call steamrt4 the recommended runtime for new native Linux games.
+# Debian 13 glibc is old enough for the Godot flatpak (Freedesktop 25.08,
+# glibc 2.42) and for SteamOS. Pinned so toolbox rebuilds stay reproducible.
+# https://gitlab.steamos.cloud/steamrt/steamrt4/sdk
+FROM registry.gitlab.steamos.cloud/steamrt/steamrt4/sdk:4.0.20261110.268882
+
+USER root
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    RUST_VERSION=1.99.1
+
+# The SDK already ships a C toolchain. Install it explicitly so the image
+# still matches the contract if a later SDK tag trims the default set.
+# libdbus headers are for the later btleplug crate, which links libdbus.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        pkg-config \
+        libdbus-1-dev \
+        xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal \
+            --default-toolchain "${RUST_VERSION}" \
+            --component rustfmt \
+            --component clippy \
+    && chmod -R a+rX /usr/local/rustup /usr/local/cargo \
+    && ln -sfn /usr/local/cargo/bin/cargo /usr/local/bin/cargo \
+    && ln -sfn /usr/local/cargo/bin/rustc /usr/local/bin/rustc \
+    && ln -sfn /usr/local/cargo/bin/rustdoc /usr/local/bin/rustdoc \
+    && ln -sfn /usr/local/cargo/bin/rustfmt /usr/local/bin/rustfmt \
+    && ln -sfn /usr/local/cargo/bin/rustup /usr/local/bin/rustup \
+    && rustc --version \
+    && cargo --version \
+    && rustfmt --version \
+    && cargo clippy --version \
+    && gcc --version \
+    && pkg-config --modversion dbus-1
+
+# Registry cache is a named volume mounted here at run time. The cargo
+# and rustup shims stay in the image, above this directory.
+RUN mkdir -p /usr/local/cargo/registry
+
+WORKDIR /src

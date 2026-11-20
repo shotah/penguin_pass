@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+# Glob on purpose: crates added under crates/ join the workspace without an edit here.
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }

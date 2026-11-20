@@ -1,0 +1,82 @@
+# Jobs call ./x with PP_NATIVE=1. The runner has a C toolchain, so cargo
+# runs on the host and the flags stay exactly the ones in ./x.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PP_NATIVE: "1"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-setup
+      - run: ./x lint
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-setup
+      - run: ./x typecheck
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-setup
+      - run: ./x test
+
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-setup
+
+      - name: Build the extension
+        run: ./x build
+
+      - name: Restore the Godot binary
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/godot-4.7.2
+          key: godot-4.7.2-stable-linux-x86_64
+
+      - name: Download and verify Godot 4.7.2
+        run: |
+          set -euo pipefail
+          dest="${RUNNER_TEMP}/godot-4.7.2"
+          mkdir -p "$dest"
+          url="https://github.com/godotengine/godot/releases/download/4.7.2-stable"
+          zip="${dest}/Godot_v4.7.2-stable_linux.x86_64.zip"
+          if [[ ! -f "$zip" ]]; then
+            curl -fsSL -o "$zip" "${url}/Godot_v4.7.2-stable_linux.x86_64.zip"
+          fi
+          curl -fsSL -o "${dest}/SHA512-SUMS.txt" "${url}/SHA512-SUMS.txt"
+          (
+            cd "$dest"
+            grep 'Godot_v4.7.2-stable_linux.x86_64.zip' SHA512-SUMS.txt | sha512sum -c -
+          )
+          unzip -qo "$zip" -d "$dest"
+          chmod +x "${dest}/Godot_v4.7.2-stable_linux.x86_64"
+          echo "GODOT_BIN=${dest}/Godot_v4.7.2-stable_linux.x86_64" >> "$GITHUB_ENV"
+
+      - name: Smoke
+        run: GODOT="$GODOT_BIN" ./x smoke

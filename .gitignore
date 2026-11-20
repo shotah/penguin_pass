@@ -1,0 +1,13 @@
+# Cargo build tree
+/target/
+
+# Godot editor cache
+/godot/.godot/
+
+# GDExtension libraries copied by `./x build`
+/godot/bin/
+
+# Editor and OS cruft
+*.rs.bk
+*~
+.DS_Store

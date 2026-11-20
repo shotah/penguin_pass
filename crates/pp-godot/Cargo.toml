@@ -1,0 +1,23 @@
+[package]
+name = "pp-godot"
+description = "Penguin Pass GDExtension library"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "pp_godot"
+crate-type = ["cdylib"]
+# Godot resolves engine symbols when it loads the library. A Rust test
+# harness is a normal executable and cannot link them.
+test = false
+doctest = false
+
+[dependencies]
+# api-4-7 is the prebuilt GDExtension API shipped in the crate. It matches
+# Godot 4.7 and does not need libclang, bindgen, or a Godot binary.
+godot = { version = "=0.5.5", features = ["api-4-7"] }
+pp-core = { path = "../pp-core" }
+
+[lints]
+workspace = true
