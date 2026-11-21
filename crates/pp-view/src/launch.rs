@@ -24,6 +24,8 @@ pub struct LaunchFlags {
     pub dashboard_port: Option<u16>,
     /// Bind the dashboard on loopback instead of every interface.
     pub dashboard_loopback: bool,
+    /// Open the menu and confirm Quit. For the release-export exit check.
+    pub quit_from_menu: bool,
 }
 
 /// Environment values the game already read. Empty strings count as unset.
@@ -47,12 +49,14 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
     let mut settings_path = nonempty(&env.settings).map(PathBuf::from);
     let mut dashboard_port = nonempty(&env.dashboard_port).and_then(|value| value.parse().ok());
     let mut dashboard_loopback = is_flag(env.dashboard_loopback.as_deref());
+    let mut quit_from_menu = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--fake-trainer" => mode = TrainerMode::Fake,
             "--no-bluetooth" => mode = TrainerMode::Off,
             "--dashboard-loopback" => dashboard_loopback = true,
+            "--quit-from-menu" => quit_from_menu = true,
             "--settings" => {
                 if let Some(value) = args.get(index + 1) {
                     settings_path = Some(PathBuf::from(value));
@@ -76,6 +80,7 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
         settings_path,
         dashboard_port,
         dashboard_loopback,
+        quit_from_menu,
     }
 }
 
@@ -120,6 +125,7 @@ mod tests {
             "0".to_owned(),
             "--dashboard-loopback".to_owned(),
             "--fake-trainer".to_owned(),
+            "--quit-from-menu".to_owned(),
         ];
         let flags = parse_launch(&args, &env);
         assert_eq!(flags.mode, TrainerMode::Fake);
@@ -129,12 +135,14 @@ mod tests {
         );
         assert_eq!(flags.dashboard_port, Some(0));
         assert!(flags.dashboard_loopback);
+        assert!(flags.quit_from_menu);
     }
 
     #[test]
     fn a_bare_launch_is_the_real_trainer_and_the_default_path() {
         let flags = parse_launch(&[], &LaunchEnv::default());
         assert_eq!(flags.mode, TrainerMode::Real);
+        assert!(!flags.quit_from_menu);
         assert!(flags.settings_path.is_none());
         assert!(flags.dashboard_port.is_none());
         assert!(!flags.dashboard_loopback);
@@ -148,10 +156,7 @@ mod tests {
             dashboard_port: Some("nope".to_owned()),
             ..LaunchEnv::default()
         };
-        let flags = parse_launch(
-            &["--dashboard-port".to_owned(), "lots".to_owned()],
-            &env,
-        );
+        let flags = parse_launch(&["--dashboard-port".to_owned(), "lots".to_owned()], &env);
         assert_eq!(flags.mode, TrainerMode::Off);
         assert!(flags.settings_path.is_none());
         assert!(flags.dashboard_port.is_none());

@@ -43,6 +43,9 @@ pub use spec::{
 pub use survey::RouteSurvey;
 pub use svg::{render_contact_sheet, render_svg};
 
+#[cfg(test)]
+mod tests;
+
 /// Measure a parsed course for reports and tests.
 ///
 /// `step_m` is the sample spacing in meters along the 3D centerline.

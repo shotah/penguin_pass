@@ -1,7 +1,10 @@
 //! HTTP contract for the TV dashboard. Each test binds `127.0.0.1:0`.
 
 use futures_util::StreamExt;
-use pp_cast::{CastConfig, CastError, CastServer, CourseProfile, ProfilePoint};
+use pp_cast::{
+    CastConfig, CastError, CastServer, CourseProfile, LinkPhase, ProfilePoint, ResistanceMode,
+    RideSource, RideStatus,
+};
 use pp_core::Telemetry;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
@@ -383,4 +386,213 @@ fn urls_contain_the_bound_port() {
     let port = server.local_addr().port();
     assert_ne!(port, 0);
     assert_eq!(server.urls(), vec![format!("http://127.0.0.1:{port}/")]);
+}
+
+fn sample_status() -> RideStatus {
+    RideStatus {
+        ftp_w: Some(250),
+        source: RideSource::Trainer,
+        trainer_name: Some("Tacx Neo 2T".to_owned()),
+        link: LinkPhase::Connected,
+        resistance: Some(ResistanceMode::Controlled),
+        power_3s_w: Some(345.0),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn status_starts_neutral_then_reflects_publish_status() {
+    let server = start(CourseProfile::default());
+    let client = client();
+    let url = format!("http://{}/api/status", server.local_addr());
+    let first: RideStatus = send_get(&client, &url).await.json().await.expect("status");
+    assert_eq!(first, RideStatus::default());
+    assert_eq!(first.source, RideSource::Unknown);
+    assert!(first.ftp_w.is_none());
+
+    let status = sample_status();
+    server.publish_status(status.clone());
+    let got: RideStatus = send_get(&client, &url).await.json().await.expect("status");
+    assert_eq!(got, status);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn status_event_is_separate_from_telemetry_events() {
+    let server = start(CourseProfile::default());
+    let status = sample_status();
+    server.publish_status(status.clone());
+    server.publish(sample(180.0));
+
+    let client = client();
+    let response = send_get(&client, &format!("http://{}/events", server.local_addr())).await;
+    assert_eq!(response.status(), 200);
+    let mut stream = response.bytes_stream();
+    let mut buf = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw_status = false;
+    let mut saw_telemetry = false;
+    while Instant::now() < deadline && !(saw_status && saw_telemetry) {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let Ok(Some(Ok(chunk))) = tokio::time::timeout(left, stream.next()).await else {
+            break;
+        };
+        buf.extend_from_slice(&chunk);
+        let text = String::from_utf8_lossy(&buf);
+        if text.contains("event: status") {
+            saw_status = true;
+        }
+        if text.contains("\"power_w\":180") || text.contains("\"power_w\":180.0") {
+            saw_telemetry = true;
+        }
+    }
+    assert!(
+        saw_status,
+        "missing status event: {}",
+        String::from_utf8_lossy(&buf)
+    );
+    assert!(saw_telemetry, "telemetry event changed shape");
+    let body = String::from_utf8_lossy(&buf);
+    let status_json = body
+        .split("event: status")
+        .nth(1)
+        .and_then(|rest| rest.split("data:").nth(1))
+        .map(|data| data.split("\n\n").next().unwrap_or("").trim().to_owned())
+        .expect("status payload");
+    let parsed: RideStatus = serde_json::from_str(&status_json).expect("status json");
+    assert_eq!(parsed, status);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn telemetry_json_keeps_the_original_fields() {
+    let server = start(CourseProfile::default());
+    server.publish_status(sample_status());
+    server.publish(sample(215.0));
+    let client = client();
+    let body = send_get(
+        &client,
+        &format!("http://{}/api/telemetry", server.local_addr()),
+    )
+    .await
+    .text()
+    .await
+    .expect("telemetry body");
+    let value: serde_json::Value = serde_json::from_str(&body).expect("json");
+    for key in [
+        "power_w",
+        "cadence_rpm",
+        "heart_rate_bpm",
+        "speed_mps",
+        "distance_m",
+        "lap_distance_m",
+        "lap",
+        "grade_pct",
+        "elevation_m",
+        "elapsed_s",
+    ] {
+        assert!(value.get(key).is_some(), "missing {key} in {body}");
+    }
+    assert!(value.get("ftp_w").is_none(), "status leaked into telemetry");
+    assert!(
+        value.get("power_3s_w").is_none(),
+        "status leaked into telemetry"
+    );
+    let decoded: Telemetry = serde_json::from_str(&body).expect("telemetry");
+    assert_eq!(decoded, sample(215.0));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn font_and_licence_are_served_from_this_origin() {
+    let server = start(CourseProfile::default());
+    let client = client();
+    let base = format!("http://{}", server.local_addr());
+    for path in [
+        "/fonts/BarlowSemiCondensed-Medium.ttf",
+        "/fonts/BarlowSemiCondensed-SemiBold.ttf",
+        "/fonts/BarlowSemiCondensed-Bold.ttf",
+    ] {
+        let response = send_get(&client, &format!("{base}{path}")).await;
+        assert_eq!(response.status(), 200, "{path}");
+        let kind = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(kind.contains("font/ttf"), "{path} content-type {kind}");
+        let cache = response
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(cache.contains("max-age"), "{path} cache {cache}");
+        let bytes = response.bytes().await.expect("font bytes");
+        assert!(bytes.len() > 1000, "{path} was empty");
+    }
+    let licence = send_get(&client, &format!("{base}/fonts/OFL.txt")).await;
+    assert_eq!(licence.status(), 200);
+    assert!(
+        licence
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .contains("text/plain")
+    );
+    let text = licence.text().await.expect("licence");
+    assert!(text.contains("SIL Open Font License"));
+    assert!(!text.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn page_has_no_external_urls() {
+    let server = start(CourseProfile::default());
+    let client = client();
+    let html = send_get(&client, &format!("http://{}/", server.local_addr()))
+        .await
+        .text()
+        .await
+        .expect("html");
+    assert!(!html.contains("http://"), "{html}");
+    assert!(!html.contains("https://"), "{html}");
+    assert!(html.contains("/fonts/BarlowSemiCondensed-Bold.ttf"));
+    assert!(html.contains("/logo.svg"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn served_zones_match_the_design_table() {
+    let server = start(CourseProfile::default());
+    let client = client();
+    let body = send_get(
+        &client,
+        &format!("http://{}/api/zones", server.local_addr()),
+    )
+    .await
+    .text()
+    .await
+    .expect("zones");
+    let value: serde_json::Value = serde_json::from_str(&body).expect("json");
+    let power = value["power"].as_array().expect("power zones");
+    let expected = [
+        (1, "Recovery", "Z1 RECOVERY", 0.0, "#9AA8BD"),
+        (2, "Endurance", "Z2 ENDURANCE", 0.55, "#4FA8FF"),
+        (3, "Tempo", "Z3 TEMPO", 0.75, "#3DD68C"),
+        (4, "Threshold", "Z4 THRESHOLD", 0.90, "#FFD166"),
+        (5, "VO2 max", "Z5 VO2 MAX", 1.05, "#FF9A3C"),
+        (6, "Anaerobic", "Z6 ANAEROBIC", 1.20, "#FF5A52"),
+        (7, "Sprint", "Z7 SPRINT", 1.50, "#D277FF"),
+    ];
+    assert_eq!(power.len(), expected.len());
+    for (step, (zone, name, label, above, color)) in power.iter().zip(expected) {
+        assert_eq!(step["zone"].as_u64(), Some(zone));
+        assert_eq!(step["name"].as_str(), Some(name));
+        assert_eq!(step["label"].as_str(), Some(label));
+        let bound = step["above_ftp"].as_f64().expect("bound");
+        assert!((bound - above).abs() < 1e-6, "{bound} vs {above}");
+        assert_eq!(step["color"].as_str(), Some(color));
+    }
+    let gradient = value["gradient"].as_array().expect("gradient");
+    let grades = [-1000.0, -1.0, 1.0, 3.0, 6.0, 9.0, 12.0];
+    assert_eq!(gradient.len(), grades.len());
+    for (band, from) in gradient.iter().zip(grades) {
+        let got = band["from_pct"].as_f64().expect("from");
+        assert!((got - from).abs() < 1e-6);
+    }
 }

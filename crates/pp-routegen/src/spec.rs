@@ -20,7 +20,7 @@ pub const MAX_FOOTPRINT_FRACTION: f64 = 0.46;
 /// Shortest allowed longest-side, as a fraction of the route length.
 ///
 /// This stops a tight spiral: the loop has to occupy a real patch of ground.
-pub const MIN_FOOTPRINT_FRACTION: f64 = 0.055;
+pub const MIN_FOOTPRINT_FRACTION: f64 = 0.03;
 
 /// Minimum gap between non-consecutive centerline samples, in meters.
 pub const CENTERLINE_CLEARANCE_M: f64 = 25.0;
@@ -88,7 +88,7 @@ impl TerrainPreset {
                 max_grade_rate: 0.18,
             },
             Self::Mountain => TerrainParams {
-                ascent_per_km: 30.0,
+                ascent_per_km: 25.0,
                 max_up_grade_pct: 10.0,
                 max_down_grade_pct: 10.0,
                 typical_climb_m: 8_000.0,
@@ -197,9 +197,7 @@ impl TerrainParams {
         if !(0.5..=20.0).contains(&self.max_up_grade_pct)
             || !(0.5..=20.0).contains(&self.max_down_grade_pct)
         {
-            return Err(SpecError::Terrain(
-                "max grade must be between 0.5% and 20%",
-            ));
+            return Err(SpecError::Terrain("max grade must be between 0.5% and 20%"));
         }
         if !(100.0..=50_000.0).contains(&self.typical_climb_m) {
             return Err(SpecError::Terrain(
@@ -211,8 +209,7 @@ impl TerrainParams {
                 "minimum radius must be between 15 m and 2 km",
             ));
         }
-        if self.switchback_radius_m < 18.0 || self.switchback_radius_m > self.min_radius_m + 1e-9
-        {
+        if self.switchback_radius_m < 18.0 || self.switchback_radius_m > self.min_radius_m + 1e-9 {
             return Err(SpecError::Terrain(
                 "switchback radius must be between 18 m and the minimum bend radius",
             ));
@@ -286,12 +283,7 @@ pub struct RouteSpec {
 impl RouteSpec {
     /// A spec that still needs [`Self::validate`] before generation.
     #[must_use]
-    pub fn new(
-        name: impl Into<String>,
-        seed: u64,
-        distance_m: f64,
-        terrain: Terrain,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, seed: u64, distance_m: f64, terrain: Terrain) -> Self {
         Self {
             seed,
             distance_m,

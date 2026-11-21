@@ -6,291 +6,438 @@
 <meta name="color-scheme" content="dark">
 <title>Penguin Pass</title>
 <style>
+  @font-face {
+    font-family: "Barlow Semi Condensed";
+    src: url("/fonts/BarlowSemiCondensed-Medium.ttf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "Barlow Semi Condensed";
+    src: url("/fonts/BarlowSemiCondensed-SemiBold.ttf") format("truetype");
+    font-weight: 600;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "Barlow Semi Condensed";
+    src: url("/fonts/BarlowSemiCondensed-Bold.ttf") format("truetype");
+    font-weight: 700;
+    font-style: normal;
+  }
   * { box-sizing: border-box; }
-  html, body {
+  html {
+    height: 100%;
+    background: #0B1220;
+    color: #F4F8FF;
+    font-family: "Barlow Semi Condensed", Arial, Helvetica, sans-serif;
+    font-size: 16px;
+    font-size: calc(100vw / 120);
+  }
+  @media (min-aspect-ratio: 16/9) {
+    html { font-size: 16px; font-size: calc(100vh / 67.5); }
+  }
+  body {
     margin: 0;
     height: 100%;
-    background: #0b0e13;
-    color: #f4f7fb;
-    font-family: Arial, Helvetica, "Liberation Sans", sans-serif;
+    background: #0B1220;
     overflow: hidden;
-    -webkit-text-size-adjust: 100%;
-    text-size-adjust: 100%;
   }
   .board {
     height: 100%;
-    padding: 28px 40px;
-    padding: 3vh 3.2vw;
+    padding: 4.5rem;
     display: flex;
     flex-direction: column;
   }
-  .header {
+  .board {
+    display: grid;
+    grid-template-columns: 1.57fr 1fr 1fr;
+    grid-template-rows: auto 1fr 1fr 1fr;
+    gap: 1.5rem;
+  }
+  .top { grid-column: 1 / -1; grid-row: 1; }
+  .power { grid-column: 1; grid-row: 2 / span 2; }
+  .speed { grid-column: 2; grid-row: 2; }
+  .grade { grid-column: 3; grid-row: 2; }
+  .cadence { grid-column: 2; grid-row: 3; }
+  .heart { grid-column: 3; grid-row: 3; }
+  .course { grid-column: 1 / -1; grid-row: 4; }
+  .foot { display: none; }
+
+  .top {
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    min-height: 4.5rem;
+  }
+  .badge {
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: 0.85rem;
+    margin-right: 1rem;
+    flex: 0 0 auto;
+  }
+  .brand {
+    display: flex;
     align-items: baseline;
-    flex: 0 0 auto;
-  }
-  .course-name {
-    font-size: 32px;
-    font-weight: 700;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-right: 24px;
-  }
-  .status {
-    flex: 0 0 auto;
-    font-size: 22px;
-    color: #ffbf3c;
-    white-space: nowrap;
-  }
-  .status.live { color: #3dd68c; }
-  .status.reconnecting { color: #ff6b5a; }
-  .status:before {
-    content: "";
-    display: inline-block;
-    width: 0.7em;
-    height: 0.7em;
-    margin-right: 0.45em;
-    border-radius: 50%;
-    background: currentColor;
-    vertical-align: baseline;
-  }
-  .primary, .secondary {
-    display: flex;
-  }
-  .primary {
-    flex: 5 1 0px;
-    min-height: 0;
-    margin-top: 12px;
-  }
-  .secondary {
-    flex: 0 0 16vh;
-    margin-top: 12px;
-  }
-  .tile {
-    background: #161c27;
-    border: 1px solid #2c3544;
-    border-radius: 18px;
-    margin-right: 14px;
-    padding: 14px 16px 12px;
-    display: inline-block;
-    vertical-align: top;
-    overflow: hidden;
+    margin-right: 1.5rem;
     min-width: 0;
   }
-  .primary .tile {
-    width: 24%;
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 0px;
-  }
-  .secondary .tile {
-    width: 18%;
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 0px;
-  }
-  .tile:last-child { margin-right: 0; }
-  .label {
-    font-size: 22px;
-    font-size: 2.4vh;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #9aa6b2;
+  .brand-name {
+    font-weight: 700;
+    font-size: 2.75rem;
+    line-height: 1;
+    letter-spacing: 0.01em;
     white-space: nowrap;
   }
-  .value {
-    font-size: 64px;
+  .brand-course {
+    margin-left: 0.9rem;
+    font-weight: 500;
+    font-size: 1.7rem;
+    color: #B4C0D4;
+    white-space: nowrap;
+  }
+  .trainer {
+    margin-right: 1.5rem;
+    font-weight: 600;
+    font-size: 1.35rem;
+    color: #B4C0D4;
+    white-space: nowrap;
+  }
+  .trainer:before {
+    content: "";
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    margin-right: 0.45rem;
+    border-radius: 50%;
+    vertical-align: 0.05rem;
+    background: #7C8AA3;
+  }
+  .trainer.good { color: #F4F8FF; }
+  .trainer.good:before { background: #3DD68C; }
+  .trainer.warn { color: #FFB23E; }
+  .trainer.warn:before { background: #FFB23E; }
+  .trainer.sim:before {
+    background: transparent;
+    border: 0.12rem solid #B4C0D4;
+  }
+  .totals {
+    margin-left: auto;
+    display: flex;
+    align-items: baseline;
+  }
+  .total { margin-left: 1.6rem; white-space: nowrap; }
+  .k {
+    font-weight: 600;
+    font-size: 1.5rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #B4C0D4;
+    margin-right: 0.45rem;
+  }
+  .v, .num, .big, .hero-num {
     font-weight: 700;
-    line-height: 0.95;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
+  }
+  .v { font-size: 2.75rem; }
+  .stream {
+    margin-left: 2rem;
+    font-weight: 600;
+    font-size: 1.7rem;
+    color: #7C8AA3;
     white-space: nowrap;
+    flex: 0 0 auto;
   }
-  .primary .value {
-    font-size: 112px;
-    font-size: 14vh;
-    margin-top: auto;
+  .stream:before {
+    content: "";
+    display: inline-block;
+    width: 0.85rem;
+    height: 0.85rem;
+    margin-right: 0.5rem;
+    border-radius: 50%;
+    vertical-align: 0.05rem;
+    background: #7C8AA3;
   }
-  .secondary .value {
-    font-size: 42px;
-    font-size: 5vh;
-    margin-top: auto;
+  .stream.live { color: #3DD68C; }
+  .stream.live:before { background: #3DD68C; }
+  .stream.reconnecting { color: #FFB23E; }
+  .stream.reconnecting:before {
+    background: transparent;
+    border: 0.14rem solid rgba(255, 178, 62, 0.28);
+    border-top-color: #FFB23E;
+    animation: turn 1s linear infinite;
+  }
+  @keyframes turn { to { transform: rotate(360deg); } }
+  @keyframes burn {
+    0%, 22% { transform: translate(0, 0); }
+    25%, 47% { transform: translate(1px, 0); }
+    50%, 72% { transform: translate(1px, 1px); }
+    75%, 97% { transform: translate(0, 1px); }
+  }
+  .board { animation: burn 600s linear infinite; }
+
+  .tile, .power, .course, .foot {
+    background: #12203F;
+    border-radius: 1.5rem;
+    min-width: 0;
+    min-height: 0;
+  }
+  .power {
+    display: flex;
+    align-items: center;
+    padding: 1.5rem 2rem;
+  }
+  .ladder {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: 2.75rem;
+    margin-right: 1.6rem;
+    flex: 0 0 auto;
+  }
+  .seg {
+    height: 3.15rem;
+    width: 100%;
+    border-radius: 0.15rem;
+    margin-bottom: 0.2rem;
+    opacity: 0.34;
+  }
+  .seg.on { opacity: 1; width: 118%; margin-left: -9%; }
+  .hero-block { min-width: 0; }
+  .hero-row { display: flex; align-items: baseline; }
+  .hero-num {
+    font-size: 20.625rem;
+    line-height: 0.82;
+    letter-spacing: -0.03em;
+    min-width: 3.2ch;
+  }
+  .hero-w {
+    margin-left: 0.6rem;
+    font-weight: 500;
+    font-size: 4.5rem;
+    color: #B4C0D4;
+  }
+  .zone-name {
+    margin-top: 0.4rem;
+    font-weight: 700;
+    font-size: 3rem;
+    letter-spacing: 0.04em;
+    color: #B4C0D4;
+    min-height: 1.15em;
+  }
+  .hero-cap {
+    margin-top: 0.35rem;
+    font-weight: 600;
+    font-size: 1.5rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #B4C0D4;
+  }
+  .tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 1.2rem 1.8rem;
+  }
+  .big {
+    font-size: 10rem;
+    line-height: 0.9;
+    min-width: 4ch;
   }
   .unit {
-    font-size: 20px;
-    font-size: 2.1vh;
-    color: #9aa6b2;
-    margin-top: 6px;
+    margin-top: 0.35rem;
+    font-weight: 500;
+    font-size: 2.25rem;
+    color: #B4C0D4;
   }
-  .tile-power .value { color: #ffbf3c; }
-  .tile-speed .value { color: #79c8ff; }
-  .tile-cadence .value { color: #8ee0a8; }
-  .tile-heart .value { color: #ff8aa0; }
-  .tile-power { border-top: 6px solid #ffbf3c; }
-  .tile-speed { border-top: 6px solid #79c8ff; }
-  .tile-cadence { border-top: 6px solid #8ee0a8; }
-  .tile-heart { border-top: 6px solid #ff8aa0; }
-  .grade-steep { color: #ff5d3a; }
-  .grade-hard { color: #ff9a3c; }
-  .grade-easy { color: #f2c14e; }
-  .grade-flat { color: #f4f7fb; }
-  .grade-down { color: #3dce8e; }
-  .profile {
-    position: relative;
-    flex: 3 1 0px;
-    min-height: 0;
-    margin-top: 12px;
-    background: #161c27;
-    border: 1px solid #2c3544;
-    border-radius: 18px;
-    overflow: hidden;
+  .missing { color: #7C8AA3; }
+  .course {
+    display: flex;
+    padding: 1rem 1.4rem 0.8rem;
   }
-  .profile canvas {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
+  .course-main { flex: 1.7 1 0; min-width: 0; display: flex; flex-direction: column; }
+  .course-next { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; margin-left: 1.5rem; }
+  .cap {
+    font-weight: 600;
+    font-size: 1.5rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #B4C0D4;
+    flex: 0 0 auto;
   }
-  body.reconnecting .value { opacity: 0.35; }
-  noscript {
-    display: block;
-    padding: 24px;
-    font-size: 28px;
-  }
-  @media (max-height: 760px) {
-    .board { padding: 18px 28px; }
-    .course-name { font-size: 24px; }
-    .status { font-size: 18px; }
-    .secondary { flex-basis: 108px; }
-    .primary .value { font-size: 92px; }
-    .secondary .value { font-size: 34px; }
-    .label { font-size: 20px; }
-    .unit { font-size: 18px; }
-  }
-  @media (max-width: 800px) {
-    html, body { overflow: auto; }
-    .board { height: auto; min-height: 100%; padding: 16px; display: block; }
-    .primary, .secondary { flex-wrap: wrap; }
-    .primary .tile, .secondary .tile {
-      width: 48%;
-      max-width: 48%;
-      flex: 1 1 46%;
-      margin: 0 2% 10px 0;
+  .course canvas { width: 100%; flex: 1 1 auto; min-height: 0; display: block; }
+  body.stream-down .num { opacity: 0.4; }
+  noscript { display: block; padding: 1.5rem; font-size: 1.5rem; }
+
+  @media (max-aspect-ratio: 1/1) {
+    html { font-size: 16px; font-size: calc(100vw / 24.375); }
+    body { overflow: auto; }
+    .board {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      height: auto;
+      min-height: 100%;
+      padding: 1rem;
+      gap: 0.75rem;
+      animation: none;
     }
-    .primary .value { font-size: 48px; }
-    .secondary .value { font-size: 30px; }
-    .label { font-size: 14px; }
-    .unit { font-size: 14px; }
-    .course-name { font-size: 22px; }
-    .status { font-size: 16px; }
-    .profile { height: 150px; margin-top: 4px; }
+    .top, .power, .course, .foot { width: 100%; }
+    .tile { width: calc(50% - 0.375rem); height: 6.75rem; padding: 0.7rem 0.9rem; }
+    .power { height: 12.25rem; padding: 1rem; }
+    .hero-num { font-size: 8rem; }
+    .hero-w { font-size: 2rem; }
+    .zone-name { font-size: 1.35rem; }
+    .hero-cap { display: none; }
+    .seg { height: 0.85rem; }
+    .ladder { width: 1.4rem; margin-right: 0.7rem; }
+    .big { font-size: 3.5rem; }
+    .unit { font-size: 1.15rem; margin-top: 0.1rem; }
+    .badge { width: 2.6rem; height: 2.6rem; }
+    .brand { display: block; }
+    .brand-name { font-size: 1.55rem; }
+    .brand-course { display: none; }
+    .totals { display: none; }
+    .stream { margin-left: auto; font-size: 1.05rem; }
+    .trainer { display: none; }
+    .course { height: 9.5rem; }
+    .course-next { display: none; }
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.8rem 0.4rem 0.9rem;
+    }
+    .foot .total { margin: 0; text-align: center; flex: 1; }
+    .foot .k { display: block; font-size: 0.85rem; margin: 0 0 0.2rem; }
+    .foot .v { font-size: 1.15rem; }
   }
 </style>
 </head>
 <body>
-<main class="board">
-  <header class="header">
-    <div class="course-name" id="course-name">Penguin Pass</div>
-    <div class="status" id="status">connecting</div>
+<main class="board" id="board">
+  <header class="top">
+    <img class="badge" src="/logo.svg" alt="">
+    <div class="brand">
+      <div class="brand-name">Penguin Pass</div>
+      <div class="brand-course" id="course-name">Ride</div>
+    </div>
+    <div class="trainer" id="trainer" style="display:none"></div>
+    <div class="totals">
+      <div class="total" aria-label="Elapsed"><span class="k">Time</span><span class="v num val-time">0:00:00</span></div>
+      <div class="total" aria-label="Distance"><span class="k">Dist</span><span class="v num val-dist">&mdash;</span></div>
+      <div class="total" aria-label="Elevation"><span class="k">Elev</span><span class="v num val-elev">&mdash;</span></div>
+      <div class="total" aria-label="Lap"><span class="k">Lap</span><span class="v num val-lap">&mdash;</span></div>
+    </div>
+    <div class="stream connecting" id="status">Connecting</div>
   </header>
-  <section class="primary">
-    <div class="tile tile-power">
-      <div class="label">Power</div>
-      <div class="value" id="power">&mdash;</div>
-      <div class="unit">W</div>
-    </div>
-    <div class="tile tile-speed">
-      <div class="label">Speed</div>
-      <div class="value" id="speed">&mdash;</div>
-      <div class="unit">km/h</div>
-    </div>
-    <div class="tile tile-cadence">
-      <div class="label">Cadence</div>
-      <div class="value" id="cadence">&mdash;</div>
-      <div class="unit">rpm</div>
-    </div>
-    <div class="tile tile-heart">
-      <div class="label">Heart rate</div>
-      <div class="value" id="heart">&mdash;</div>
-      <div class="unit">bpm</div>
+  <section class="power" aria-label="Power">
+    <div class="ladder" id="ladder"></div>
+    <div class="hero-block">
+      <div class="hero-row">
+        <div class="hero-num num" id="power">&mdash;</div>
+        <div class="hero-w">W</div>
+      </div>
+      <div class="zone-name" id="zone"></div>
+      <div class="hero-cap">Power, 3 s average</div>
     </div>
   </section>
-  <section class="secondary">
-    <div class="tile">
-      <div class="label">Grade</div>
-      <div class="value" id="grade">&mdash;</div>
-      <div class="unit">%</div>
+  <section class="tile speed" aria-label="Speed">
+    <div class="big num" id="speed">&mdash;</div>
+    <div class="unit">km/h</div>
+  </section>
+  <section class="tile grade" aria-label="Grade">
+    <div class="big num" id="grade">&mdash;</div>
+    <div class="unit">% grade</div>
+  </section>
+  <section class="tile cadence" aria-label="Cadence">
+    <div class="big num" id="cadence">&mdash;</div>
+    <div class="unit">rpm</div>
+  </section>
+  <section class="tile heart" aria-label="Heart rate">
+    <div class="big num" id="heart">&mdash;</div>
+    <div class="unit">bpm</div>
+  </section>
+  <section class="course">
+    <div class="course-main">
+      <div class="cap">Course</div>
+      <canvas id="course-chart"></canvas>
     </div>
-    <div class="tile">
-      <div class="label">Distance</div>
-      <div class="value" id="distance">&mdash;</div>
-      <div class="unit">km</div>
-    </div>
-    <div class="tile">
-      <div class="label">Lap</div>
-      <div class="value" id="lap">&mdash;</div>
-      <div class="unit">&nbsp;</div>
-    </div>
-    <div class="tile">
-      <div class="label">Elapsed</div>
-      <div class="value" id="elapsed">&mdash;</div>
-      <div class="unit">h:mm:ss</div>
-    </div>
-    <div class="tile">
-      <div class="label">Elevation</div>
-      <div class="value" id="elevation">&mdash;</div>
-      <div class="unit">m</div>
+    <div class="course-next">
+      <div class="cap">Next 1 km</div>
+      <canvas id="next-chart"></canvas>
     </div>
   </section>
-  <section class="profile">
-    <canvas id="chart"></canvas>
+  <section class="foot">
+    <div class="total"><span class="k">Time</span><span class="v num val-time">0:00:00</span></div>
+    <div class="total"><span class="k">Dist</span><span class="v num val-dist">&mdash;</span></div>
+    <div class="total"><span class="k">Elev</span><span class="v num val-elev">&mdash;</span></div>
+    <div class="total"><span class="k">Lap</span><span class="v num val-lap">&mdash;</span></div>
   </section>
 </main>
 <noscript>This dashboard needs JavaScript.</noscript>
-<!-- ES5 and inline on purpose: smart-TV browsers are old and may be offline. -->
 <script type="text/javascript">
 (function () {
   var course = { name: "", length_m: 0, points: [] };
+  var zones = [];
+  var bands = [];
   var latest = null;
-  var els = {
-    courseName: document.getElementById("course-name"),
-    status: document.getElementById("status"),
-    power: document.getElementById("power"),
-    speed: document.getElementById("speed"),
-    cadence: document.getElementById("cadence"),
-    heart: document.getElementById("heart"),
-    grade: document.getElementById("grade"),
-    distance: document.getElementById("distance"),
-    lap: document.getElementById("lap"),
-    elapsed: document.getElementById("elapsed"),
-    elevation: document.getElementById("elevation")
-  };
+  var ride = null;
+  var litZone = -1;
+  var previewDown = location.search.indexOf("preview=reconnecting") !== -1;
 
-  function dash() {
-    return "\u2014";
-  }
-
+  function dash() { return "\u2014"; }
   function missing(value) {
     return value === null || value === undefined || value !== value;
   }
-
-  function formatInt(value) {
+  function setText(id, text, absent) {
+    var el = document.getElementById(id);
+    el.textContent = text;
+    el.className = el.className.replace(" missing", "");
+    if (absent) el.className += " missing";
+  }
+  function setGroup(cls, text, absent) {
+    var nodes = document.getElementsByClassName(cls);
+    var i;
+    for (i = 0; i < nodes.length; i++) {
+      nodes[i].textContent = text;
+      nodes[i].className = nodes[i].className.replace(" missing", "");
+      if (absent) nodes[i].className += " missing";
+    }
+  }
+  function formatPower(value) {
+    if (missing(value)) return dash();
+    var n = Math.round(Number(value));
+    if (n < 0) n = 0;
+    if (n > 9999) n = 9999;
+    return String(n);
+  }
+  function formatWhole(value) {
     if (missing(value)) return dash();
     return String(Math.round(Number(value)));
   }
-
-  function formatFixed(value, digits) {
-    if (missing(value)) return dash();
-    return Number(value).toFixed(digits);
+  function formatSpeed(mps) {
+    if (missing(mps)) return dash();
+    var kph = Number(mps) * 3.6;
+    if (kph >= 100) return String(Math.round(kph));
+    return kph.toFixed(1);
   }
-
+  function formatGrade(grade) {
+    if (missing(grade)) return dash();
+    var g = Number(grade);
+    if (g > -0.05 && g < 0.05) return "0.0";
+    var sign = g > 0 ? "+" : "\u2212";
+    return sign + Math.abs(g).toFixed(1);
+  }
+  function formatKm(metres) {
+    if (missing(metres)) return dash();
+    var km = Number(metres) / 1000;
+    if (km >= 100) return km.toFixed(1);
+    return km.toFixed(2);
+  }
   function formatElapsed(seconds) {
     if (missing(seconds) || seconds < 0) return dash();
-    var total = Math.floor(seconds);
+    var total = Math.floor(Number(seconds));
     var h = Math.floor(total / 3600);
     var m = Math.floor((total % 3600) / 60);
     var s = total % 60;
@@ -298,202 +445,450 @@
     var ss = (s < 10 ? "0" : "") + s;
     return h + ":" + mm + ":" + ss;
   }
-
-  function gradeClass(grade) {
-    if (missing(grade)) return "";
-    if (grade >= 7) return "grade-steep";
-    if (grade >= 3) return "grade-hard";
-    if (grade >= 0.5) return "grade-easy";
-    if (grade > -0.5) return "grade-flat";
-    return "grade-down";
+  function gradeColor(grade) {
+    var color = "#F4F8FF";
+    var i;
+    for (i = 0; i < bands.length; i++) {
+      if (grade >= bands[i].from_pct) color = bands[i].color;
+    }
+    return color;
   }
-
-  function showStatus(text) {
-    els.status.textContent = text;
-    els.status.className = "status " + text;
-    if (text === "reconnecting") {
-      document.body.className = "reconnecting";
-    } else {
-      document.body.className = "";
+  function heroWatts(t, s) {
+    if (s && s.link === "reconnecting" && missing(s.power_3s_w)) return null;
+    if (s && !missing(s.power_3s_w)) return s.power_3s_w;
+    if (!t || missing(t.power_w)) return null;
+    return t.power_w;
+  }
+  function zoneFor(power, ftp) {
+    if (missing(ftp) || ftp <= 0 || missing(power) || power <= 0) return null;
+    var ratio = power / ftp;
+    var found = null;
+    var i;
+    for (i = 0; i < zones.length; i++) {
+      if (ratio > zones[i].above_ftp) found = zones[i];
+    }
+    return found;
+  }
+  function drawLadder(zone) {
+    var id = zone ? zone.zone : 0;
+    if (id === litZone && document.getElementById("ladder").childNodes.length) return;
+    litZone = id;
+    var el = document.getElementById("ladder");
+    while (el.firstChild) el.removeChild(el.firstChild);
+    var z;
+    for (z = 7; z >= 1; z--) {
+      var step = null;
+      var i;
+      for (i = 0; i < zones.length; i++) {
+        if (zones[i].zone === z) step = zones[i];
+      }
+      var seg = document.createElement("div");
+      seg.className = "seg";
+      seg.style.background = step ? step.color : "#7C8AA3";
+      if (zone && zone.zone === z) seg.className = "seg on";
+      el.appendChild(seg);
     }
   }
-
-  function elevationAt(points, distance) {
-    if (!points.length) return 0;
-    if (distance <= points[0].distance_m) return points[0].elevation_m;
+  function showStream(state) {
+    if (previewDown) state = "reconnecting";
+    var el = document.getElementById("status");
+    var word = "Connecting";
+    if (state === "live") word = "Live";
+    if (state === "reconnecting") word = "Reconnecting";
+    el.textContent = word;
+    el.className = "stream " + state;
+    if (state === "reconnecting") document.body.className = "stream-down";
+    else document.body.className = "";
+  }
+  function renderTrainer(s) {
+    var el = document.getElementById("trainer");
+    if (!s || s.source === "unknown" || !s.source) {
+      el.style.display = "none";
+      return;
+    }
+    el.style.display = "";
+    if (s.source === "simulated") {
+      el.className = "trainer sim";
+      el.textContent = "Simulated rider";
+      return;
+    }
+    var name = s.trainer_name ? s.trainer_name : "Trainer";
+    if (s.link === "reconnecting") {
+      el.className = "trainer warn";
+      el.textContent = name + " \u00b7 Reconnecting";
+      return;
+    }
+    if (s.link === "searching") {
+      el.className = "trainer warn";
+      el.textContent = name + " \u00b7 Searching";
+      return;
+    }
+    if (s.resistance === "reading_only") {
+      el.className = "trainer good";
+      el.textContent = name + " \u00b7 Reading only";
+      return;
+    }
+    el.className = "trainer good";
+    el.textContent = s.resistance === "controlled" ? name + " \u00b7 Resistance on" : name;
+  }
+  function render(t) {
+    latest = t;
+    var power = heroWatts(t, ride);
+    var zone = ride ? zoneFor(power, ride.ftp_w) : null;
+    var coast = !missing(power) && Number(power) <= 0;
+    setText("power", formatPower(power), missing(power));
+    var zoneEl = document.getElementById("zone");
+    if (coast) {
+      zoneEl.textContent = "COASTING";
+      zoneEl.style.color = "#B4C0D4";
+      drawLadder(null);
+    } else if (zone) {
+      zoneEl.textContent = zone.label;
+      zoneEl.style.color = zone.color;
+      drawLadder(zone);
+    } else {
+      zoneEl.textContent = "";
+      zoneEl.style.color = "#B4C0D4";
+      drawLadder(null);
+    }
+    var speedMissing = !t || missing(t.speed_mps);
+    setText("speed", speedMissing ? dash() : formatSpeed(t.speed_mps), speedMissing);
+    var gradeMissing = !t || missing(t.grade_pct);
+    var gradeEl = document.getElementById("grade");
+    gradeEl.textContent = gradeMissing ? dash() : formatGrade(t.grade_pct);
+    gradeEl.style.color = gradeMissing ? "#7C8AA3" : gradeColor(Number(t.grade_pct));
+    var cadMissing = !t || missing(t.cadence_rpm);
+    setText("cadence", cadMissing ? dash() : formatWhole(t.cadence_rpm), cadMissing);
+    var hrMissing = !t || missing(t.heart_rate_bpm);
+    setText("heart", hrMissing ? dash() : formatWhole(t.heart_rate_bpm), hrMissing);
+    var distMissing = !t || missing(t.distance_m);
+    setGroup("val-time", !t || missing(t.elapsed_s) ? dash() : formatElapsed(t.elapsed_s), !t || missing(t.elapsed_s));
+    setGroup("val-dist", distMissing ? dash() : formatKm(t.distance_m) + " km", distMissing);
+    setGroup("val-elev", !t || missing(t.elevation_m) ? dash() : formatWhole(t.elevation_m) + " m", !t || missing(t.elevation_m));
+    setGroup("val-lap", !t || missing(t.lap) ? dash() : String(t.lap), !t || missing(t.lap));
+    drawCharts();
+  }
+  function renderStatus(s) {
+    ride = s;
+    renderTrainer(s);
+    if (latest) render(latest);
+    else drawCharts();
+  }
+  function lengthOf() {
+    var length = course.length_m;
+    var pts = course.points || [];
+    if (!length || length <= 0) {
+      length = pts.length ? pts[pts.length - 1].distance_m : 1;
+    }
+    if (!length || length <= 0) length = 1;
+    return length;
+  }
+  function elevAt(distance) {
+    var pts = course.points || [];
+    var length = lengthOf();
+    var d = distance % length;
+    if (d < 0) d += length;
+    if (!pts.length) return 0;
+    if (pts.length === 1) return pts[0].elevation_m;
+    if (d <= pts[0].distance_m) return pts[0].elevation_m;
     var i;
-    for (i = 1; i < points.length; i++) {
-      if (distance <= points[i].distance_m) {
-        var a = points[i - 1];
-        var b = points[i];
+    for (i = 1; i < pts.length; i++) {
+      if (d <= pts[i].distance_m) {
+        var a = pts[i - 1];
+        var b = pts[i];
         var span = b.distance_m - a.distance_m;
         if (span <= 0) return b.elevation_m;
-        var t = (distance - a.distance_m) / span;
+        var t = (d - a.distance_m) / span;
         return a.elevation_m + (b.elevation_m - a.elevation_m) * t;
       }
     }
-    return points[points.length - 1].elevation_m;
+    return pts[pts.length - 1].elevation_m;
   }
-
-  function drawChart() {
-    var canvas = document.getElementById("chart");
-    if (!canvas || !canvas.getContext) return;
-    var cssWidth = canvas.clientWidth;
-    var cssHeight = canvas.clientHeight;
-    if (cssWidth < 10 || cssHeight < 10) return;
+  function gradeAt(distance) {
+    var step = 8;
+    var a = elevAt(distance);
+    var b = elevAt(distance + step);
+    return (b - a) / step * 100;
+  }
+  function prepare(canvas) {
+    var cssW = canvas.clientWidth;
+    var cssH = canvas.clientHeight;
+    if (cssW < 8 || cssH < 8) return null;
     var dpr = window.devicePixelRatio || 1;
-    var pixelWidth = Math.round(cssWidth * dpr);
-    var pixelHeight = Math.round(cssHeight * dpr);
-    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-      canvas.width = pixelWidth;
-      canvas.height = pixelHeight;
+    var pw = Math.round(cssW * dpr);
+    var ph = Math.round(cssH * dpr);
+    if (canvas.width !== pw || canvas.height !== ph) {
+      canvas.width = pw;
+      canvas.height = ph;
     }
     var ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssWidth, cssHeight);
-
-    var padLeft = 20;
-    var padRight = 20;
-    var padTop = 36;
-    var padBottom = 18;
-    var plotWidth = cssWidth - padLeft - padRight;
-    var plotHeight = cssHeight - padTop - padBottom;
-    if (plotWidth < 10 || plotHeight < 10) return;
-
-    ctx.font = "22px Arial, Helvetica, sans-serif";
-    ctx.fillStyle = "#9aa6b2";
-    ctx.fillText("Lap profile", padLeft, 26);
-
-    var points = course.points || [];
-    if (points.length < 2) {
-      ctx.fillStyle = "#d5dee8";
-      ctx.fillText("No course loaded", padLeft, padTop + 28);
+    ctx.clearRect(0, 0, cssW, cssH);
+    return { ctx: ctx, w: cssW, h: cssH };
+  }
+  function scaleElev(samples) {
+    var minE = samples[0];
+    var maxE = samples[0];
+    var i;
+    for (i = 1; i < samples.length; i++) {
+      if (samples[i] < minE) minE = samples[i];
+      if (samples[i] > maxE) maxE = samples[i];
+    }
+    var span = maxE - minE;
+    if (span < 60) {
+      var mid = (minE + maxE) / 2;
+      minE = mid - 30;
+      maxE = mid + 30;
+      span = 60;
+    }
+    return { floor: minE - 0.22 * span, top: maxE };
+  }
+  function fontPx(px) {
+    var root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    return Math.max(12, px / 16 * root);
+  }
+  function drawCharts() {
+    drawCourse();
+    drawNext();
+  }
+  function drawCourse() {
+    var view = prepare(document.getElementById("course-chart"));
+    if (!view) return;
+    var ctx = view.ctx;
+    var w = view.w;
+    var h = view.h;
+    var padB = fontPx(22);
+    var plotH = h - padB;
+    var pts = course.points || [];
+    if (pts.length < 2) {
+      ctx.fillStyle = "#B4C0D4";
+      ctx.font = "600 " + fontPx(24) + "px Barlow Semi Condensed, Arial, sans-serif";
+      ctx.fillText("No course", 8, fontPx(36));
       return;
     }
-
-    var length = course.length_m;
-    if (!length || length <= 0) length = points[points.length - 1].distance_m;
-    if (!length || length <= 0) length = 1;
-
-    var minElev = points[0].elevation_m;
-    var maxElev = minElev;
+    var length = lengthOf();
+    var cols = Math.max(24, Math.floor(w / 4));
+    var elevs = [];
     var i;
-    for (i = 1; i < points.length; i++) {
-      if (points[i].elevation_m < minElev) minElev = points[i].elevation_m;
-      if (points[i].elevation_m > maxElev) maxElev = points[i].elevation_m;
-    }
-    var elevSpan = maxElev - minElev;
-    if (elevSpan < 1) elevSpan = 1;
-
-    function xAt(distance) {
-      var x = padLeft + (distance / length) * plotWidth;
-      if (x < padLeft) x = padLeft;
-      if (x > padLeft + plotWidth) x = padLeft + plotWidth;
-      return x;
-    }
+    for (i = 0; i <= cols; i++) elevs.push(elevAt(length * i / cols));
+    var scale = scaleElev(elevs);
+    var span = scale.top - scale.floor;
+    if (span < 1) span = 1;
     function yAt(elev) {
-      return padTop + (1 - (elev - minElev) / elevSpan) * plotHeight;
+      return 4 + (1 - (elev - scale.floor) / span) * (plotH - 10);
     }
-
+    var rider = 0;
+    if (latest && !missing(latest.lap_distance_m)) rider = latest.lap_distance_m;
+    var riderX = (rider % length) / length * w;
+    for (i = 0; i < cols; i++) {
+      var d0 = length * i / cols;
+      var x0 = w * i / cols;
+      var x1 = w * (i + 1) / cols + 1;
+      var y0 = yAt(elevs[i]);
+      var y1 = yAt(elevs[i + 1]);
+      ctx.beginPath();
+      ctx.moveTo(x0, plotH);
+      ctx.lineTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.lineTo(x1, plotH);
+      ctx.closePath();
+      ctx.fillStyle = d0 < rider ? "#66728A" : gradeColor(gradeAt(d0));
+      ctx.fill();
+    }
     ctx.beginPath();
-    ctx.moveTo(xAt(points[0].distance_m), padTop + plotHeight);
-    for (i = 0; i < points.length; i++) {
-      ctx.lineTo(xAt(points[i].distance_m), yAt(points[i].elevation_m));
+    for (i = 0; i <= cols; i++) {
+      var x = w * i / cols;
+      var y = yAt(elevs[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     }
-    ctx.lineTo(xAt(points[points.length - 1].distance_m), padTop + plotHeight);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(121, 200, 255, 0.20)";
-    ctx.fill();
-
-    ctx.beginPath();
-    for (i = 0; i < points.length; i++) {
-      var px = xAt(points[i].distance_m);
-      var py = yAt(points[i].elevation_m);
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.strokeStyle = "#79c8ff";
-    ctx.lineWidth = 3;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(244, 248, 255, 0.75)";
+    ctx.lineWidth = 1.25;
     ctx.stroke();
-
-    var riderDistance = 0;
-    if (latest && !missing(latest.lap_distance_m)) riderDistance = latest.lap_distance_m;
-    var riderX = xAt(riderDistance);
-    var riderY = yAt(elevationAt(points, riderDistance));
-
+    var ahead = Math.min(length, 1000);
     ctx.beginPath();
-    ctx.moveTo(riderX, padTop);
-    ctx.lineTo(riderX, padTop + plotHeight);
-    ctx.strokeStyle = "rgba(255, 191, 60, 0.70)";
+    ctx.moveTo(riderX, yAt(elevAt(rider)));
+    var steps = 24;
+    for (i = 1; i <= steps; i++) {
+      var dd = rider + ahead * i / steps;
+      var xx = (dd % length) / length * w;
+      if (xx < riderX && i > 1) break;
+      ctx.lineTo(xx, yAt(elevAt(dd)));
+    }
+    ctx.strokeStyle = "#F4F8FF";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    var ry = yAt(elevAt(rider));
+    ctx.beginPath();
+    ctx.moveTo(riderX, ry);
+    ctx.lineTo(riderX, plotH);
+    ctx.strokeStyle = "#0B1220";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.strokeStyle = "#F4F8FF";
     ctx.lineWidth = 2;
     ctx.stroke();
-
     ctx.beginPath();
-    ctx.arc(riderX, riderY, 9, 0, Math.PI * 2);
-    ctx.fillStyle = "#ffbf3c";
+    ctx.arc(riderX, ry, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#F4F8FF";
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "#0b0e13";
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#0B1220";
     ctx.stroke();
+    ctx.fillStyle = "#B4C0D4";
+    ctx.font = "500 " + fontPx(18) + "px Barlow Semi Condensed, Arial, sans-serif";
+    var marks = w < 520 ? 3 : 6;
+    for (i = 0; i < marks; i++) {
+      var km = length / 1000 * i / (marks - 1);
+      var label = km.toFixed(km >= 10 || km < 0.05 ? 0 : 1);
+      if (i === 0) label = "0 km";
+      if (i === marks - 1) label = (length / 1000).toFixed(length >= 100000 ? 0 : 1) + " km";
+      var lx = w * i / (marks - 1);
+      if (i === 0) {
+        ctx.textAlign = "left";
+        lx = 2;
+      } else if (i === marks - 1) {
+        ctx.textAlign = "right";
+        lx = w - 2;
+      } else {
+        ctx.textAlign = "center";
+      }
+      ctx.fillText(label, lx, h - 2);
+    }
+    ctx.textAlign = "left";
   }
-
-  function render(t) {
-    latest = t;
-    els.power.textContent = formatInt(t.power_w);
-    els.speed.textContent = formatFixed(missing(t.speed_mps) ? null : t.speed_mps * 3.6, 1);
-    els.cadence.textContent = formatInt(t.cadence_rpm);
-    els.heart.textContent = formatInt(t.heart_rate_bpm);
-    els.grade.textContent = formatFixed(t.grade_pct, 1);
-    els.grade.className = "value " + gradeClass(t.grade_pct);
-    els.distance.textContent = formatFixed(missing(t.distance_m) ? null : t.distance_m / 1000, 2);
-    els.lap.textContent = missing(t.lap) ? dash() : String(t.lap);
-    els.elapsed.textContent = formatElapsed(t.elapsed_s);
-    els.elevation.textContent = formatInt(t.elevation_m);
-    drawChart();
+  function drawNext() {
+    var canvas = document.getElementById("next-chart");
+    if (!canvas || canvas.parentNode.style.display === "none") return;
+    var view = prepare(canvas);
+    if (!view) return;
+    var ctx = view.ctx;
+    var w = view.w;
+    var h = view.h;
+    var pts = course.points || [];
+    if (pts.length < 2) return;
+    var length = lengthOf();
+    var rider = 0;
+    if (latest && !missing(latest.lap_distance_m)) rider = latest.lap_distance_m;
+    var windowM = 1000;
+    var cols = Math.max(20, Math.floor(w / 4));
+    var elevs = [];
+    var i;
+    for (i = 0; i <= cols; i++) elevs.push(elevAt(rider + windowM * i / cols));
+    var scale = scaleElev(elevs);
+    var span = scale.top - scale.floor;
+    if (span < 1) span = 1;
+    var plotH = h - fontPx(20);
+    function yAt(elev) {
+      return 2 + (1 - (elev - scale.floor) / span) * (plotH - 8);
+    }
+    for (i = 0; i < cols; i++) {
+      var x0 = w * i / cols;
+      var x1 = w * (i + 1) / cols + 1;
+      ctx.beginPath();
+      ctx.moveTo(x0, plotH);
+      ctx.lineTo(x0, yAt(elevs[i]));
+      ctx.lineTo(x1, yAt(elevs[i + 1]));
+      ctx.lineTo(x1, plotH);
+      ctx.closePath();
+      ctx.fillStyle = gradeColor(gradeAt(rider + windowM * i / cols));
+      ctx.fill();
+    }
+    ctx.beginPath();
+    for (i = 0; i <= cols; i++) {
+      var x = w * i / cols;
+      var y = yAt(elevs[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "#F4F8FF";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(6, yAt(elevs[0]), 5, 0, Math.PI * 2);
+    ctx.fillStyle = "#F4F8FF";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#0B1220";
+    ctx.stroke();
+    ctx.fillStyle = "#B4C0D4";
+    ctx.font = "500 " + fontPx(18) + "px Barlow Semi Condensed, Arial, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("now", 0, h - 2);
+    ctx.textAlign = "center";
+    ctx.fillText("500 m", w * 0.5, h - 2);
+    ctx.textAlign = "right";
+    ctx.fillText("1 km", w, h - 2);
+    ctx.textAlign = "left";
   }
-
   function loadJson(url, done) {
     var xhr = new XMLHttpRequest();
     xhr.open("GET", url, true);
     xhr.onload = function () {
       if (xhr.status !== 200) return;
       var data;
-      try {
-        data = JSON.parse(xhr.responseText);
-      } catch (e) {
-        return;
-      }
+      try { data = JSON.parse(xhr.responseText); }
+      catch (e) { return; }
       done(data);
     };
     xhr.send();
   }
-
   function connect() {
+    if (!window.EventSource) {
+      poll();
+      return;
+    }
     var es = new EventSource("/events");
-    es.onopen = function () { showStatus("live"); };
-    es.onerror = function () { showStatus("reconnecting"); };
+    es.onopen = function () { showStream("live"); };
+    es.onerror = function () { showStream("reconnecting"); };
     es.onmessage = function (ev) {
       var data;
-      try {
-        data = JSON.parse(ev.data);
-      } catch (e) {
-        return;
-      }
+      try { data = JSON.parse(ev.data); }
+      catch (e) { return; }
       render(data);
     };
+    es.addEventListener("status", function (ev) {
+      var data;
+      try { data = JSON.parse(ev.data); }
+      catch (e) { return; }
+      renderStatus(data);
+    });
   }
-
+  function poll() {
+    loadJson("/api/telemetry", function (data) { render(data); });
+    loadJson("/api/status", function (data) { renderStatus(data); });
+    setTimeout(poll, 250);
+  }
+  function holdWake() {
+    if (!navigator.wakeLock || !navigator.wakeLock.request) return;
+    navigator.wakeLock.request("screen").then(function () {}, function () {});
+  }
+  loadJson("/api/zones", function (data) {
+    zones = data.power || [];
+    bands = data.gradient || [];
+    litZone = -2;
+    if (latest) render(latest);
+  });
   loadJson("/api/course", function (data) {
     course = data || course;
-    els.courseName.textContent = course.name ? course.name : "Penguin Pass";
-    drawChart();
+    var label = course.name;
+    if (!label) {
+      var km = (course.length_m || 0) / 1000;
+      label = km > 0 ? km.toFixed(1) + " km loop" : "Ride";
+    }
+    document.getElementById("course-name").textContent = label;
+    drawCharts();
   });
+  loadJson("/api/status", function (data) { renderStatus(data); });
   loadJson("/api/telemetry", function (data) { render(data); });
+  showStream("connecting");
   connect();
-  window.onresize = function () { drawChart(); };
-  setTimeout(drawChart, 50);
+  holdWake();
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") holdWake();
+  });
+  window.onresize = function () { drawCharts(); };
+  setTimeout(drawCharts, 60);
 })();
 </script>
 </body>

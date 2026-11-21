@@ -1,6 +1,7 @@
 //! The ride: physics, trainer, and the TV dashboard on one frame tick.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -11,8 +12,12 @@ use pp_core::{Telemetry, TrainerCommand, TrainerSample};
 use pp_course::{Course, Ride};
 use pp_trainer::{ConnectionState, DiscoveredTrainer, SessionMode, SimTrainer, Trainer};
 
+use crate::connection::{self, ConnectionStatus, LinkPhase, ResistanceMode};
+use crate::events::{EventQueue, RideEvent};
 use crate::link::{BleTrainerFactory, TrainerFactory, TrainerLink};
-use crate::settings::Settings;
+use crate::readout::{LiveReadout, PowerWindow};
+use crate::settings::{LoadedSettings, Settings};
+use crate::stats::RideStats;
 
 /// Keyboard power change, in watts, applied by [`Session::nudge_sim_power`].
 pub const SIM_POWER_STEP_W: u16 = 25;
@@ -28,6 +33,12 @@ pub const SIM_PEDAL_CADENCE_RPM: f32 = 85.0;
 /// Spacing of the elevation chart sent to the TV dashboard, in meters.
 pub const DASHBOARD_PROFILE_STEP_M: f64 = 20.0;
 
+/// How long a trainer stays on the pairing list after its last advertisement, in seconds.
+///
+/// One missed packet does not remove the row. Eight seconds is several
+/// advertisement intervals for a trainer that broadcasts about once a second.
+pub const PAIRING_HOLD_S: f64 = 8.0;
+
 /// Where the TV dashboard is in its background start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DashboardRun {
@@ -39,6 +50,67 @@ pub enum DashboardRun {
     Running,
     /// The last start failed. [`SessionStatus::dashboard_error`] has the reason.
     Failed,
+}
+
+/// Title-card facts for the course the session is riding.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CourseFacts {
+    /// Course name.
+    pub name: String,
+    /// Lap length, in meters. On a route that is not a loop this is the route length.
+    pub length_m: f64,
+    /// Total ascent of one lap, in meters.
+    pub total_ascent_m: f32,
+    /// Steepest uphill grade, in percent.
+    pub steepest_up_pct: f32,
+    /// Steepest downhill grade, in percent. Negative is downhill.
+    pub steepest_down_pct: f32,
+    /// `true` when the course returns to its start line.
+    ///
+    /// This session only rides closed loops, so this is `true`.
+    pub is_loop: bool,
+}
+
+/// One sample of the road ahead of the rider.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AheadPoint {
+    /// Distance ahead of the rider, in meters.
+    pub ahead_m: f64,
+    /// Distance from the start line, in meters, wrapped onto the lap.
+    pub distance_m: f64,
+    /// Elevation above the course datum, in meters.
+    pub elevation_m: f32,
+    /// Grade, in percent. Positive is uphill.
+    pub grade_pct: f32,
+}
+
+/// One row of the pairing list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PairingEntry {
+    /// Bluetooth address or the id the trainer reported.
+    pub id: String,
+    /// Advertised name.
+    pub name: String,
+    /// Received signal strength, in dBm, when the adapter reported it.
+    pub rssi_dbm: Option<i16>,
+    /// Signal bars, from 0 to 4. See [`crate::signal_bars`].
+    pub bars: u8,
+    /// `true` when this row matches [`Settings::last_trainer_id`](crate::Settings::last_trainer_id).
+    pub remembered: bool,
+}
+
+struct SeenTrainer {
+    id: String,
+    name: String,
+    rssi_dbm: Option<i16>,
+    last_seen_s: f64,
+}
+
+struct Observation {
+    physics: TrainerSample,
+    power_w: Option<f32>,
+    cadence_rpm: Option<f32>,
+    heart_rate_bpm: Option<u8>,
 }
 
 /// Who is supplying power for the ride.
@@ -133,6 +205,18 @@ pub struct Session {
     dashboard_host: IpAddr,
     dashboard_port_override: Option<u16>,
     drop_threads: Vec<JoinHandle<()>>,
+    clock_s: f64,
+    power: PowerWindow,
+    stats: RideStats,
+    events: EventQueue,
+    seen: Vec<SeenTrainer>,
+    ride_ended: bool,
+    steepest_up_pct: f32,
+    steepest_down_pct: f32,
+    link_lost: bool,
+    control_notified: bool,
+    stored_phase: LinkPhase,
+    last_dashboard_error: Option<String>,
 }
 
 impl Session {
@@ -155,6 +239,7 @@ impl Session {
         sim.set_power(0);
         sim.set_cadence(0.0);
         let ride = Ride::new(Course::penguin_pass(), settings.rider_profile());
+        let (steepest_up_pct, steepest_down_pct) = grade_extremes(ride.course());
         let mut session = Self {
             settings,
             ride,
@@ -175,6 +260,18 @@ impl Session {
             dashboard_host: options.dashboard_host,
             dashboard_port_override: options.dashboard_port,
             drop_threads: Vec::new(),
+            clock_s: 0.0,
+            power: PowerWindow::new(),
+            stats: RideStats::new(),
+            events: EventQueue::default(),
+            seen: Vec::new(),
+            ride_ended: false,
+            steepest_up_pct,
+            steepest_down_pct,
+            link_lost: false,
+            control_notified: false,
+            stored_phase: LinkPhase::Idle,
+            last_dashboard_error: None,
         };
         session.start_dashboard();
         session
@@ -195,12 +292,34 @@ impl Session {
     pub fn tick(&mut self, dt_s: f64) -> Telemetry {
         self.reap_drops();
         self.poll_dashboard();
+        if self.ride_ended {
+            let frame = self.ride.telemetry();
+            self.publish_dashboard(frame);
+            self.note_dashboard_event();
+            return frame;
+        }
         self.poll_auto();
         self.observe_link();
-        let sample = self.sample();
-        let telemetry = self.ride.step(dt_s, &sample);
+        let dt = accepted_dt(dt_s);
+        self.clock_s += dt;
+        let observed = self.observe_power();
+        let telemetry = self.ride.step(dt_s, &observed.physics);
+        self.power.record(self.clock_s, dt, observed.power_w);
+        if let Some(event) = self.stats.record(
+            dt,
+            &telemetry,
+            observed.power_w,
+            observed.cadence_rpm,
+            observed.heart_rate_bpm,
+            self.power.average_1s_full(self.clock_s),
+        ) {
+            self.events.push(event);
+        }
+        self.note_link_events();
+        self.refresh_pairing();
         self.send_grade(telemetry.grade_pct);
         self.publish_dashboard(telemetry);
+        self.note_dashboard_event();
         telemetry
     }
 
@@ -320,6 +439,9 @@ impl Session {
         self.auto_id = None;
         self.connect_error = None;
         self.switching_mode = false;
+        self.link_lost = false;
+        self.stored_phase = LinkPhase::Idle;
+        self.control_notified = false;
         if let Some(trainer) = self.trainer.take() {
             self.defer_drop(trainer);
         }
@@ -426,10 +548,218 @@ impl Session {
 
     /// Put the bike back on the start line and apply the current rider profile.
     ///
-    /// Elapsed time, distance, speed, and lap return to zero. The simulated
-    /// power target and the trainer connection are left as they are.
+    /// Elapsed time, distance, speed, and lap return to zero. Ride statistics
+    /// and the toast queue are cleared. The simulated power target and the
+    /// trainer connection are left as they are. A ride ended with
+    /// [`Session::end_ride`] runs again.
     pub fn restart(&mut self) {
+        self.ride_ended = false;
+        self.stats.clear();
+        self.power.clear();
+        self.events.clear();
+        self.clock_s = 0.0;
         self.rebuild_ride();
+    }
+
+    /// HUD numbers for this moment, separate from the physics sample.
+    ///
+    /// A real trainer whose link is down or whose sample is stale reports
+    /// `None` for power and cadence. The physics still uses 0 W. Coasting on
+    /// the simulated rider, or on a connected trainer that reports 0 W, is
+    /// `Some(0.0)`.
+    #[must_use]
+    pub fn readout(&self) -> LiveReadout {
+        let observed = self.observe_power();
+        LiveReadout {
+            power_w: observed.power_w,
+            cadence_rpm: observed.cadence_rpm,
+            heart_rate_bpm: observed.heart_rate_bpm,
+            power_3s_w: self.power.average_3s(self.clock_s),
+        }
+    }
+
+    /// Link facts for the trainer chip and the pairing headline.
+    #[must_use]
+    pub fn connection(&self) -> ConnectionStatus {
+        let phase = self.link_phase();
+        let detail = self.failure_detail();
+        let failed = matches!(phase, LinkPhase::Failed);
+        let bluetooth_available = self.bluetooth_available();
+        ConnectionStatus {
+            source: self.active_source(),
+            trainer_name: self.trainer_name(),
+            phase,
+            resistance: self.resistance_mode(),
+            bluetooth_available,
+            failure_reason: failed
+                .then(|| connection::plain_failure(detail.as_deref().unwrap_or(""))),
+            failure_detail: detail,
+        }
+    }
+
+    /// Trainers for the pairing list, strongest first.
+    ///
+    /// A trainer that disappears for one advertisement stays until
+    /// [`PAIRING_HOLD_S`] has passed. Ties break by name, then id. The
+    /// remembered trainer is flagged.
+    #[must_use]
+    pub fn pairing(&mut self) -> Vec<PairingEntry> {
+        self.refresh_pairing();
+        let mut entries: Vec<PairingEntry> = self
+            .seen
+            .iter()
+            .map(|seen| PairingEntry {
+                id: seen.id.clone(),
+                name: seen.name.clone(),
+                rssi_dbm: seen.rssi_dbm,
+                bars: crate::signal::signal_bars(seen.rssi_dbm),
+                remembered: self.trainer_is_remembered(&seen.id, &seen.name),
+            })
+            .collect();
+        entries.sort_by(|left, right| {
+            right
+                .bars
+                .cmp(&left.bars)
+                .then_with(|| rssi_rank(right.rssi_dbm).cmp(&rssi_rank(left.rssi_dbm)))
+                .then_with(|| left.name.cmp(&right.name))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        entries
+    }
+
+    /// Drop the current scan and start a new one.
+    ///
+    /// Works whether or not a scan is already running. The ride returns to
+    /// the simulated rider. `last_trainer_id` is kept, and the pairing list
+    /// starts empty.
+    pub fn search_again(&mut self) {
+        self.seen.clear();
+        self.disconnect();
+        self.spawn_error = None;
+        self.start_scan();
+    }
+
+    /// Totals so far. After [`Session::end_ride`] these no longer change.
+    #[must_use]
+    pub fn summary(&self) -> crate::stats::RideSummary {
+        self.stats.summary(&self.ride.telemetry())
+    }
+
+    /// Freeze the ride and the summary, and ease a controlled trainer to flat.
+    ///
+    /// Later [`Session::tick`] calls publish the frozen telemetry and do not
+    /// move the bike until [`Session::restart`].
+    pub fn end_ride(&mut self) {
+        if self.ride_ended {
+            return;
+        }
+        self.stats.finish();
+        self.ride_ended = true;
+        self.send_flat_grade();
+    }
+
+    /// Whether [`Session::end_ride`] is in effect.
+    #[must_use]
+    pub fn ride_ended(&self) -> bool {
+        self.ride_ended
+    }
+
+    /// Facts for the title card and the course line.
+    ///
+    /// Every course this session rides is a closed loop, so [`CourseFacts::is_loop`]
+    /// is true and [`Session::distance_left_m`] is the rest of the current lap.
+    #[must_use]
+    pub fn course_facts(&self) -> CourseFacts {
+        let course = self.ride.course();
+        CourseFacts {
+            name: course.name().to_owned(),
+            length_m: course.length_m(),
+            total_ascent_m: course.total_ascent_m(),
+            steepest_up_pct: self.steepest_up_pct,
+            steepest_down_pct: self.steepest_down_pct,
+            is_loop: true,
+        }
+    }
+
+    /// Distance still to ride, in meters.
+    ///
+    /// On a loop this is the distance left in the current lap.
+    #[must_use]
+    pub fn distance_left_m(&self) -> f64 {
+        let length = self.ride.course().length_m();
+        let at = self.ride.telemetry().lap_distance_m;
+        (length - at).clamp(0.0, length)
+    }
+
+    /// Fill `out` with the road from the rider through `window_m` ahead.
+    ///
+    /// `step_m` is the spacing, in meters. The first sample is the rider and
+    /// the last is the end of the window. Distance wraps at the lap. `out`
+    /// is cleared and its capacity is reused, so a steady window does not
+    /// allocate again. A bad step or window clears `out`. At most 4096
+    /// samples are written.
+    pub fn fill_ahead(&self, window_m: f64, step_m: f64, out: &mut Vec<AheadPoint>) {
+        out.clear();
+        if !window_m.is_finite() || window_m < 0.0 || !step_m.is_finite() || step_m < 1.0e-3 {
+            return;
+        }
+        let course = self.ride.course();
+        let length = course.length_m();
+        let origin = self.ride.telemetry().lap_distance_m;
+        let mut ahead = 0.0;
+        loop {
+            let distance = if length > 0.0 {
+                (origin + ahead).rem_euclid(length)
+            } else {
+                0.0
+            };
+            out.push(AheadPoint {
+                ahead_m: ahead,
+                distance_m: distance,
+                elevation_m: course.elevation_at(distance),
+                grade_pct: course.grade_pct_at(distance),
+            });
+            if ahead >= window_m - 1.0e-9 || out.len() >= 4096 {
+                break;
+            }
+            let mut next = ahead + step_m;
+            if next > window_m {
+                next = window_m;
+            }
+            if next <= ahead {
+                break;
+            }
+            ahead = next;
+        }
+    }
+
+    /// Take the toasts queued since the last drain.
+    ///
+    /// The queue keeps at most [`crate::EVENT_QUEUE_CAP`] events and drops
+    /// the oldest when it is full.
+    pub fn drain_events(&mut self) -> Vec<RideEvent> {
+        self.events.drain()
+    }
+
+    /// Remember a settings load so a damaged file can raise a toast.
+    ///
+    /// Call this once after [`Settings::load`] when the warning should be
+    /// shown. A missing file has no warning and queues nothing.
+    pub fn note_settings_load(&mut self, loaded: &LoadedSettings) {
+        if let Some(detail) = loaded.warning.clone() {
+            self.events.push(RideEvent::SettingsFileDamaged { detail });
+        }
+    }
+
+    /// Write the current settings and queue [`RideEvent::SettingsSaved`] on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Settings::save`]. A failed save queues nothing.
+    pub fn save_settings(&mut self, path: impl AsRef<Path>) -> Result<(), crate::SettingsError> {
+        self.settings.save(path)?;
+        self.events.push(RideEvent::SettingsSaved);
+        Ok(())
     }
 
     fn apply_sim_power(&mut self) {
@@ -442,38 +772,8 @@ impl Session {
         self.sim.set_cadence(cadence);
     }
 
-    fn sample(&self) -> TrainerSample {
-        if self.using_trainer {
-            self.trainer_sample()
-        } else {
-            self.sim.latest_sample().unwrap_or(TrainerSample {
-                power_w: Some(0),
-                cadence_rpm: Some(0.0),
-                ..TrainerSample::default()
-            })
-        }
-    }
-
-    fn trainer_sample(&self) -> TrainerSample {
-        let Some(trainer) = self.trainer.as_ref() else {
-            return zero_power();
-        };
-        if !matches!(trainer.state(), ConnectionState::Connected) {
-            return zero_power();
-        }
-        match trainer.latest_sample() {
-            Some(mut sample) => {
-                if sample.power_w.is_none() {
-                    sample.power_w = Some(0);
-                }
-                sample
-            }
-            None => zero_power(),
-        }
-    }
-
     fn send_grade(&mut self, grade_pct: f32) {
-        if self.using_trainer && !self.settings.control_trainer {
+        if self.using_trainer && !self.controlling_trainer() {
             return;
         }
         let scaled = grade_pct * self.settings.trainer_difficulty;
@@ -613,6 +913,218 @@ impl Session {
         }
     }
 
+    fn observe_power(&self) -> Observation {
+        if !self.using_trainer {
+            let sample = self.sim.latest_sample().unwrap_or(TrainerSample {
+                power_w: Some(0),
+                cadence_rpm: Some(0.0),
+                ..TrainerSample::default()
+            });
+            return Observation {
+                physics: sample,
+                power_w: sample.power_w.map(f32::from),
+                cadence_rpm: sample.cadence_rpm,
+                heart_rate_bpm: sample.heart_rate_bpm,
+            };
+        }
+        let down = Observation {
+            physics: zero_power(),
+            power_w: None,
+            cadence_rpm: None,
+            heart_rate_bpm: None,
+        };
+        let Some(trainer) = self.trainer.as_ref() else {
+            return down;
+        };
+        if !matches!(trainer.state(), ConnectionState::Connected) {
+            return down;
+        }
+        let Some(sample) = trainer.latest_sample() else {
+            return down;
+        };
+        Observation {
+            physics: TrainerSample {
+                power_w: Some(sample.power_w.unwrap_or(0)),
+                cadence_rpm: sample.cadence_rpm,
+                speed_kph: sample.speed_kph,
+                heart_rate_bpm: sample.heart_rate_bpm,
+            },
+            power_w: sample.power_w.map(f32::from),
+            cadence_rpm: sample.cadence_rpm,
+            heart_rate_bpm: sample.heart_rate_bpm,
+        }
+    }
+
+    fn link_phase(&self) -> LinkPhase {
+        if self.spawn_error.is_some() && self.trainer.is_none() {
+            return LinkPhase::Failed;
+        }
+        if self.switching_mode {
+            return LinkPhase::Reconnecting;
+        }
+        let Some(trainer) = self.trainer.as_ref() else {
+            return LinkPhase::Idle;
+        };
+        match trainer.state() {
+            ConnectionState::Scanning => LinkPhase::Searching,
+            ConnectionState::Connecting => LinkPhase::Connecting,
+            ConnectionState::Connected => LinkPhase::Connected,
+            ConnectionState::Disconnected if self.saw_connected => LinkPhase::Reconnecting,
+            ConnectionState::Failed(_) if self.saw_connected => LinkPhase::Reconnecting,
+            ConnectionState::Failed(_) => LinkPhase::Failed,
+            ConnectionState::Disconnected => LinkPhase::Idle,
+        }
+    }
+
+    fn bluetooth_available(&self) -> bool {
+        if self.spawn_error.is_some() {
+            return false;
+        }
+        !matches!(
+            self.trainer.as_ref().map(|trainer| trainer.state()),
+            Some(ConnectionState::Failed(reason))
+                if !self.saw_connected && adapter_failure(&reason)
+        )
+    }
+
+    fn failure_detail(&self) -> Option<String> {
+        if let Some(err) = &self.spawn_error {
+            return Some(err.clone());
+        }
+        if let Some(err) = &self.connect_error {
+            return Some(err.clone());
+        }
+        match self.trainer.as_ref().map(|trainer| trainer.state()) {
+            Some(ConnectionState::Failed(reason)) => Some(reason),
+            _ => None,
+        }
+    }
+
+    fn trainer_name(&self) -> Option<String> {
+        self.trainer.as_ref().map(|_| self.display_name())
+    }
+
+    fn resistance_mode(&self) -> ResistanceMode {
+        if self.controlling_trainer() {
+            ResistanceMode::Controlled
+        } else {
+            ResistanceMode::ReadingOnly
+        }
+    }
+
+    fn controlling_trainer(&self) -> bool {
+        self.settings.control_trainer && !self.control_refused()
+    }
+
+    fn control_refused(&self) -> bool {
+        connection::control_was_refused(
+            self.trainer
+                .as_ref()
+                .and_then(|trainer| trainer.last_warning())
+                .as_deref(),
+        )
+    }
+
+    fn note_link_events(&mut self) {
+        let phase = self.link_phase();
+        if phase != self.stored_phase {
+            let name = self.trainer_name().unwrap_or_else(|| "Trainer".to_owned());
+            match phase {
+                LinkPhase::Connected if self.link_lost => {
+                    self.events.push(RideEvent::TrainerReconnected { name });
+                    self.link_lost = false;
+                }
+                LinkPhase::Connected => {
+                    self.events.push(RideEvent::TrainerConnected { name });
+                }
+                LinkPhase::Reconnecting | LinkPhase::Failed if self.link_phase_was_connected() => {
+                    self.events.push(RideEvent::TrainerLinkLost { name });
+                    self.link_lost = true;
+                }
+                _ => {}
+            }
+            self.stored_phase = phase;
+        }
+        if phase == LinkPhase::Connected && self.control_refused() && !self.control_notified {
+            self.control_notified = true;
+            let name = self.trainer_name().unwrap_or_else(|| "Trainer".to_owned());
+            self.events.push(RideEvent::ControlRefused { name });
+        }
+        if phase != LinkPhase::Connected {
+            self.control_notified = false;
+        }
+    }
+
+    fn link_phase_was_connected(&self) -> bool {
+        self.stored_phase == LinkPhase::Connected
+    }
+
+    fn note_dashboard_event(&mut self) {
+        let error = {
+            let dash = lock_dash(&self.dash);
+            if dash.phase == DashboardRun::Failed {
+                dash.error.clone()
+            } else {
+                None
+            }
+        };
+        if error != self.last_dashboard_error {
+            if let Some(reason) = error.clone() {
+                self.events.push(RideEvent::DashboardFailed { reason });
+            }
+            self.last_dashboard_error = error;
+        }
+    }
+
+    fn refresh_pairing(&mut self) {
+        if let Some(trainer) = self.trainer.as_ref() {
+            for found in trainer.discovered() {
+                if let Some(seen) = self.seen.iter_mut().find(|seen| seen.id == found.id) {
+                    seen.name = found.name;
+                    seen.rssi_dbm = found.rssi_dbm;
+                    seen.last_seen_s = self.clock_s;
+                } else {
+                    self.seen.push(SeenTrainer {
+                        id: found.id,
+                        name: found.name,
+                        rssi_dbm: found.rssi_dbm,
+                        last_seen_s: self.clock_s,
+                    });
+                }
+            }
+        }
+        let now = self.clock_s;
+        self.seen
+            .retain(|seen| now - seen.last_seen_s <= PAIRING_HOLD_S);
+    }
+
+    fn trainer_is_remembered(&self, id: &str, name: &str) -> bool {
+        self.settings
+            .last_trainer_id
+            .as_deref()
+            .is_some_and(|remembered| {
+                let remembered = remembered.trim();
+                !remembered.is_empty()
+                    && (id.eq_ignore_ascii_case(remembered)
+                        || name
+                            .to_ascii_lowercase()
+                            .contains(&remembered.to_ascii_lowercase()))
+            })
+    }
+
+    fn send_flat_grade(&mut self) {
+        if !self.using_trainer || !self.controlling_trainer() {
+            return;
+        }
+        let Some(trainer) = self.trainer.as_mut() else {
+            return;
+        };
+        if !matches!(trainer.state(), ConnectionState::Connected) {
+            return;
+        }
+        let _ = trainer.send(TrainerCommand::SetGrade { grade_pct: 0.0 });
+    }
+
     fn trainer_mode(&self) -> SessionMode {
         if self.settings.control_trainer {
             SessionMode::Control
@@ -742,11 +1254,42 @@ impl Session {
 
     fn publish_dashboard(&self, telemetry: Telemetry) {
         self.poll_dashboard();
+        let status = self.cast_status();
         let dash = lock_dash(&self.dash);
         if dash.phase == DashboardRun::Running
             && let Some(server) = &dash.server
         {
             server.publish(telemetry);
+            server.publish_status(status);
+        }
+    }
+
+    fn cast_status(&self) -> pp_cast::RideStatus {
+        let trainer = self.using_trainer;
+        let link = match self.link_phase() {
+            LinkPhase::Searching | LinkPhase::Connecting => pp_cast::LinkPhase::Searching,
+            LinkPhase::Connected => pp_cast::LinkPhase::Connected,
+            LinkPhase::Reconnecting => pp_cast::LinkPhase::Reconnecting,
+            LinkPhase::Idle | LinkPhase::Failed => pp_cast::LinkPhase::Unknown,
+        };
+        pp_cast::RideStatus {
+            ftp_w: Some(self.settings.ftp_w),
+            source: if trainer {
+                pp_cast::RideSource::Trainer
+            } else {
+                pp_cast::RideSource::Simulated
+            },
+            trainer_name: trainer.then(|| self.trainer_name()).flatten(),
+            link: if trainer {
+                link
+            } else {
+                pp_cast::LinkPhase::Unknown
+            },
+            resistance: trainer.then(|| match self.resistance_mode() {
+                ResistanceMode::Controlled => pp_cast::ResistanceMode::Controlled,
+                ResistanceMode::ReadingOnly => pp_cast::ResistanceMode::ReadingOnly,
+            }),
+            power_3s_w: self.power.average_3s(self.clock_s),
         }
     }
 
@@ -832,12 +1375,17 @@ impl Drop for Session {
 
 trait DashboardHost: Send {
     fn publish(&self, telemetry: Telemetry);
+    fn publish_status(&self, status: pp_cast::RideStatus);
     fn urls(&self) -> Vec<String>;
 }
 
 impl DashboardHost for CastServer {
     fn publish(&self, telemetry: Telemetry) {
         CastServer::publish(self, telemetry);
+    }
+
+    fn publish_status(&self, status: pp_cast::RideStatus) {
+        CastServer::publish_status(self, status);
     }
 
     fn urls(&self) -> Vec<String> {
@@ -971,6 +1519,40 @@ fn handles_of(mut pending: PendingDash, dash: &mut DashState) {
     }
 }
 
+fn accepted_dt(dt_s: f64) -> f64 {
+    if dt_s.is_finite() && dt_s > 0.0 {
+        dt_s.min(pp_course::MAX_DT_S)
+    } else {
+        0.0
+    }
+}
+
+fn grade_extremes(course: &Course) -> (f32, f32) {
+    let length = course.length_m();
+    if length <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let mut up = f32::MIN;
+    let mut down = f32::MAX;
+    let mut distance = 0.0;
+    while distance <= length {
+        let grade = course.grade_pct_at(distance);
+        up = up.max(grade);
+        down = down.min(grade);
+        distance += 1.0;
+    }
+    (up, down)
+}
+
+fn adapter_failure(reason: &str) -> bool {
+    let reason = reason.to_ascii_lowercase();
+    reason.contains("adapter") || reason.contains("bluetooth") || reason.contains("not available")
+}
+
+fn rssi_rank(rssi_dbm: Option<i16>) -> i16 {
+    rssi_dbm.unwrap_or(i16::MIN)
+}
+
 fn zero_power() -> TrainerSample {
     TrainerSample {
         power_w: Some(0),
@@ -1008,7 +1590,10 @@ fn cast_profile(course: &Course) -> CourseProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connection::{LinkPhase, ResistanceMode};
+    use crate::events::RideEvent;
     use crate::link::TrainerFactory;
+    use crate::settings::LoadedSettings;
     use pp_core::{RiderProfile, TrainerCommand, TrainerSample};
     use pp_course::Ride;
     use pp_trainer::{ConnectionState, DiscoveredTrainer, Trainer, TrainerError};
@@ -1702,6 +2287,10 @@ mod tests {
         let frame = session.tick(0.5);
         let body = fetch_telemetry(&urls[0]);
         assert_eq!(body, frame);
+        let cast_status = fetch_status(&urls[0]);
+        assert_eq!(cast_status.ftp_w, Some(session.settings().ftp_w));
+        assert_eq!(cast_status.source, pp_cast::RideSource::Simulated);
+        assert_eq!(cast_status.power_3s_w, session.readout().power_3s_w);
 
         let mut settings = session.settings().clone();
         settings.trainer_difficulty = 0.25;
@@ -1892,6 +2481,392 @@ mod tests {
         }
     }
 
+    #[test]
+    fn readout_uses_dashes_when_the_link_is_down_and_zero_when_coasting() {
+        let mut session = Session::new(offline());
+        session.set_sim_power(0);
+        session.tick(0.2);
+        let coast = session.readout();
+        assert_eq!(coast.power_w, Some(0.0));
+        assert_eq!(coast.cadence_rpm, Some(0.0));
+        assert_eq!(coast.heart_rate_bpm, None);
+
+        let handle = Handle::new();
+        handle.set_discovered(vec![neo()]);
+        let mut session = session_with(offline(), &handle);
+        session.connect("neo-1");
+        handle.set_state(ConnectionState::Connected);
+        handle.set_sample(Some(TrainerSample {
+            power_w: Some(0),
+            cadence_rpm: Some(0.0),
+            heart_rate_bpm: Some(120),
+            ..TrainerSample::default()
+        }));
+        session.tick(0.2);
+        let coasting = session.readout();
+        assert_eq!(coasting.power_w, Some(0.0));
+        assert_eq!(coasting.cadence_rpm, Some(0.0));
+        assert_eq!(coasting.heart_rate_bpm, Some(120));
+
+        handle.set_sample(None);
+        handle.set_state(ConnectionState::Disconnected);
+        session.tick(0.2);
+        let lost = session.readout();
+        assert_eq!(lost.power_w, None);
+        assert_eq!(lost.cadence_rpm, None);
+        assert_eq!(lost.heart_rate_bpm, None);
+        assert_eq!(session.telemetry().power_w, 0.0);
+    }
+
+    #[test]
+    fn three_second_power_ignores_frame_rate_and_ages_out_gaps() {
+        let mut fine = Session::new(offline());
+        let mut coarse = Session::new(offline());
+        fine.set_sim_power(100);
+        coarse.set_sim_power(100);
+        for _ in 0..30 {
+            fine.tick(0.1);
+        }
+        coarse.tick(3.0);
+        let fine_avg = fine.readout().power_3s_w.expect("fine average");
+        let coarse_avg = coarse.readout().power_3s_w.expect("coarse average");
+        assert!((fine_avg - 100.0).abs() < 1.0, "{fine_avg}");
+        assert!(
+            (coarse_avg - fine_avg).abs() < 1.0,
+            "{coarse_avg} vs {fine_avg}"
+        );
+
+        let handle = Handle::new();
+        let mut session = session_with(offline(), &handle);
+        session.connect("neo-1");
+        handle.set_state(ConnectionState::Connected);
+        handle.set_power(180);
+        session.tick(1.0);
+        assert!(session.readout().power_3s_w.is_some());
+        handle.set_sample(None);
+        session.tick(4.0);
+        assert_eq!(session.readout().power_3s_w, None);
+        assert_eq!(session.readout().power_w, None);
+    }
+
+    #[test]
+    fn connection_status_names_the_phase_and_a_plain_reason() {
+        let mut session = Session::with_options(
+            offline(),
+            SessionOptions {
+                trainer_factory: Box::new(FailingFactory),
+                dashboard_host: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                dashboard_port: Some(0),
+            },
+        );
+        assert_eq!(session.connection().phase, LinkPhase::Idle);
+        session.start_scan();
+        let failed = session.connection();
+        assert_eq!(failed.phase, LinkPhase::Failed);
+        assert!(!failed.bluetooth_available);
+        assert_eq!(
+            failed.failure_reason.as_deref(),
+            Some("Bluetooth is off, or this computer has no Bluetooth adapter.")
+        );
+        assert!(failed.failure_detail.is_some());
+
+        let handle = Handle::new();
+        handle.set_discovered(vec![neo()]);
+        let mut session = session_with(offline(), &handle);
+        session.connect("neo-1");
+        assert_eq!(session.connection().phase, LinkPhase::Connecting);
+        handle.set_state(ConnectionState::Connected);
+        session.tick(0.0);
+        let up = session.connection();
+        assert_eq!(up.phase, LinkPhase::Connected);
+        assert_eq!(up.resistance, ResistanceMode::Controlled);
+        assert_eq!(up.trainer_name.as_deref(), Some("Tacx Neo 2T"));
+        assert!(up.bluetooth_available);
+        handle.set_warning(Some("control not permitted".to_owned()));
+        assert_eq!(session.connection().resistance, ResistanceMode::ReadingOnly);
+        handle.set_state(ConnectionState::Disconnected);
+        session.tick(0.0);
+        assert_eq!(session.connection().phase, LinkPhase::Reconnecting);
+        assert!(session.status().line.contains("connection lost, retrying"));
+    }
+
+    #[test]
+    fn pairing_list_sorts_holds_and_search_again_restarts() {
+        let handle = Handle::new();
+        let mut settings = offline();
+        settings.last_trainer_id = Some("neo-1".to_owned());
+        let mut session = session_with(settings, &handle);
+        handle.set_discovered(vec![
+            DiscoveredTrainer {
+                id: "b".to_owned(),
+                name: "Bravo".to_owned(),
+                rssi_dbm: Some(-88),
+            },
+            DiscoveredTrainer {
+                id: "a2".to_owned(),
+                name: "Alpha".to_owned(),
+                rssi_dbm: Some(-65),
+            },
+            DiscoveredTrainer {
+                id: "neo-1".to_owned(),
+                name: "Tacx Neo 2T".to_owned(),
+                rssi_dbm: Some(-65),
+            },
+            DiscoveredTrainer {
+                id: "mystery".to_owned(),
+                name: "Hidden".to_owned(),
+                rssi_dbm: None,
+            },
+        ]);
+        session.start_scan();
+        session.tick(0.2);
+        let rows = session.pairing();
+        assert_eq!(rows[0].id, "a2");
+        assert_eq!(rows[0].bars, 3);
+        assert!(rows.iter().any(|row| row.id == "neo-1" && row.remembered));
+        assert!(rows.last().unwrap().bars <= rows.first().unwrap().bars);
+        let hidden = rows.iter().find(|row| row.id == "mystery").unwrap();
+        assert_eq!(hidden.bars, 0);
+        assert!(!hidden.remembered);
+
+        handle.set_discovered(vec![]);
+        session.tick(1.0);
+        assert!(session.pairing().iter().any(|row| row.id == "neo-1"));
+        session.tick(8.0);
+        assert!(session.pairing().is_empty());
+
+        let before = handle.modes().len();
+        session.search_again();
+        assert!(session.pairing().is_empty());
+        assert!(handle.modes().len() > before);
+        assert_eq!(session.connection().phase, LinkPhase::Searching);
+        assert!(matches!(session.status().source, ActiveSource::Simulated));
+    }
+
+    #[test]
+    fn summary_smooths_power_excludes_gaps_and_end_ride_holds_the_bike() {
+        let mut session = Session::new(offline());
+        session.set_sim_power(1_500);
+        session.tick(0.016);
+        assert_eq!(
+            session.summary().max_power_w,
+            0.0,
+            "one sample is not a maximum"
+        );
+        for _ in 0..60 {
+            session.tick(1.0 / 60.0);
+        }
+        let steady = session.summary();
+        assert!(
+            steady.average_power_w > 1_000.0,
+            "{}",
+            steady.average_power_w
+        );
+        assert!(steady.max_power_w > 1_000.0);
+        assert!(steady.average_cadence_rpm.unwrap() > 80.0);
+        assert!(steady.average_heart_rate_bpm.is_none());
+        assert!(steady.elapsed_s > 0.9);
+
+        session.set_sim_power(0);
+        for _ in 0..60 {
+            session.tick(1.0 / 60.0);
+        }
+        let mixed = session.summary();
+        assert!(mixed.average_power_w < steady.average_power_w);
+        assert!(
+            (mixed.average_cadence_rpm.unwrap() - steady.average_cadence_rpm.unwrap()).abs() < 1.0
+        );
+
+        let handle = Handle::new();
+        let mut session = session_with(offline(), &handle);
+        session.connect("neo-1");
+        handle.set_state(ConnectionState::Connected);
+        handle.set_power(200);
+        session.tick(2.0);
+        let before = session.summary().average_power_w;
+        handle.set_sample(None);
+        session.tick(2.0);
+        let after = session.summary().average_power_w;
+        assert!(
+            (after - before).abs() < 1.0,
+            "gap changed the average: {before} -> {after}"
+        );
+
+        let distance = session.telemetry().distance_m;
+        session.end_ride();
+        assert!(session.ride_ended());
+        assert_eq!(handle.grades().last().copied(), Some(0.0));
+        session.tick(5.0);
+        assert_eq!(session.telemetry().distance_m, distance);
+        assert_eq!(session.summary().distance_m, distance);
+        session.restart();
+        assert!(!session.ride_ended());
+        assert_eq!(session.telemetry().elapsed_s, 0.0);
+        assert_eq!(session.summary().elapsed_s, 0.0);
+        assert!(session.summary().laps.is_empty());
+    }
+
+    #[test]
+    fn a_completed_lap_is_recorded_and_ascent_is_climbed_height() {
+        let mut session = Session::new(offline());
+        session.set_sim_power(1_500);
+        let mut guard = 0;
+        while session.telemetry().lap < 2 && guard < 800 {
+            session.tick(1.0);
+            guard += 1;
+        }
+        assert!(session.telemetry().lap >= 2, "did not finish a lap");
+        let summary = session.summary();
+        assert!(summary.ascent_m > 1.0, "ascent {}", summary.ascent_m);
+        assert!(
+            summary
+                .laps
+                .iter()
+                .any(|lap| lap.lap == 1 && lap.time_s > 1.0)
+        );
+        assert!(session.drain_events().iter().any(|event| matches!(
+            event,
+            RideEvent::LapCompleted { lap: 1, time_s } if *time_s > 1.0
+        )));
+    }
+
+    #[test]
+    fn course_facts_and_the_ahead_window_wrap_and_reuse_the_buffer() {
+        let mut session = Session::new(offline());
+        let facts = session.course_facts();
+        assert!(!facts.name.is_empty());
+        assert!(facts.is_loop);
+        assert!(facts.length_m > 0.0);
+        assert!(facts.total_ascent_m > 0.0);
+        assert!(facts.steepest_up_pct > 0.0);
+        assert!(facts.steepest_down_pct < 0.0);
+        assert!((session.distance_left_m() - facts.length_m).abs() < 1.0);
+
+        let mut ahead = Vec::new();
+        session.fill_ahead(1_000.0, 250.0, &mut ahead);
+        assert_eq!(ahead.first().unwrap().ahead_m, 0.0);
+        assert!((ahead.last().unwrap().ahead_m - 1_000.0).abs() < 1.0e-6);
+        let capacity = ahead.capacity();
+        session.fill_ahead(1_000.0, 250.0, &mut ahead);
+        assert_eq!(ahead.capacity(), capacity);
+
+        session.set_sim_power(1_500);
+        let mut guard = 0;
+        while session.telemetry().lap_distance_m < facts.length_m - 50.0 && guard < 800 {
+            session.tick(1.0);
+            guard += 1;
+        }
+        session.fill_ahead(200.0, 50.0, &mut ahead);
+        assert!(
+            ahead.iter().any(|point| point.distance_m < 180.0),
+            "window did not wrap: {:?}",
+            ahead
+                .iter()
+                .map(|point| point.distance_m)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn events_report_the_toasts_and_drop_the_oldest_when_full() {
+        let dir = std::env::temp_dir().join(format!(
+            "pp-session-events-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut session = Session::new(offline());
+        session.note_settings_load(&LoadedSettings {
+            settings: offline(),
+            warning: Some("could not parse settings".to_owned()),
+        });
+        session
+            .save_settings(dir.join("penguin-pass.toml"))
+            .unwrap();
+        let events = session.drain_events();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RideEvent::SettingsFileDamaged { .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RideEvent::SettingsSaved))
+        );
+
+        let handle = Handle::new();
+        handle.set_discovered(vec![neo()]);
+        let mut session = session_with(offline(), &handle);
+        session.connect("neo-1");
+        handle.set_state(ConnectionState::Connected);
+        session.tick(0.0);
+        handle.set_state(ConnectionState::Disconnected);
+        session.tick(0.0);
+        handle.set_state(ConnectionState::Connected);
+        session.tick(0.0);
+        handle.set_warning(Some("control not permitted".to_owned()));
+        session.tick(0.0);
+        let events = session.drain_events();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RideEvent::TrainerConnected { .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RideEvent::TrainerLinkLost { .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RideEvent::TrainerReconnected { .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, RideEvent::ControlRefused { .. }))
+        );
+
+        for index in 0..40 {
+            session.note_settings_load(&LoadedSettings {
+                settings: offline(),
+                warning: Some(index.to_string()),
+            });
+        }
+        let drained = session.drain_events();
+        assert_eq!(drained.len(), crate::EVENT_QUEUE_CAP);
+        assert!(
+            matches!(drained.last(), Some(RideEvent::SettingsFileDamaged { detail }) if detail == "39")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tick_with_the_interface_calls_stays_under_a_millisecond() {
+        let mut session = Session::new(offline());
+        session.set_sim_power(180);
+        let mut ahead = Vec::new();
+        let started = Instant::now();
+        let frames = 600;
+        for _ in 0..frames {
+            session.tick(1.0 / 60.0);
+            let _ = session.readout();
+            let _ = session.connection();
+            let _ = session.summary();
+            session.fill_ahead(1_000.0, 4.0, &mut ahead);
+        }
+        let per_frame = started.elapsed() / frames;
+        eprintln!("interface tick cost {per_frame:?}");
+        assert!(
+            per_frame < Duration::from_millis(1),
+            "tick plus HUD calls took {per_frame:?}"
+        );
+    }
+
     fn free_port() -> u16 {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind");
         let port = listener.local_addr().expect("addr").port();
@@ -1911,6 +2886,27 @@ mod tests {
             match client.get(&url).send() {
                 Ok(response) => match response.json::<Telemetry>() {
                     Ok(telemetry) => return telemetry,
+                    Err(err) => last = err.to_string(),
+                },
+                Err(err) => last = err.to_string(),
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("GET {url} failed: {last}");
+    }
+
+    fn fetch_status(base: &str) -> pp_cast::RideStatus {
+        let url = format!("{base}api/status");
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .no_proxy()
+            .build()
+            .expect("client");
+        let mut last = String::new();
+        for _ in 0..25 {
+            match client.get(&url).send() {
+                Ok(response) => match response.json::<pp_cast::RideStatus>() {
+                    Ok(status) => return status,
                     Err(err) => last = err.to_string(),
                 },
                 Err(err) => last = err.to_string(),

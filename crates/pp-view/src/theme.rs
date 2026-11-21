@@ -151,12 +151,12 @@ impl Default for Backdrop {
     fn default() -> Self {
         Self {
             rings: 3,
-            inner_margin_m: 180.0,
+            inner_margin_m: 90.0,
             ring_gap_m: 700.0,
             base_drop_m: 60.0,
-            height_m: [240.0, 560.0],
-            snow_fraction: 0.58,
-            segments: 96,
+            height_m: [140.0, 280.0],
+            snow_fraction: 0.86,
+            segments: 128,
             style: "ridges".to_owned(),
         }
     }
@@ -396,6 +396,13 @@ fn validate(file: &ThemeFile) -> Result<(), String> {
     Ok(())
 }
 
+impl Theme {
+    /// Whether the backdrop should be flat-topped mesas.
+    pub fn style_is_mesa(&self) -> bool {
+        self.backdrop.style == "mesas"
+    }
+}
+
 fn check_window(name: &str, label: &str, window: [f32; 2]) -> Result<(), String> {
     if window[1] < window[0] {
         Err(format!("{name} {label} range is inverted"))
@@ -441,14 +448,7 @@ mod tests {
         let mut text = include_str!("../../../godot/themes/alpine.json").to_owned();
         text = text.replacen("\"ridges\"", "\"mesas\"", 1);
         let theme = Theme::parse(&text).unwrap();
-        assert_eq!(theme.style_is_mesa(), true);
+        assert!(theme.style_is_mesa());
         assert_eq!(theme.backdrop.style, "mesas");
-    }
-}
-
-impl Theme {
-    /// Whether the backdrop should be flat-topped mesas.
-    pub fn style_is_mesa(&self) -> bool {
-        self.backdrop.style == "mesas"
     }
 }

@@ -206,11 +206,9 @@ pub fn elevation_bounds_m(spans: &[Span]) -> (f64, f64) {
                 for i in 1..=steps {
                     let s = length * (i as f64) / (steps as f64);
                     let t = s / length;
-                    let g = grade + (to - grade) * smoothstep(t);
                     let y = elev + smooth_gain(length, grade, to, t);
                     lo = lo.min(y);
                     hi = hi.max(y);
-                    let _ = g;
                 }
                 elev += smooth_gain(length, grade, to, 1.0);
                 grade = to;
@@ -339,9 +337,7 @@ pub fn build(
         slotted(&roles, flat1, flat2, target_ascent_m, params, style, rng)?
     } else {
         free(
-            flat1,
-            middle,
-            flat2,
+            (flat1, middle, flat2),
             target_ascent_m,
             params,
             style,
@@ -368,18 +364,17 @@ fn hill_count(middle: f64, target: f64, params: &TerrainParams, style: Style) ->
 }
 
 fn free(
-    flat1: f64,
-    middle: f64,
-    flat2: f64,
+    ends: (f64, f64, f64),
     target: f64,
     params: &TerrainParams,
     style: Style,
     n: usize,
     rng: &mut crate::rng::Stream,
 ) -> Result<Vec<Span>, String> {
+    let (flat1, middle, flat2) = ends;
     let mut weights = vec![1.0; n];
     for w in &mut weights {
-        *w *= rng.range(0.84, 1.16);
+        *w *= rng.range(0.55, 1.7);
     }
     let wsum: f64 = weights.iter().sum();
     let mut lengths: Vec<f64> = weights.iter().map(|w| w / wsum * middle).collect();
@@ -387,12 +382,16 @@ fn free(
     if let Some(last) = lengths.last_mut() {
         *last = middle - acc;
     }
-    let share = if n == 0 { 0.0 } else { target / n as f64 };
     let mut spans = vec![Span::Hold {
         length: flat1,
         grade: 0.0,
     }];
     for len in lengths {
+        let share = if middle > 0.0 {
+            target * len / middle
+        } else {
+            0.0
+        };
         spans.extend(one_hill(len, share, params, style, rng)?);
     }
     spans.push(Span::Hold {
@@ -428,13 +427,7 @@ fn slotted(
     fit_rise(&mut climb, climb_target, params.max_up_grade_pct)?;
     let climb_rise = net_elevation_m(&climb);
 
-    let mut descent = varied_flex(
-        descent_len,
-        style,
-        params.max_down_grade_pct,
-        -1.0,
-        params,
-    )?;
+    let mut descent = varied_flex(descent_len, style, params.max_down_grade_pct, -1.0, params)?;
     fit_rise(&mut descent, -climb_rise, params.max_down_grade_pct)?;
     // If the descent could not give back all of the climb, shrink the climb.
     let desc_rise = net_elevation_m(&descent);
@@ -487,13 +480,7 @@ fn one_hill(
     fit_rise(&mut climb, climb_target, params.max_up_grade_pct)?;
     let climb_rise = net_elevation_m(&climb);
 
-    let mut descent = varied_flex(
-        descent_len,
-        style,
-        params.max_down_grade_pct,
-        -1.0,
-        params,
-    )?;
+    let mut descent = varied_flex(descent_len, style, params.max_down_grade_pct, -1.0, params)?;
     fit_rise(&mut descent, -climb_rise, params.max_down_grade_pct)?;
     let desc_rise = net_elevation_m(&descent);
     if climb_rise + desc_rise > 1.0e-4 && climb_rise > 1.0e-6 {
@@ -505,7 +492,12 @@ fn one_hill(
     Ok(spans)
 }
 
-fn crest_wave(style: Style, length: f64, params: &TerrainParams, rng: &mut crate::rng::Stream) -> (f64, u32) {
+fn crest_wave(
+    style: Style,
+    length: f64,
+    params: &TerrainParams,
+    rng: &mut crate::rng::Stream,
+) -> (f64, u32) {
     if length < 180.0 || matches!(style, Style::Flat) {
         return (0.0, 1);
     }
@@ -524,10 +516,7 @@ fn crest_spans(length: f64, amp: f64, cycles: u32, rate: f64) -> Result<Vec<Span
         return Ok(Vec::new());
     }
     if amp < 0.05 {
-        return Ok(vec![Span::Hold {
-            length,
-            grade: 0.0,
-        }]);
+        return Ok(vec![Span::Hold { length, grade: 0.0 }]);
     }
     // Max slope of A sin(2π n s / L) is A * 2π n / L.
     let max_cycles = ((rate * length) / (amp * std::f64::consts::TAU))
@@ -536,10 +525,7 @@ fn crest_spans(length: f64, amp: f64, cycles: u32, rate: f64) -> Result<Vec<Span
     let cycles = cycles.clamp(1, max_cycles.max(1));
     let slope = amp * std::f64::consts::TAU * f64::from(cycles) / length;
     if slope > rate * 1.02 {
-        return Ok(vec![Span::Hold {
-            length,
-            grade: 0.0,
-        }]);
+        return Ok(vec![Span::Hold { length, grade: 0.0 }]);
     }
     Ok(vec![Span::Wave {
         length,
@@ -613,10 +599,7 @@ fn patterns(style: Style, max_grade: f64, sign: f64) -> Vec<(Vec<f64>, Vec<f64>)
             vec![1.2, 0.6, 0.7, 1.0],
         ),
     };
-    let mid = (
-        vec![0.0, g(0.62), g(0.92), 0.0],
-        vec![1.3, 0.8],
-    );
+    let mid = (vec![0.0, g(0.62), g(0.92), 0.0], vec![1.3, 0.8]);
     let plain = (vec![0.0, g(0.75), 0.0], vec![1.0]);
     vec![full, mid, plain]
 }
@@ -640,10 +623,7 @@ fn varied(length: f64, levels: &[f64], weights: &[f64], rate: f64) -> Result<Vec
     if wsum <= 0.0 {
         return Err("grade weights sum to zero".to_string());
     }
-    let mut holds: Vec<f64> = weights
-        .iter()
-        .map(|w| w / wsum * hold_budget)
-        .collect();
+    let mut holds: Vec<f64> = weights.iter().map(|w| w / wsum * hold_budget).collect();
     let hsum: f64 = holds.iter().sum();
     if let Some(last) = holds.last_mut() {
         *last += hold_budget - hsum;
@@ -661,10 +641,7 @@ fn varied(length: f64, levels: &[f64], weights: &[f64], rate: f64) -> Result<Vec
                 });
             }
         } else if *tlen > 0.05 {
-            spans.push(Span::Smooth {
-                length: *tlen,
-                to,
-            });
+            spans.push(Span::Smooth { length: *tlen, to });
         }
         let interior = i + 1 < levels.len() - 1;
         if interior {
@@ -709,7 +686,9 @@ fn check_profile(spans: &[Span], params: &TerrainParams, target: f64) -> Result<
     let up = ascent_m(spans);
     let tol = crate::spec::ascent_tolerance_m(target);
     if target > 1.0 && (up - target).abs() > tol {
-        return Err(format!("ascent {up:.1} m is outside {target:.1} ± {tol:.1} m"));
+        return Err(format!(
+            "ascent {up:.1} m is outside {target:.1} ± {tol:.1} m"
+        ));
     }
     let up_lim = params.max_up_grade_pct + 1.0e-6;
     let down_lim = params.max_down_grade_pct + 1.0e-6;
@@ -723,7 +702,8 @@ fn check_profile(spans: &[Span], params: &TerrainParams, target: f64) -> Result<
             return Err("a grade span exceeds the terrain limit".to_string());
         }
     }
-    if spans.first().is_none_or(|s| !is_zero_hold(s)) || spans.last().is_none_or(|s| !is_zero_hold(s))
+    if spans.first().is_none_or(|s| !is_zero_hold(s))
+        || spans.last().is_none_or(|s| !is_zero_hold(s))
     {
         return Err("profile does not start and end on a 0% flat".to_string());
     }

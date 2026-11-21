@@ -85,6 +85,11 @@ def main(argv):
             for name in names:
                 if name.startswith(".") or name.endswith(".import") or name.endswith(".uid"):
                     continue
+                # Godot imports fonts as font resources. The raw .ttf is not the
+                # file stored at that path, unlike the glTF and images the game
+                # opens with FileAccess.
+                if name.lower().endswith((".ttf", ".otf")):
+                    continue
                 full = os.path.join(dirpath, name)
                 rel = os.path.relpath(full, root).replace(os.sep, "/")
                 checked += 1

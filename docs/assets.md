@@ -20,6 +20,7 @@ credits and the Steam page.
 | Rock Ground 02 | Rob Tuytel, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/rock_ground_02 | Scree |
 | Snow 02 | Rob Tuytel, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/snow_02 | Snow |
 | Kloppenheim 06 (Pure Sky) | Greg Zaal, sky edits by Jarod Guest, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/kloppenheim_06_puresky | Sky |
+| Barlow Semi Condensed 1.408 (Medium, SemiBold, Bold) | Jeremy Tribby and The Barlow Project Authors | SIL OFL 1.1 | https://github.com/jpt/barlow | All interface text and numbers |
 
 Optional ambientCG wording, if a credit is given anyway: "Created using
 Grass001 from ambientCG.com, licensed under the Creative Commons CC0 1.0
@@ -27,13 +28,18 @@ Universal License."
 
 ## Licence obligations
 
-Every file under `godot/assets/` is CC0 1.0 Universal
+Every file under `godot/assets/`, except the interface font, is CC0 1.0 Universal
 (https://creativecommons.org/publicdomain/zero/1.0/). They may be copied,
 modified, and shipped inside a commercial Steam build. Attribution is not
 required. There is no share-alike duty and no non-commercial limit. Each
 pack directory still carries a `LICENSE.txt` and a `SOURCE.md`; shipping
-those next to the files is good practice, not a CC0 requirement. No other
-licence is in the library.
+those next to the files is good practice, not a CC0 requirement.
+
+The one exception is the interface font in
+`godot/assets/fonts/barlow-semi-condensed/`, which is SIL Open Font License
+1.1. It may ship inside a commercial build; `OFL.txt` must ship with it, and
+the font files may not be sold on their own. No other licence is in the
+library.
 
 ## What is in the library
 

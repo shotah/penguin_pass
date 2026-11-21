@@ -9,6 +9,7 @@
 #
 # Needs rsvg-convert (ships with SteamOS). REGEN=1 also needs python3.
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$here"

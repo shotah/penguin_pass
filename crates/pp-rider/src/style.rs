@@ -37,10 +37,10 @@ pub struct RiderStyle {
 impl Default for RiderStyle {
     fn default() -> Self {
         Self {
-            jersey_primary: [0.10, 0.105, 0.13],
+            jersey_primary: [0.13, 0.14, 0.18],
             jersey_secondary: [0.96, 0.96, 0.94],
             jersey_accent: [1.0, 0.50, 0.08],
-            bibs: [0.045, 0.045, 0.055],
+            bibs: [0.07, 0.072, 0.085],
             helmet: [1.0, 0.50, 0.08],
             shoes: [1.0, 0.50, 0.08],
             socks: [0.96, 0.96, 0.94],

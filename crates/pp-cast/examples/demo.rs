@@ -3,7 +3,10 @@
 //! Bind address defaults to `0.0.0.0:7878`. Pass another socket address as the
 //! first argument (`127.0.0.1:0` picks a free local port).
 
-use pp_cast::{CastConfig, CastServer, CourseProfile, DEFAULT_PORT, ProfilePoint};
+use pp_cast::{
+    CastConfig, CastServer, CourseProfile, DEFAULT_PORT, LinkPhase, ProfilePoint, RideSource,
+    RideStatus,
+};
 use pp_core::Telemetry;
 use std::io::{self, Write};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -11,11 +14,20 @@ use std::time::{Duration, Instant};
 
 const LENGTH_M: f64 = 5000.0;
 
+struct Options {
+    bind: SocketAddr,
+    sample: bool,
+}
+
 fn main() {
-    let bind = bind_address();
-    let course = demo_course();
+    let options = options();
+    let course = if options.sample {
+        sample_course()
+    } else {
+        demo_course()
+    };
     let server = match CastServer::start(CastConfig {
-        bind,
+        bind: options.bind,
         course: course.clone(),
     }) {
         Ok(server) => server,
@@ -30,10 +42,19 @@ fn main() {
         println!("  {url}");
     }
     println!("Open one of these in a browser on the same Wi-Fi.");
+    println!("Add ?preview=reconnecting to a URL to preview a dropped stream.");
     println!("Ctrl-C to stop.");
     let _ = io::stdout().flush();
 
+    if options.sample {
+        publish_sample(&server);
+        loop {
+            std::thread::sleep(Duration::from_secs(3600));
+        }
+    }
+
     let mut distance_m = 0.0_f64;
+    let mut average: Vec<(f64, f32)> = Vec::new();
     let started = Instant::now();
     let mut tick = Instant::now();
     let step = Duration::from_millis(50);
@@ -42,26 +63,69 @@ fn main() {
         let dt_s = now.saturating_duration_since(tick).as_secs_f64().min(0.25);
         tick = now;
         let elapsed_s = now.saturating_duration_since(started).as_secs_f64();
-        distance_m = publish_frame(&server, &course, elapsed_s, dt_s, distance_m);
+        distance_m = publish_frame(&server, &course, elapsed_s, dt_s, distance_m, &mut average);
         std::thread::sleep(step);
     }
 }
 
-fn bind_address() -> SocketAddr {
-    let mut args = std::env::args().skip(1);
-    let Some(raw) = args.next() else {
-        return SocketAddr::from((Ipv4Addr::UNSPECIFIED, DEFAULT_PORT));
-    };
-    if args.next().is_some() || raw == "-h" || raw == "--help" {
-        eprintln!("usage: demo [bind-address]");
-        eprintln!("example: demo 127.0.0.1:0");
-        std::process::exit(2);
+fn options() -> Options {
+    let mut bind = SocketAddr::from((Ipv4Addr::UNSPECIFIED, DEFAULT_PORT));
+    let mut sample = false;
+    let mut saw_bind = false;
+    for raw in std::env::args().skip(1) {
+        if raw == "--sample" {
+            sample = true;
+            continue;
+        }
+        if raw == "-h" || raw == "--help" || saw_bind {
+            eprintln!("usage: demo [--sample] [bind-address]");
+            eprintln!("example: demo --sample 127.0.0.1:7878");
+            std::process::exit(2);
+        }
+        bind = raw.parse().unwrap_or_else(|_| {
+            eprintln!("usage: demo [--sample] [bind-address]");
+            eprintln!("could not parse bind address: {raw}");
+            std::process::exit(2);
+        });
+        saw_bind = true;
     }
-    raw.parse().unwrap_or_else(|_| {
-        eprintln!("usage: demo [bind-address]");
-        eprintln!("could not parse bind address: {raw}");
-        std::process::exit(2);
-    })
+    Options { bind, sample }
+}
+
+fn publish_sample(server: &CastServer) {
+    server.publish(Telemetry {
+        power_w: 345.0,
+        cadence_rpm: Some(68.0),
+        heart_rate_bpm: Some(176),
+        speed_mps: 11.8_f32 / 3.6_f32,
+        distance_m: 2100.0,
+        lap_distance_m: 2100.0,
+        lap: 1,
+        grade_pct: 10.0,
+        elevation_m: 134.0,
+        elapsed_s: 452.0,
+    });
+    server.publish_status(RideStatus {
+        ftp_w: Some(250),
+        power_3s_w: Some(345.0),
+        ..RideStatus::default()
+    });
+}
+
+fn sample_course() -> CourseProfile {
+    // A climb through +10 % near 2.1 km, then a descent, with small ripples
+    // so the next-kilometre strip shows the gradient scale.
+    let mut samples = Vec::new();
+    let mut distance = 0.0;
+    while distance <= LENGTH_M {
+        let x = distance / LENGTH_M;
+        let climb = (std::f64::consts::PI * x).sin();
+        let base = 70.0 + 108.0 * climb;
+        let ripple = 5.5 * (distance / 90.0).sin();
+        samples.push((distance, (base + ripple) as f32));
+        distance += 40.0;
+    }
+    course_from("5.0 km loop", &samples)
 }
 
 fn demo_course() -> CourseProfile {
@@ -78,14 +142,18 @@ fn demo_course() -> CourseProfile {
         (4500.0, 115.0),
         (LENGTH_M, 100.0),
     ];
+    course_from("5 km Mountain Loop", &samples)
+}
+
+fn course_from(name: &str, samples: &[(f64, f32)]) -> CourseProfile {
     CourseProfile {
-        name: "5 km Mountain Loop".to_owned(),
+        name: name.to_owned(),
         length_m: LENGTH_M,
         points: samples
-            .into_iter()
+            .iter()
             .map(|(distance_m, elevation_m)| ProfilePoint {
-                distance_m,
-                elevation_m,
+                distance_m: *distance_m,
+                elevation_m: *elevation_m,
             })
             .collect(),
     }
@@ -97,6 +165,7 @@ fn publish_frame(
     elapsed_s: f64,
     dt_s: f64,
     distance_m: f64,
+    average: &mut Vec<(f64, f32)>,
 ) -> f64 {
     let t = elapsed_s as f32;
     let power_w = 200.0 + 22.0 * (t * 0.35).sin() + 8.0 * (t * 1.3).sin();
@@ -119,6 +188,17 @@ fn publish_frame(
         grade_pct,
         elevation_m: elevation_at(&course.points, lap_distance_m),
         elapsed_s,
+    });
+    average.push((elapsed_s, power_w));
+    average.retain(|(stamp, _)| elapsed_s - *stamp <= 3.0);
+    let sum: f32 = average.iter().map(|(_, power)| *power).sum();
+    let mean = sum / average.len() as f32;
+    server.publish_status(RideStatus {
+        ftp_w: Some(200),
+        source: RideSource::Simulated,
+        link: LinkPhase::Connected,
+        power_3s_w: Some(mean),
+        ..RideStatus::default()
     });
     distance_m + f64::from(speed) * dt_s
 }

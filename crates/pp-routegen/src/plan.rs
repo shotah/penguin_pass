@@ -75,14 +75,23 @@ pub fn build(
 }
 
 /// Reject a plan that is too tight, too sprawling, or too close to itself.
-pub fn check_shape(segs: &[Seg], h0: f64, distance_m: f64, radius_floor_m: f64) -> Result<(), String> {
+pub fn check_shape(
+    segs: &[Seg],
+    h0: f64,
+    distance_m: f64,
+    radius_floor_m: f64,
+) -> Result<(), String> {
     let (gap, herr) = closure_error(segs, h0);
     if gap > 1.0e-4 || herr > 1.0e-6 {
-        return Err(format!("plan does not close (gap {gap:.6} m, heading {herr:.3e} rad)"));
+        return Err(format!(
+            "plan does not close (gap {gap:.6} m, heading {herr:.3e} rad)"
+        ));
     }
     let radius = min_radius(segs);
     if radius + 1.0e-6 < radius_floor_m {
-        return Err(format!("radius {radius:.2} m is under the floor {radius_floor_m:.2} m"));
+        return Err(format!(
+            "radius {radius:.2} m is under the floor {radius_floor_m:.2} m"
+        ));
     }
     let (flat1, flat2) = flat_lengths(segs);
     if flat1 + flat2 < 150.0 {
@@ -102,12 +111,14 @@ pub fn check_shape(segs: &[Seg], h0: f64, distance_m: f64, radius_floor_m: f64) 
     let long = east.max(north);
     let short = east.min(north);
     if long > MAX_FOOTPRINT_FRACTION * distance_m {
-        return Err(format!("footprint {long:.0} m is too wide for {distance_m:.0} m"));
+        return Err(format!(
+            "footprint {long:.0} m is too wide for {distance_m:.0} m"
+        ));
     }
     if long < MIN_FOOTPRINT_FRACTION * distance_m {
         return Err(format!("footprint {long:.0} m is a tight spiral"));
     }
-    if short < 45.0 || long > short * 4.2 {
+    if short < 45.0 || long > short * 5.5 {
         return Err(format!("footprint {east:.0} by {north:.0} m is too skinny"));
     }
     Ok(())
@@ -144,11 +155,7 @@ fn winding(
     let angles = sample_angles(rng, n, min_a, max_a, TAU).ok_or("angles do not sum to a circle")?;
     let angles: Vec<f64> = angles.into_iter().map(|a| a * sign).collect();
     let radii = corner_radii(rng, &angles, h_target, params, style)?;
-    let arc_len: f64 = radii
-        .iter()
-        .zip(&angles)
-        .map(|(r, a)| r * a.abs())
-        .sum();
+    let arc_len: f64 = radii.iter().zip(&angles).map(|(r, a)| r * a.abs()).sum();
     let line_budget = h_target * 0.96 - arc_len;
     let flat = (h_target * 0.045).clamp(220.0, 1_400.0);
     let min_line = (h_target * 0.015).clamp(40.0, 220.0);
@@ -295,7 +302,10 @@ fn sample_lengths(
             (1.0 - contrast) + contrast * u * u * 3.2
         })
         .collect();
-    if let Some(big) = weights.iter_mut().max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)) {
+    if let Some(big) = weights
+        .iter_mut()
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+    {
         *big *= 1.35;
     }
     let wsum: f64 = weights.iter().sum();
@@ -330,13 +340,7 @@ fn emit_loop(lines: &[f64], angles: &[f64], radii: &[f64]) -> Vec<Seg> {
     segs
 }
 
-fn close_polygon(
-    segs: &mut Vec<Seg>,
-    h0: f64,
-    n_lines: usize,
-    min_len: f64,
-    max_len: f64,
-) -> bool {
+fn close_polygon(segs: &mut [Seg], h0: f64, n_lines: usize, min_len: f64, max_len: f64) -> bool {
     // Segment layout: [flat/2, arc0, line1, arc1, line2, ..., line_{n-1}, arc_{n-1}, flat/2]
     // Full straight k (k >= 1) is at index 2k.
     let mut pairs = Vec::new();
@@ -359,14 +363,7 @@ fn close_polygon(
     false
 }
 
-fn close_two(
-    segs: &mut [Seg],
-    h0: f64,
-    ia: usize,
-    ib: usize,
-    min_len: f64,
-    max_len: f64,
-) -> bool {
+fn close_two(segs: &mut [Seg], h0: f64, ia: usize, ib: usize, min_len: f64, max_len: f64) -> bool {
     let (Some(old_a), Some(old_b)) = (segs[ia].line_length(), segs[ib].line_length()) else {
         return false;
     };
@@ -420,35 +417,69 @@ struct Mtn {
 
 fn mountain(rng: &mut Stream, h_target: f64, params: &TerrainParams) -> Result<Plan, String> {
     let dir = if rng.coin() { 1.0 } else { -1.0 };
+    let flat = if h_target < 4_000.0 {
+        170.0
+    } else {
+        (h_target * 0.05).clamp(220.0, 900.0)
+    };
+    let bow = rng.range(0.32, 0.62);
+    let bow_len = if h_target < 4_000.0 {
+        rng.range(80.0, 140.0)
+    } else {
+        rng.range(140.0, 280.0)
+    };
+    let r_c = params.switchback_radius_m * rng.range(1.08, 1.30);
+    let mut r_bow = params.min_radius_m * rng.range(1.3, 2.1);
+    if 2.0 * r_bow * bow > h_target * 0.07 {
+        r_bow = params.min_radius_m * 1.12;
+    }
+    let min_leg = if h_target < 3_500.0 { 55.0 } else { 90.0 };
+    let ascent = params.ascent_per_km * h_target / 1000.0;
+    // Average grade lands near 66% of the cap once breathers and transitions
+    // are included, so the ladders have to be at least this long.
+    let climb_need = ascent * 100.0 / (0.66 * params.max_up_grade_pct);
+    let descent_need = ascent * 100.0 / (0.66 * params.max_down_grade_pct);
+    // A short valley gets a handful of hairpins. A long one may have more,
+    // but not so many that the map becomes a comb.
+    let hairpin_cap = (h_target / 4_500.0).clamp(8.0, 24.0);
     let mut hairpins = ((h_target / 10_000.0) * params.switchbacks_per_10km)
         .round()
-        .clamp(2.0, 16.0) as i32;
-    if hairpins % 2 == 1 {
+        .clamp(2.0, hairpin_cap) as i32;
+    if hairpins % 2 != 0 {
         hairpins += 1;
     }
-    let n_c = (hairpins + 1) as usize;
-    let n_d = descent_legs(n_c);
-    let h = h_target * 0.94;
-    let flat = (h * 0.04).clamp(220.0, 1_200.0);
-    let bow = rng.range(0.40, 0.78);
-    let bow_len = (h * rng.range(0.045, 0.08)).clamp(120.0, 700.0);
-    let r_c = params.switchback_radius_m * rng.range(1.12, 1.45);
-    let mut r_bow = params.min_radius_m * rng.range(2.4, 4.2);
-    let bow_arc = 2.0 * r_bow * bow;
-    if bow_arc > h * 0.18 {
-        r_bow = (h * 0.18) / (2.0 * bow).max(0.2);
-        r_bow = r_bow.max(params.min_radius_m * 1.08);
-    }
-    let r_d_guess = r_c * 1.75;
-    let climb_arcs = PI * r_c * n_c as f64;
-    let desc_arcs = PI * r_d_guess * n_d as f64;
-    let ridge_guess = (h * 0.11).clamp(140.0, h * 0.18);
-    let used = flat + bow_arc + bow_len + climb_arcs + desc_arcs + ridge_guess;
-    let remain = (h - used).max(h * 0.28);
-    let leg_c = vary_legs(rng, n_c, remain * 0.47 / n_c as f64);
-    let leg_d = vary_legs(rng, n_d, remain * 0.53 / n_d as f64);
-    if leg_c.iter().any(|l| *l < 90.0) || leg_d.iter().any(|l| *l < 90.0) {
-        return Err("switchback legs are shorter than 90 m".to_string());
+    let mut tweaks = 0;
+    let (n_c, n_d, leg_c, leg_d) = loop {
+        let n_c = hairpins as usize + 1;
+        let n_d = descent_legs(n_c);
+        let climb_arcs = PI * r_c * n_c as f64;
+        let desc_arcs = PI * r_c * 1.45 * n_d as f64;
+        let mut climb_legs = (climb_need - climb_arcs).max(min_leg * n_c as f64);
+        let mut desc_legs = (descent_need - desc_arcs).max(min_leg * n_d as f64);
+        let overhead = flat + bow_len + 2.0 * r_bow * bow + climb_arcs + desc_arcs;
+        let room = h_target * 0.86 - overhead;
+        let legs = climb_legs + desc_legs;
+        if room > 0.0 && legs > room {
+            let fit = room / legs;
+            climb_legs *= fit;
+            desc_legs *= fit;
+        }
+        tweaks += 1;
+        if tweaks < 10 && (climb_legs / n_c as f64) > 1_400.0 && (hairpins as f64) < hairpin_cap {
+            hairpins += 2;
+            continue;
+        }
+        if tweaks < 10 && (climb_legs / n_c as f64) < min_leg && hairpins > 2 {
+            hairpins -= 2;
+            continue;
+        }
+        let leg_c = vary_legs(rng, n_c, climb_legs / n_c as f64);
+        let leg_d = vary_legs(rng, n_d, desc_legs / n_d as f64);
+        break (n_c, n_d, leg_c, leg_d);
+    };
+    let _ = (n_c, n_d);
+    if leg_c.iter().any(|l| *l < min_leg * 0.9) || leg_d.iter().any(|l| *l < min_leg * 0.9) {
+        return Err(format!("switchback legs are shorter than {min_leg:.0} m"));
     }
     let spec = Mtn {
         dir,
@@ -474,7 +505,7 @@ fn mountain(rng: &mut Stream, h_target: f64, params: &TerrainParams) -> Result<P
 fn descent_legs(n_c: usize) -> usize {
     let n = ((n_c as f64) * 0.62).round() as usize;
     let n = n.max(3);
-    if n % 2 == 0 { n + 1 } else { n }.min(n_c)
+    if n.is_multiple_of(2) { n + 1 } else { n }.min(n_c)
 }
 
 fn vary_legs(rng: &mut Stream, n: usize, mean: f64) -> Vec<f64> {
@@ -542,23 +573,109 @@ fn z_after_x(spec: &Mtn, r_d: f64) -> Result<f64, String> {
 }
 
 fn assemble_closed(spec: &Mtn, r_d: f64) -> Result<Vec<Seg>, String> {
-    let (segs, ridge_at, candidates) = assemble(spec, r_d, spec.h_target * 0.12);
-    let min_ridge = 100.0;
-    let max_ridge = spec.h_target * 0.32;
-    let min_leg = 80.0;
-    let max_leg = spec.h_target * 0.28;
-    if let Some(closed) = solve_line_for_x(&segs, spec.h0, &[ridge_at], min_ridge, max_ridge) {
-        return Ok(closed);
+    let (segs, ridge_at, candidates) = assemble(spec, r_d, spec.h_target * 0.08);
+    let longest = spec
+        .leg_c
+        .iter()
+        .chain(spec.leg_d.iter())
+        .copied()
+        .fold(0.0, f64::max);
+    let min_leg = if spec.h_target < 3_500.0 { 50.0 } else { 70.0 };
+    // A short loop has to let one straight absorb a larger share of the
+    // easting error. A long loop keeps that share small so a leg cannot
+    // reach across into the other ladder.
+    let max_leg = if spec.h_target < 4_000.0 {
+        spec.h_target * 0.42
+    } else {
+        (longest * 1.45).clamp(180.0, spec.h_target * 0.16)
+    };
+    let min_ridge = 70.0;
+    let max_ridge = if spec.h_target < 4_000.0 {
+        spec.h_target * 0.48
+    } else {
+        spec.h_target * 0.30
+    };
+    let mut closed =
+        if let Some(solved) = solve_line_for_x(&segs, spec.h0, &[ridge_at], min_ridge, max_ridge) {
+            solved
+        } else {
+            let mut found = None;
+            for idx in &candidates {
+                if *idx == ridge_at {
+                    continue;
+                }
+                if let Some(solved) = solve_line_for_x(&segs, spec.h0, &[*idx], min_leg, max_leg) {
+                    found = Some(solved);
+                    break;
+                }
+            }
+            found.ok_or_else(|| "no straight could absorb the easting error".to_string())?
+        };
+    let strict = spec.h_target >= 4_000.0;
+    separate_stacks(&mut closed, spec.h0, ridge_at, &candidates, strict)?;
+    let (x, _z, h) = end_pose(&closed, spec.h0);
+    let herr = angle_diff(h, spec.h0).abs();
+    if x.abs() > 1.0e-2 || herr > 1.0e-5 {
+        return Err(format!(
+            "separation moved the easting by {x:.2} m (heading error {herr:.2e})"
+        ));
     }
-    for idx in candidates {
-        if idx == ridge_at {
+    Ok(closed)
+}
+
+/// Slide length from legs into the ridge so the climb stack and the descent
+/// stack sit side by side instead of on top of each other.
+fn separate_stacks(
+    segs: &mut [Seg],
+    h0: f64,
+    ridge_at: usize,
+    candidates: &[usize],
+    strict: bool,
+) -> Result<(), String> {
+    let Some(ridge_len) = segs[ridge_at].line_length() else {
+        return Err("ridge is missing".to_string());
+    };
+    let ridge_cos = heading_at(segs, ridge_at, h0).cos();
+    if ridge_cos.abs() < 0.45 {
+        return Err("ridge does not run east-west".to_string());
+    }
+    let longest = candidates
+        .iter()
+        .filter(|idx| **idx != ridge_at)
+        .filter_map(|idx| segs[*idx].line_length())
+        .fold(0.0, f64::max);
+    let target = longest * 1.12 + 80.0;
+    if ridge_len + 1.0 >= target {
+        return Ok(());
+    }
+    let mut need = target - ridge_len;
+    for &idx in candidates {
+        if idx == ridge_at || need <= 1.0 {
             continue;
         }
-        if let Some(closed) = solve_line_for_x(&segs, spec.h0, &[idx], min_leg, max_leg) {
-            return Ok(closed);
+        let Some(len) = segs[idx].line_length() else {
+            continue;
+        };
+        let same_way = heading_at(segs, idx, h0).cos() * ridge_cos > 0.45;
+        if !same_way {
+            continue;
         }
+        let spare = len - 55.0;
+        if spare <= 1.0 {
+            continue;
+        }
+        let take = spare.min(need);
+        segs[idx].set_line_length(len - take);
+        need -= take;
     }
-    Err("no straight could absorb the easting error".to_string())
+    let grown = target - ridge_len - need;
+    segs[ridge_at].set_line_length(ridge_len + grown);
+    if strict && need > 40.0 {
+        return Err(format!(
+            "switchbacks still overlap; short of the ridge by {need:.0} m"
+        ));
+    }
+    Ok(())
 }
 
 fn assemble(spec: &Mtn, r_d: f64, ridge: f64) -> (Vec<Seg>, usize, Vec<usize>) {
@@ -567,7 +684,14 @@ fn assemble(spec: &Mtn, r_d: f64, ridge: f64) -> (Vec<Seg>, usize, Vec<usize>) {
     let d = spec.dir;
     segs.push(Seg::line(spec.flat1, Role::Flat));
     segs.push(Seg::arc(spec.r_c, -PI * d, Role::Climb));
-    push_ladder(&mut segs, &mut candidates, &spec.leg_c, spec.r_c, PI * d, Role::Climb);
+    push_ladder(
+        &mut segs,
+        &mut candidates,
+        &spec.leg_c,
+        spec.r_c,
+        PI * d,
+        Role::Climb,
+    );
     segs.push(Seg::arc(spec.r_bow, spec.bow * d, Role::Crest));
     segs.push(Seg::line(spec.bow_len, Role::Crest));
     segs.push(Seg::arc(spec.r_bow, -spec.bow * d, Role::Crest));
@@ -575,7 +699,14 @@ fn assemble(spec: &Mtn, r_d: f64, ridge: f64) -> (Vec<Seg>, usize, Vec<usize>) {
     segs.push(Seg::line(ridge, Role::Crest));
     candidates.push(ridge_at);
     segs.push(Seg::arc(r_d, -PI * d, Role::Descent));
-    push_ladder(&mut segs, &mut candidates, &spec.leg_d, r_d, PI * d, Role::Descent);
+    push_ladder(
+        &mut segs,
+        &mut candidates,
+        &spec.leg_d,
+        r_d,
+        PI * d,
+        Role::Descent,
+    );
     segs.push(Seg::line(spec.flat2, Role::Flat));
     (segs, ridge_at, candidates)
 }

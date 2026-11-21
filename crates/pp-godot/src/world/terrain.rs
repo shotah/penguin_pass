@@ -7,7 +7,8 @@ use godot::classes::base_material_3d::Flags;
 use godot::classes::fast_noise_lite::{FractalType, NoiseType};
 use godot::classes::mesh::PrimitiveType;
 use godot::classes::{
-    ArrayMesh, FastNoiseLite, MeshInstance3D, Shader, ShaderMaterial, StandardMaterial3D, SurfaceTool,
+    ArrayMesh, FastNoiseLite, MeshInstance3D, Shader, ShaderMaterial, StandardMaterial3D,
+    SurfaceTool,
 };
 use godot::obj::Gd;
 use godot::prelude::*;

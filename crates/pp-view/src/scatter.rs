@@ -157,7 +157,10 @@ mod tests {
         let once = plan_chunk(theme.seed, layer, 1, -2, open_ground);
         let twice = plan_chunk(theme.seed, layer, 1, -2, open_ground);
         assert_eq!(once.len(), twice.len());
-        assert!(once.iter().all(|prop| prop.x.is_finite() && prop.scale > 0.0));
+        assert!(
+            once.iter()
+                .all(|prop| prop.x.is_finite() && prop.scale > 0.0)
+        );
         let blocked = plan_chunk(theme.seed, layer, 1, -2, |_, _| Ground {
             road_m: 1.0,
             height: 40.0,

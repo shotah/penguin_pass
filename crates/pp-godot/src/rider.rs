@@ -1,29 +1,70 @@
-//! Procedural road bike and rider.
+//! Road bike and rider.
 //!
-//! Kept apart from the rest of the scene so a licensed model can replace
-//! [`Rider::assemble`] later. Wheels spin with distance. Cranks and legs
-//! follow cadence and hold still when cadence is missing or zero.
+//! The meshes and the pose come from `pp-rider`, which knows nothing about
+//! Godot. This file turns its surfaces into one `ArrayMesh` per part once,
+//! in `ready`, and sets one transform per part in [`Rider::place`]. Wheels
+//! spin with distance. Cranks and legs follow cadence and hold still when
+//! cadence is missing or zero.
 
-use godot::classes::{INode3D, Node3D};
+use godot::classes::geometry_instance_3d::ShadowCastingSetting;
+use godot::classes::mesh::{ArrayType, PrimitiveType};
+use godot::classes::{ArrayMesh, INode3D, MeshInstance3D, Node3D, StandardMaterial3D};
 use godot::obj::{Base, Gd, WithBaseField};
 use godot::prelude::*;
+use pp_rider::{Part, PartId, PoseInput, RideAnimator, RideSample, RiderModel, RiderStyle};
 
-use crate::mesh_util::{add_box, add_cylinder, add_sphere, add_tube, standard_material};
+use crate::mesh_util::{add_cylinder, add_sphere, add_tube, standard_material};
 
-const WHEEL_RADIUS: f32 = 0.34;
-const CRANK_LENGTH: f32 = 0.17;
+/// Where the model's road contact sits in the node, in meters.
+///
+/// `Game` places this node 0.06 m above the course line and the road ribbon
+/// is drawn 0.08 m above it, so the tyres stand 0.02 m above the node origin.
+const MODEL_ORIGIN: Vector3 = Vector3::new(0.0, 0.02, 0.0);
 
-/// Cyclist stand-in. Origin sits on the road. The mesh faces local -Z.
+/// A camera closer to the rider's eyes than this does not draw the head or
+/// the torso, in meters. At rest on the bike the handlebar camera is 0.3 to
+/// 0.5 m from them, depending on the posture; the chase camera is 3.5 m
+/// away or more.
+const CLOSE_CAMERA_M: f32 = 0.75;
+
+/// The parts a camera at the rider's head would look out through.
+const HIDDEN_FROM_CLOSE_CAMERA: [PartId; 2] = [PartId::Head, PartId::Torso];
+
+// `mesh_util` still has three helpers that only the placeholder rider
+// called. That file belongs to the scenery. Naming them here keeps the
+// crate free of dead-code errors until they are deleted there; then delete
+// this block and the three imports.
+const _: () = {
+    let _ = add_cylinder;
+    let _ = add_sphere;
+    let _ = add_tube;
+};
+
+/// What the game told the rider about the ride, for the next [`Rider::place`].
+#[derive(Clone, Copy)]
+struct RideState {
+    /// Power over FTP. `None` when the FTP is not a usable number.
+    power_ratio: Option<f32>,
+    grade_pct: f32,
+    speed_mps: f32,
+}
+
+/// The cyclist and the bike. Origin sits on the road. The mesh faces local -Z.
 #[derive(GodotClass)]
 #[class(base = Node3D)]
 pub struct Rider {
     base: Base<Node3D>,
-    wheels: Vec<Gd<Node3D>>,
-    crank: Option<Gd<Node3D>>,
-    thighs: Vec<Gd<Node3D>>,
-    shins: Vec<Gd<Node3D>>,
-    wheel_angle: f32,
-    crank_angle: f32,
+    model: Option<RiderModel>,
+    /// One node per [`PartId`], in `PartId::ALL` order.
+    parts: Vec<Gd<MeshInstance3D>>,
+    animator: RideAnimator,
+    ride: Option<RideState>,
+    cadence_override: Option<f32>,
+    input: PoseInput,
+    /// Eye position and facing in this node's space.
+    eye: Vector3,
+    eye_forward: Vector3,
+    hidden_from_camera: bool,
     built: bool,
 }
 
@@ -32,12 +73,15 @@ impl INode3D for Rider {
     fn init(base: Base<Node3D>) -> Self {
         Self {
             base,
-            wheels: Vec::new(),
-            crank: None,
-            thighs: Vec::new(),
-            shins: Vec::new(),
-            wheel_angle: 0.0,
-            crank_angle: 0.0,
+            model: None,
+            parts: Vec::new(),
+            animator: RideAnimator::new(),
+            ride: None,
+            cadence_override: None,
+            input: PoseInput::default(),
+            eye: Vector3::new(0.0, 1.5, -0.4),
+            eye_forward: Vector3::FORWARD,
+            hidden_from_camera: false,
             built: false,
         }
     }
@@ -48,6 +92,11 @@ impl INode3D for Rider {
         }
         self.built = true;
         self.assemble();
+    }
+
+    /// Runs after `Game::process` has moved the camera for this frame.
+    fn process(&mut self, _delta: f64) {
+        self.hide_from_a_close_camera();
     }
 }
 
@@ -62,20 +111,87 @@ impl Rider {
     /// Wheel rotation, radians, from distance traveled.
     #[func]
     pub fn wheel_angle(&self) -> f64 {
-        f64::from(self.wheel_angle)
+        self.animator.wheel_angle_rad()
     }
 
     /// Crank rotation, radians. Stationary when cadence is 0 or missing.
     #[func]
     pub fn crank_angle(&self) -> f64 {
-        f64::from(self.crank_angle)
+        self.animator.crank_angle_rad()
+    }
+
+    /// Tell the rider about the ride, for the next [`Rider::place`].
+    ///
+    /// `power_w` over `ftp_w` sets how hard the upper body works. `grade_pct`
+    /// (percent, positive uphill) and `speed_mps` decide when the rider
+    /// stands on the pedals and when they tuck. Call it every frame, just
+    /// before `place`. When it is not called, `place` reads the grade from
+    /// the tangent, estimates the speed from the distance, and guesses the
+    /// effort from the cadence and the grade.
+    #[func]
+    pub fn set_ride_state(&mut self, power_w: f32, ftp_w: f32, grade_pct: f32, speed_mps: f32) {
+        let power_ratio = (ftp_w.is_finite() && ftp_w >= 1.0 && power_w.is_finite())
+            .then(|| power_w.max(0.0) / ftp_w);
+        self.ride = Some(RideState {
+            power_ratio,
+            grade_pct,
+            speed_mps,
+        });
+    }
+
+    /// World position of the rider's eyes, for a first-person camera.
+    #[func]
+    pub fn eye_position(&self) -> Vector3 {
+        self.base().get_global_transform() * self.eye
+    }
+
+    /// Unit vector the rider's head faces, in world space.
+    #[func]
+    pub fn eye_forward(&self) -> Vector3 {
+        unit_or(
+            self.base().get_global_transform().basis * self.eye_forward,
+            Vector3::FORWARD,
+        )
+    }
+
+    /// Out-of-saddle blend this frame. 0 is seated, 1 is standing.
+    #[func]
+    pub fn stand_blend(&self) -> f64 {
+        f64::from(self.input.stand)
+    }
+
+    /// Tuck blend this frame. 0 is on the hoods, 1 is in the drops.
+    #[func]
+    pub fn tuck_blend(&self) -> f64 {
+        f64::from(self.input.tuck)
+    }
+
+    /// Steering angle this frame, in radians. Positive is to the rider's right.
+    #[func]
+    pub fn steer_angle(&self) -> f64 {
+        f64::from(self.input.steer_rad)
+    }
+
+    /// How hard the rider is shown working this frame, 0 to 1.
+    #[func]
+    pub fn effort(&self) -> f64 {
+        f64::from(self.input.effort)
+    }
+
+    /// Use `rpm` in place of the cadence `place` is given, so a picture can
+    /// show a slow grind while the simulated rider spins. Negative clears it.
+    #[func]
+    pub fn debug_override_cadence(&mut self, rpm: f64) {
+        self.cadence_override = (rpm >= 0.0).then_some(rpm as f32);
     }
 }
 
 impl Rider {
-    /// Place the bike, spin the wheels, and pose the legs.
+    /// Place the bike, spin the wheels, and pose the rider.
     ///
-    /// `lean` rolls the frame into the turn. Positive rolls to the rider's right.
+    /// `lean` rolls the frame into the turn. Positive rolls to the rider's
+    /// right, and the bars turn a little the same way. A `dt` of zero is a
+    /// cut: nothing turns and the posture jumps to where the ride puts it.
     pub fn place(
         &mut self,
         position: Vector3,
@@ -96,258 +212,136 @@ impl Rider {
             .up(up)
             .done();
         self.base_mut().rotate_object_local(Vector3::FORWARD, lean);
-        self.wheel_angle = (distance_m / f64::from(WHEEL_RADIUS)) as f32;
-        if dt > 0.0
-            && let Some(rpm) = cadence_rpm.filter(|rpm| *rpm > 0.5)
-        {
-            self.crank_angle += rpm * dt as f32 * std::f32::consts::TAU / 60.0;
-        }
-        let spin = self.wheel_angle;
-        for wheel in &mut self.wheels {
-            wheel.set_rotation(Vector3::new(spin, 0.0, 0.0));
-        }
-        if let Some(crank) = self.crank.as_mut() {
-            crank.set_rotation(Vector3::new(self.crank_angle, 0.0, 0.0));
-        }
-        self.pose_legs();
+
+        let ride = self.ride.take();
+        let sample = RideSample {
+            distance_m,
+            cadence_rpm: self.cadence_override.or(cadence_rpm),
+            lean_rad: lean,
+            grade_pct: ride.map_or_else(|| grade_pct(forward), |ride| ride.grade_pct),
+            speed_mps: ride.map(|ride| ride.speed_mps),
+            power_ratio: ride.and_then(|ride| ride.power_ratio),
+        };
+        self.input = self.animator.step(&sample, dt);
+        self.pose_parts();
     }
 
-    fn pose_legs(&mut self) {
-        let bb = Vector3::new(0.0, 0.29, -0.02);
-        let angle = self.crank_angle;
-        for (index, side) in [-1.0_f32, 1.0].into_iter().enumerate() {
-            let phase = if side < 0.0 {
-                angle
-            } else {
-                angle + std::f32::consts::PI
-            };
-            let pedal = bb
-                + Vector3::new(
-                    side * 0.09,
-                    phase.sin() * CRANK_LENGTH,
-                    -phase.cos() * CRANK_LENGTH,
-                );
-            let hip = Vector3::new(side * 0.09, 0.96, 0.08);
-            let knee = (hip + pedal) * 0.5 + Vector3::new(side * 0.05, 0.06, 0.04);
-            if let Some(thigh) = self.thighs.get_mut(index) {
-                span(thigh, hip, knee);
-            }
-            if let Some(shin) = self.shins.get_mut(index) {
-                span(shin, knee, pedal);
-            }
-        }
-    }
-
-    fn assemble(&mut self) {
-        let frame = standard_material(Color::from_rgb(0.10, 0.16, 0.28), 0.28, 0.65);
-        let tire = standard_material(Color::from_rgb(0.08, 0.08, 0.09), 0.9, 0.0);
-        let rim = standard_material(Color::from_rgb(0.75, 0.76, 0.78), 0.25, 0.8);
-        let jersey = standard_material(Color::from_rgb(0.93, 0.24, 0.16), 0.65, 0.0);
-        let dark = standard_material(Color::from_rgb(0.07, 0.07, 0.08), 0.7, 0.0);
-        let helmet = standard_material(Color::from_rgb(0.95, 0.95, 0.97), 0.3, 0.05);
-        let skin = standard_material(Color::from_rgb(0.78, 0.62, 0.48), 0.65, 0.0);
-        let saddle_mat = standard_material(Color::from_rgb(0.12, 0.10, 0.10), 0.55, 0.0);
-
-        let rear = Vector3::new(0.0, WHEEL_RADIUS, 0.40);
-        let front = Vector3::new(0.0, WHEEL_RADIUS, -0.70);
-        let bb = Vector3::new(0.0, 0.29, -0.02);
-        let seat = Vector3::new(0.0, 0.98, 0.12);
-        let head_tube = Vector3::new(0.0, 0.72, -0.38);
-        let bar = Vector3::new(0.0, 0.90, -0.46);
-
-        self.add_wheel("RearWheel", rear, &tire, &rim);
-        self.add_wheel("FrontWheel", front, &tire, &rim);
-
-        let mut root = self.to_gd().upcast::<Node3D>();
-        add_tube(&mut root, "Chainstay", rear, bb, 0.03, &frame);
-        add_tube(&mut root, "SeatStay", rear, seat, 0.022, &frame);
-        add_tube(&mut root, "SeatTube", bb, seat, 0.034, &frame);
-        add_tube(&mut root, "DownTube", bb, head_tube, 0.036, &frame);
-        add_tube(&mut root, "TopTube", seat, head_tube, 0.028, &frame);
-        add_tube(&mut root, "Fork", head_tube, front, 0.026, &frame);
-        add_tube(&mut root, "Stem", head_tube, bar, 0.026, &frame);
-        add_box(
-            &mut root,
-            "Hoods",
-            Vector3::new(0.42, 0.03, 0.04),
-            bar,
-            &dark,
-        );
-        add_box(
-            &mut root,
-            "DropsL",
-            Vector3::new(0.03, 0.10, 0.08),
-            bar + Vector3::new(-0.20, -0.06, 0.02),
-            &dark,
-        );
-        add_box(
-            &mut root,
-            "DropsR",
-            Vector3::new(0.03, 0.10, 0.08),
-            bar + Vector3::new(0.20, -0.06, 0.02),
-            &dark,
-        );
-        add_box(
-            &mut root,
-            "Saddle",
-            Vector3::new(0.12, 0.03, 0.28),
-            seat + Vector3::new(0.0, 0.04, -0.02),
-            &saddle_mat,
-        );
-
-        let mut crank = Node3D::new_alloc();
-        crank.set_name("Crank");
-        crank.set_position(bb);
-        add_box(
-            &mut crank,
-            "Arm",
-            Vector3::new(0.02, 0.03, CRANK_LENGTH * 2.0),
-            Vector3::ZERO,
-            &frame,
-        );
-        add_box(
-            &mut crank,
-            "PedalL",
-            Vector3::new(0.08, 0.02, 0.05),
-            Vector3::new(-0.08, 0.0, -CRANK_LENGTH),
-            &dark,
-        );
-        add_box(
-            &mut crank,
-            "PedalR",
-            Vector3::new(0.08, 0.02, 0.05),
-            Vector3::new(0.08, 0.0, CRANK_LENGTH),
-            &dark,
-        );
-        root.add_child(&crank);
-        self.crank = Some(crank);
-
-        let hip = Vector3::new(0.0, 0.98, 0.14);
-        let shoulder = Vector3::new(0.0, 1.24, 0.02);
-        let head = Vector3::new(0.0, 1.48, 0.06);
-        add_box(
-            &mut root,
-            "Shorts",
-            Vector3::new(0.28, 0.16, 0.20),
-            hip,
-            &dark,
-        );
-        add_tube(&mut root, "Torso", hip, shoulder, 0.18, &jersey);
-        add_sphere(&mut root, "Helmet", 0.12, head, &helmet);
-        add_sphere(
-            &mut root,
-            "Visor",
-            0.04,
-            head + Vector3::new(0.0, -0.02, -0.10),
-            &dark,
-        );
-        add_tube(
-            &mut root,
-            "ArmL",
-            shoulder + Vector3::new(-0.12, -0.02, 0.0),
-            bar + Vector3::new(-0.16, 0.0, 0.0),
-            0.05,
-            &skin,
-        );
-        add_tube(
-            &mut root,
-            "ArmR",
-            shoulder + Vector3::new(0.12, -0.02, 0.0),
-            bar + Vector3::new(0.16, 0.0, 0.0),
-            0.05,
-            &skin,
-        );
-        add_box(
-            &mut root,
-            "HandL",
-            Vector3::new(0.06, 0.04, 0.08),
-            bar + Vector3::new(-0.16, 0.0, 0.0),
-            &skin,
-        );
-        add_box(
-            &mut root,
-            "HandR",
-            Vector3::new(0.06, 0.04, 0.08),
-            bar + Vector3::new(0.16, 0.0, 0.0),
-            &skin,
-        );
-        self.thighs.push(bone(&mut root, "ThighL", &dark));
-        self.thighs.push(bone(&mut root, "ThighR", &dark));
-        self.shins.push(bone(&mut root, "ShinL", &skin));
-        self.shins.push(bone(&mut root, "ShinR", &skin));
-        self.pose_legs();
-    }
-
-    fn add_wheel(
-        &mut self,
-        name: &str,
-        at: Vector3,
-        tire: &Gd<godot::classes::StandardMaterial3D>,
-        rim: &Gd<godot::classes::StandardMaterial3D>,
-    ) {
-        let mut hub = Node3D::new_alloc();
-        hub.set_name(name);
-        hub.set_position(at);
-        let mut tire_mesh = add_cylinder(
-            &mut hub,
-            "Tire",
-            WHEEL_RADIUS,
-            0.028,
-            18,
-            Vector3::ZERO,
-            tire,
-        );
-        tire_mesh.set_rotation(Vector3::new(0.0, 0.0, std::f32::consts::FRAC_PI_2));
-        let mut rim_mesh = add_cylinder(&mut hub, "Rim", 0.22, 0.02, 12, Vector3::ZERO, rim);
-        rim_mesh.set_rotation(Vector3::new(0.0, 0.0, std::f32::consts::FRAC_PI_2));
-        for spoke in 0..6 {
-            let mut bar = add_box(
-                &mut hub,
-                &format!("Spoke{spoke}"),
-                Vector3::new(0.012, 0.012, WHEEL_RADIUS * 1.7),
-                Vector3::ZERO,
-                rim,
-            );
-            bar.set_rotation(Vector3::new(
-                spoke as f32 * std::f32::consts::TAU / 6.0,
-                0.0,
-                0.0,
+    /// Give every part its transform for the current pose input.
+    fn pose_parts(&mut self) {
+        let Some(model) = self.model.as_ref() else {
+            return;
+        };
+        let pose = model.pose(&self.input);
+        for (node, transform) in self.parts.iter_mut().zip(&pose.transforms) {
+            let [x, y, z, origin] = transform.to_cols().map(vector);
+            node.set_transform(Transform3D::new(
+                Basis::from_cols(x, y, z),
+                origin + MODEL_ORIGIN,
             ));
         }
-        self.base_mut().add_child(&hub);
-        self.wheels.push(hub);
+        self.eye = vector(pose.anchors.eye) + MODEL_ORIGIN;
+        self.eye_forward = vector(pose.anchors.eye_forward);
+    }
+
+    /// Draw only the shadow of the head and the torso while the camera is
+    /// at the rider's head.
+    ///
+    /// The handlebar camera sits in the rider's chest. Seated, it looks out
+    /// between the arms. A tucked rider lowers the collar and the helmet into
+    /// its view, and a camera at the eyes is inside the head.
+    fn hide_from_a_close_camera(&mut self) {
+        let camera = self
+            .base()
+            .get_viewport()
+            .and_then(|viewport| viewport.get_camera_3d());
+        let Some(camera) = camera else {
+            return;
+        };
+        let eye = self.base().get_global_transform() * self.eye;
+        let hidden = camera.get_global_position().distance_to(eye) < CLOSE_CAMERA_M;
+        if hidden == self.hidden_from_camera {
+            return;
+        }
+        self.hidden_from_camera = hidden;
+        let setting = if hidden {
+            ShadowCastingSetting::SHADOWS_ONLY
+        } else {
+            ShadowCastingSetting::ON
+        };
+        for part in HIDDEN_FROM_CLOSE_CAMERA {
+            if let Some(node) = self.parts.get_mut(part.index()) {
+                node.set_cast_shadows_setting(setting);
+            }
+        }
+    }
+
+    /// Build one mesh node per part. Surfaces that share a look share a material.
+    fn assemble(&mut self) {
+        let model = RiderModel::build(&RiderStyle::default());
+        let mut materials: Vec<(pp_rider::Material, Gd<StandardMaterial3D>)> = Vec::new();
+        for part in model.parts() {
+            let mut node = MeshInstance3D::new_alloc();
+            node.set_name(part.name());
+            node.set_mesh(&part_mesh(part, &mut materials));
+            node.set_cast_shadows_setting(ShadowCastingSetting::ON);
+            self.base_mut().add_child(&node);
+            self.parts.push(node);
+        }
+        self.model = Some(model);
+        self.pose_parts();
     }
 }
 
-fn bone(
-    parent: &mut Gd<Node3D>,
-    name: &str,
-    material: &Gd<godot::classes::StandardMaterial3D>,
-) -> Gd<Node3D> {
-    let mut node = Node3D::new_alloc();
-    node.set_name(name);
-    let mut shape = godot::classes::BoxMesh::new_gd();
-    shape.set_size(Vector3::new(0.07, 0.07, 1.0));
-    let mut mesh = godot::classes::MeshInstance3D::new_alloc();
-    mesh.set_name("Mesh");
-    mesh.set_mesh(&shape);
-    mesh.set_surface_override_material(0, material);
-    node.add_child(&mesh);
-    parent.add_child(&node);
-    node
+/// One `ArrayMesh` surface per `pp-rider` surface, wound the way Godot draws.
+fn part_mesh(
+    part: &Part,
+    materials: &mut Vec<(pp_rider::Material, Gd<StandardMaterial3D>)>,
+) -> Gd<ArrayMesh> {
+    let mut mesh = ArrayMesh::new_gd();
+    for (index, surface) in part.surfaces().iter().enumerate() {
+        let positions: PackedVector3Array = surface.positions.iter().copied().map(vector).collect();
+        let normals: PackedVector3Array = surface.normals.iter().copied().map(vector).collect();
+        let indices: PackedInt32Array = surface
+            .indices_clockwise()
+            .into_iter()
+            .map(|index| index as i32)
+            .collect();
+        let mut arrays = VarArray::new();
+        arrays.resize(ArrayType::MAX.ord() as usize, &Variant::nil());
+        arrays.set(ArrayType::VERTEX.ord() as usize, &positions.to_variant());
+        arrays.set(ArrayType::NORMAL.ord() as usize, &normals.to_variant());
+        arrays.set(ArrayType::INDEX.ord() as usize, &indices.to_variant());
+        mesh.add_surface_from_arrays(PrimitiveType::TRIANGLES, &arrays);
+
+        let wanted = surface.material;
+        let material = match materials.iter().find(|(known, _)| *known == wanted) {
+            Some((_, material)) => material.clone(),
+            None => {
+                // `base_color` is sRGB, which is what `Color::from_rgb` takes.
+                let [r, g, b] = wanted.base_color;
+                let material =
+                    standard_material(Color::from_rgb(r, g, b), wanted.roughness, wanted.metallic);
+                materials.push((wanted, material.clone()));
+                material
+            }
+        };
+        mesh.surface_set_material(index as i32, &material);
+    }
+    mesh
 }
 
-fn span(node: &mut Gd<Node3D>, from: Vector3, to: Vector3) {
-    let delta = to - from;
-    let length = delta.length().max(0.05);
-    let mid = (from + to) * 0.5;
-    let up = if delta.normalized().dot(Vector3::UP).abs() > 0.92 {
-        Vector3::RIGHT
+/// Road grade along `forward`, in percent. Positive is uphill.
+fn grade_pct(forward: Vector3) -> f32 {
+    let run = Vector2::new(forward.x, forward.z).length();
+    if run < 1.0e-4 {
+        0.0
     } else {
-        Vector3::UP
-    };
-    node.look_at_from_position_ex(mid, to).up(up).done();
-    node.set_scale(Vector3::new(1.0, 1.0, length));
+        forward.y / run * 100.0
+    }
+}
+
+fn vector(v: [f32; 3]) -> Vector3 {
+    Vector3::new(v[0], v[1], v[2])
 }
 
 fn unit_or(vector: Vector3, fallback: Vector3) -> Vector3 {

@@ -114,16 +114,24 @@ mod tests {
 
     #[test]
     fn a_snapshot_fills_every_slot() {
-        let mut telemetry = Telemetry::default();
-        telemetry.power_w = 210.0;
-        telemetry.cadence_rpm = Some(88.0);
-        telemetry.heart_rate_bpm = Some(142);
-        telemetry.grade_pct = 4.2;
-        telemetry.distance_m = 250.0;
-        telemetry.elapsed_s = 65.0;
-        telemetry.elevation_m = 12.2;
-        telemetry.lap = 1;
-        let text = hud_text(&telemetry, "Simulated rider", "", false, "http://127.0.0.1:9/");
+        let telemetry = Telemetry {
+            power_w: 210.0,
+            cadence_rpm: Some(88.0),
+            heart_rate_bpm: Some(142),
+            grade_pct: 4.2,
+            distance_m: 250.0,
+            elapsed_s: 65.0,
+            elevation_m: 12.2,
+            lap: 1,
+            ..Telemetry::default()
+        };
+        let text = hud_text(
+            &telemetry,
+            "Simulated rider",
+            "",
+            false,
+            "http://127.0.0.1:9/",
+        );
         assert_eq!(text.power, "210");
         assert_eq!(text.cadence, "88");
         assert_eq!(text.heart, "142");

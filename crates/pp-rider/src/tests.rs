@@ -1138,8 +1138,10 @@ fn default_kit_colours_land_on_the_expected_parts() {
         }
         assert!(used, "{color:?} is not used by any surface");
     }
-    // The penguin kit: black back, white front, orange trim.
-    assert!(style.jersey_primary.iter().all(|c| *c < 0.15));
+    // The penguin kit: black back, white front, orange trim. The black is
+    // a very dark blue-grey, so the game's light can still show its shape.
+    assert!(style.jersey_primary.iter().all(|c| *c < 0.2));
+    assert!(style.bibs.iter().all(|c| *c < 0.1));
     assert!(style.jersey_secondary.iter().all(|c| *c > 0.9));
     assert!(style.jersey_accent[0] > 0.9 && style.jersey_accent[2] < 0.2);
 }

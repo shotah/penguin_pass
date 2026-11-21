@@ -36,6 +36,8 @@ pub struct Launch {
     pub dashboard_port: Option<u16>,
     /// Bind the dashboard on loopback instead of every interface.
     pub dashboard_loopback: bool,
+    /// After the first frame, confirm Quit in the menu.
+    pub quit_from_menu: bool,
 }
 
 impl Launch {
@@ -66,6 +68,7 @@ impl Launch {
             settings_path: flags.settings_path.unwrap_or_else(default_settings_path),
             dashboard_port: flags.dashboard_port,
             dashboard_loopback: flags.dashboard_loopback,
+            quit_from_menu: flags.quit_from_menu,
         }
     }
 }

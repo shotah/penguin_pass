@@ -125,14 +125,6 @@ impl Catalog {
         self.sky_loaded.get()
     }
 
-    /// How many manifest entries parsed. Zero when the library is absent.
-    pub fn model_count(&self) -> i32 {
-        self.entries
-            .iter()
-            .filter(|entry| entry.path.ends_with(".gltf") || entry.path.ends_with(".glb"))
-            .count() as i32
-    }
-
     /// True when this kind (or these ids) names at least one manifest entry.
     pub fn has_models(&self, kind: &str, ids: &[String]) -> bool {
         !self.matching(kind, ids).is_empty()
@@ -357,9 +349,7 @@ fn load_gltf(path: &str) -> Option<Gd<Mesh>> {
     // afterwards, which frees the same RIDs again. The release export aborts
     // with "double free or corruption". Take the mesh ref, then free the graph
     // while the engine is still up.
-    let Some(scene) = document.generate_scene(&state) else {
-        return None;
-    };
+    let scene = document.generate_scene(&state)?;
     let mesh = find_mesh(&scene);
     scene.free();
     mesh

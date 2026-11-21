@@ -55,6 +55,8 @@ A trainer warning is appended in parentheses, for example `Tacx Neo 2T: connecte
 
 `apply_settings` calls `Ride::set_rider`. Mass, bike mass, and FTP take effect on the next tick. Speed, distance, lap, and elapsed time stay where they are. `rider()` and `settings().rider_profile()` match after `apply_settings`. `restart()` still returns the bike to the start line and keeps the current profile. CdA and Crr stay at the `RiderProfile` defaults. Difficulty still applies on the next tick and does not change on-screen speed.
 
+The settings mockup `settings-weight-note.png` says a weight change waits for restart. That note is outdated. Rider, bike, and FTP changes are live on the next tick.
+
 ## Settings file
 
 TOML. Unknown keys are ignored. Missing keys use defaults, so an older file still loads. A missing file is the defaults and is not created until a save. An unreadable or malformed file loads as defaults, returns a warning, and is not overwritten. Out-of-range numbers are clamped to the nearest bound. NaN is replaced with the field default. `+infinity` uses the upper bound and `-infinity` the lower bound. Those corrections are named in the warning and are written back only on the next save.
@@ -95,4 +97,28 @@ control_trainer = true
 
 ## Where Godot stores the file
 
-The session takes a path. It does not choose one. Godot should pass the absolute path of `user://penguin-pass.toml` (`ProjectSettings.globalize_path`). That directory is the project user data folder, which on a desktop Linux build is under the app's Godot user data (`user://`), typically `~/.local/share/godot/app_userdata/<project name>/penguin-pass.toml`. Load it when the game starts. Save it when the rider leaves the settings screen or after a trainer connects, not every frame.
+The session takes a path. It does not choose one. Godot should pass the absolute path of `user://penguin-pass.toml` (`ProjectSettings.globalize_path`). That directory is the project user data folder, which on a desktop Linux build is under the app's Godot user data (`user://`), typically `~/.local/share/godot/app_userdata/<project name>/penguin-pass.toml`. Load it when the game starts. Save it when the rider leaves the settings screen or after a trainer connects, not every frame. Call `note_settings_load` with the load result so a damaged file can toast, and `save_settings` so a successful save can toast.
+
+## For the interface
+
+The HUD refreshes numbers a few times a second. `tick` still runs every frame. These calls are what the screens read.
+
+**HUD numbers.** `readout`. Power and cadence are `None` (an em dash) when a real trainer is the source and the link is down or the sample is stale. The physics still uses 0 W, which is what `telemetry` shows. Coasting is `Some(0)`. Heart rate is `None` when no strap is reporting. The hero power is `power_3s_w`, the mean of known power over the last 3 seconds of session time. Unknown gaps are left out of that mean and still push older samples off the window, so a gap longer than 3 seconds clears it. `power_zone(power, ftp)` is the ladder: Z1 Recovery through Z7 Sprint. An exact percent boundary stays in the lower zone (55 % of FTP is Z1). At 0 W the HUD hides the ladder itself; the function still returns Z1.
+
+**Ride list.** `telemetry` for time, distance, elevation, and the current lap. `distance_left_m` for `LEFT` on a route. This session's course is a loop, so that distance is the rest of the current lap.
+
+**Next kilometre and skyline.** `fill_ahead(1000.0, step_m, &mut buffer)` for the road ahead. It wraps at the lap and reuses the buffer. `course().profile(step_m)` is the whole lap for the skyline. `course_facts` is the name, length, total ascent, and the steepest grades.
+
+**Connection chip.** `connection`, not the status line. `phase` is idle, searching, connecting, connected, reconnecting, or failed. `resistance` is `Controlled` or `ReadingOnly`. Reading only covers both the settings toggle and a trainer that refused control. `bluetooth_available` is false when the adapter cannot start. `failure_reason` is one sentence; `failure_detail` is the raw text for the log. `status().line` is unchanged.
+
+**TV chip.** `status().dashboard`, `dashboard_urls`, and `dashboard_error`. Each publish also sends `CastServer::publish_status` with FTP, the link phase, the resistance mode, and the 3-second power.
+
+**Pairing rows.** `pairing` returns the list, strongest first, ties by name then id. `signal_bars` maps RSSI to 0..=4 and `signal_word` is the label. Unknown RSSI is 0 bars. A trainer stays for `PAIRING_HOLD_S` (8 s) after it was last seen. `remembered` flags `last_trainer_id`. `search_again` drops the current scan and starts a new one. The scan only lists Fitness Machine devices, so the list does not say whether a unit can control resistance.
+
+**Summary.** `summary` at any time, then `end_ride` to freeze it. `end_ride` also sets a controlled trainer back to 0 % grade. Ticks after that do not move the bike until `restart`, which clears the totals. Elapsed time is the ride clock. Moving time is time spent above 0.5 m/s. Ascent is elevation gained, not the course total. Average power includes known zeros and leaves out time while the link was down. Maximum power is the highest full 1-second average, not one sample. Average cadence ignores zeros. Heart rate is reported only when a strap covered at least 5 seconds and 10 % of the elapsed time. `laps` has each lap's time, average power, and average speed.
+
+**Title card.** `course_facts` for the name, length, and ascent. `connection` for the trainer mark.
+
+**Toasts.** `drain_events`. The queue holds 32 and drops the oldest. It reports a trainer connecting, the link dropping, a reconnect, control refused, a lap finished, a dashboard bind failure, `save_settings`, and `note_settings_load` when the file was damaged.
+
+**Power hint.** `SIM_POWER_STEP_W` is 25 W. The simulated-rider mockup still draws ±10 W.

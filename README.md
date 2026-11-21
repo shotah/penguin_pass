@@ -61,6 +61,8 @@ Not built yet: choosing between courses in the game, per-course themes
 | `crates/pp-session` | Ride loop without Godot: settings file, trainer connect, TV dashboard |
 | `crates/pp-world` | Which world chunks to load around the rider, and per-chunk seeds |
 | `crates/pp-rider` | The bike and rider as generated meshes, with pedalling poses |
+| `crates/pp-routegen` | Routes generated from a seed, a distance, and a terrain preset |
+| `crates/pp-view` | Interface logic without Godot: formatting, menu state, HUD values, theme parsing |
 | `crates/pp-godot` | GDExtension library: world, HUD, rider, camera |
 | `godot/` | Godot project: `project.godot`, scenes, export presets |
 | `godot/assets/` | CC0 models, textures, and sky. Credits in `docs/assets.md` |
@@ -99,6 +101,7 @@ script. The `Makefile` calls the same script on hosts that have `make`.
 | `./x play` | Build if needed and start the game full screen. `--windowed`, `--resolution WxH` |
 | `./x export` | Export the player build into `dist/penguin-pass-linux-x86_64/` |
 | `./x package` | Make a versioned `.tar.gz` of the export and print its SHA-256 |
+| `./x licenses` | Write `docs/third-party-licenses.md` from the crates the game ships |
 
 Narrow `test`, `fmt`, `clippy`, `lint`, and `typecheck` to one crate
 with `CRATE=`, for example `CRATE=pp-core ./x test`.

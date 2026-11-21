@@ -15,7 +15,9 @@ use crate::geo::{
 };
 use crate::mesh::{Part, PartId};
 use crate::paint::{self, styled};
-use crate::rig::{FOREARM, HEAD_PIVOT_LOCAL, HIP_HALF, SHIN, THIGH, UPPER_ARM, WAIST_UP};
+use crate::rig::{
+    FOREARM, HEAD_PIVOT_LOCAL, HIP_HALF, SHIN, SHOULDER_LOCAL, THIGH, UPPER_ARM, WAIST_UP,
+};
 use crate::style::{RiderStyle, StyleColor};
 
 /// Crease angle for skin and cloth, in degrees.
@@ -25,6 +27,9 @@ const HARD: f32 = 38.0;
 
 /// Roughness of cloth.
 const CLOTH: f32 = 0.82;
+/// Roughness of the bib shorts. Lycra has a sheen, and under the game's sky
+/// it is that sheen, not the near-black colour, that shows the legs' shape.
+const LYCRA: f32 = 0.55;
 /// Roughness of skin.
 const SKIN: f32 = 0.62;
 
@@ -75,7 +80,7 @@ fn limb(
 
 fn thigh(style: &RiderStyle, id: PartId) -> Part {
     let mut part = PartBuilder::new(id.name());
-    let bibs = part.slot(styled(style, StyleColor::Bibs, CLOTH, 0.0));
+    let bibs = part.slot(styled(style, StyleColor::Bibs, LYCRA, 0.0));
     let band = part.slot(styled(style, StyleColor::JerseyAccent, CLOTH, 0.0));
     let skin = part.slot(styled(style, StyleColor::Skin, SKIN, 0.0));
     let keys = [
@@ -227,7 +232,7 @@ fn foot(style: &RiderStyle, id: PartId) -> Part {
 
 fn pelvis(style: &RiderStyle) -> Part {
     let mut part = PartBuilder::new(PartId::Pelvis.name());
-    let bibs = part.slot(styled(style, StyleColor::Bibs, CLOTH, 0.0));
+    let bibs = part.slot(styled(style, StyleColor::Bibs, LYCRA, 0.0));
     // Up the spine: half-width, half-depth, and how far back the section sits.
     let stations: [(f32, f32, f32, f32); 6] = [
         (-0.080, 0.080, 0.064, 0.000),
@@ -364,6 +369,17 @@ fn torso(style: &RiderStyle) -> Part {
                 Cap::Flat,
                 |_, _| seam,
             ),
+            SOFT,
+        );
+    }
+
+    // A ball round each shoulder joint, a little larger than the sleeve. The
+    // arm turns inside it, so no notch opens between the yoke and the sleeve
+    // when the arm reaches for the bars.
+    for side in [-1.0, 1.0] {
+        let joint = Vec3::new(side * SHOULDER_LOCAL.x, SHOULDER_LOCAL.y, SHOULDER_LOCAL.z);
+        part.add(
+            &ellipsoid(Vec3::splat(0.064), 10, 6, primary).translated(joint),
             SOFT,
         );
     }

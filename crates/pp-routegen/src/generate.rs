@@ -106,7 +106,7 @@ fn try_once(
     let h_target = spec.distance_m / 1.004;
     let mut plan = plan::build(&mut rng, h_target, params, style)?;
     let h = geom::horiz(&plan.segs);
-    if !(h > 50.0) {
+    if !h.is_finite() || h <= 50.0 {
         return Err("plan is too short to scale".to_string());
     }
     geom::scale(&mut plan.segs, h_target / h);
@@ -166,12 +166,12 @@ fn place_json(
     Ok(Placed { json, course })
 }
 
-fn fit_3d(segs: &mut [Seg], spans: &mut Vec<Span>, distance_m: f64) -> Result<(), String> {
+fn fit_3d(segs: &mut [Seg], spans: &mut [Span], distance_m: f64) -> Result<(), String> {
     for _ in 0..3 {
         let h = geom::horiz(segs);
         grade::sync_length(spans, h)?;
         let len3 = grade::length_3d_m(h, spans);
-        if !(len3 > 1.0) {
+        if !len3.is_finite() || len3 <= 1.0 {
             return Err("3D length collapsed".to_string());
         }
         let k = distance_m / len3;

@@ -23,6 +23,7 @@ pp-course = { path = "../pp-course" }
 pp-rider = { path = "../pp-rider" }
 pp-session = { path = "../pp-session" }
 pp-trainer = { path = "../pp-trainer" }
+pp-world = { path = "../pp-world" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

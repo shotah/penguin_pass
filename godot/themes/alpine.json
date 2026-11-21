@@ -30,12 +30,12 @@
   ],
   "backdrop": {
     "rings": 3,
-    "inner_margin_m": 180.0,
+    "inner_margin_m": 90.0,
     "ring_gap_m": 700.0,
     "base_drop_m": 60.0,
-    "height_m": [240.0, 560.0],
-    "snow_fraction": 0.58,
-    "segments": 96,
+    "height_m": [140.0, 280.0],
+    "snow_fraction": 0.86,
+    "segments": 128,
     "style": "ridges"
   },
   "scatter": [

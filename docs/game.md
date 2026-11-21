@@ -83,6 +83,7 @@ saved setting.
 | `--no-bluetooth` | Scanning reports that Bluetooth is off. The ride continues |
 | `--dashboard-port <n>` | Bind the TV page on this port. `0` picks a free port |
 | `--dashboard-loopback` | Bind the TV page on 127.0.0.1 only |
+| `--quit-from-menu` | On the first frame, confirm Quit in the menu. For the export exit check |
 
 Tests and `./godot/tests/shoot_set.sh` always pass `--fake-trainer` or
 `--no-bluetooth`, a temporary settings file, and `--dashboard-port 0`.

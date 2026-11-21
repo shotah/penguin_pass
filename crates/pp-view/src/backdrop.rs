@@ -33,29 +33,45 @@ pub fn build(spec: &Backdrop, reach_m: f32, seed: u32) -> Vec<Tri> {
     for ring in 0..spec.rings {
         let radius = reach_m + spec.inner_margin_m + ring as f32 * spec.ring_gap_m;
         let fade = ring as f32 / spec.rings.max(1) as f32;
-        push_ring(&mut tris, spec, radius, fade, seed.wrapping_add(ring * 17), mesa);
+        push_ring(
+            &mut tris,
+            spec,
+            radius,
+            fade,
+            seed.wrapping_add(ring * 17),
+            mesa,
+        );
     }
     tris
 }
 
 fn push_ring(out: &mut Vec<Tri>, spec: &Backdrop, radius: f32, fade: f32, seed: u32, mesa: bool) {
     let n = spec.segments.max(3);
-    let mut crest = Vec::with_capacity(n as usize);
+    let mut raw = Vec::with_capacity(n as usize);
     for index in 0..n {
-        let angle = index as f32 / n as f32 * std::f32::consts::TAU;
-        let noise = noise1(angle * 3.0 + seed as f32 * 0.01, seed);
-        let shaped = if mesa {
-            (noise * 3.0).floor() / 2.0
-        } else {
-            noise
-        };
-        let height = spec.height_m[0] + (spec.height_m[1] - spec.height_m[0]) * shaped;
-        let height = height * (1.0 - fade * 0.28);
-        let shoulder = radius + if mesa { 80.0 + noise * 40.0 } else { noise * 70.0 - 20.0 };
-        crest.push((angle, height.max(40.0), shoulder));
+        let turns = index as f32 / n as f32;
+        // A few broad masses, plus a smaller ridge, so the skyline is not a saw.
+        let broad = noise1(turns * 1.4 + seed as f32 * 0.01, seed);
+        let ridge = noise1(turns * 4.0 + seed as f32 * 0.02, seed.wrapping_add(9));
+        let shaped = broad * 0.9 + ridge * 0.1;
+        raw.push(shaped.clamp(0.0, 1.5));
     }
-    let rock = lerp_rgb([0.38, 0.42, 0.48], [0.62, 0.70, 0.82], fade);
-    let snow = lerp_rgb([0.90, 0.92, 0.94], [0.78, 0.84, 0.92], fade);
+    let mut crest = Vec::with_capacity(n as usize);
+    for index in 0..n as usize {
+        let left = raw[(index + n as usize - 1) % n as usize];
+        let right = raw[(index + 1) % n as usize];
+        let mut shaped = raw[index] * 0.5 + (left + right) * 0.25;
+        if mesa {
+            shaped = (shaped * 3.0).floor() / 2.0;
+        }
+        let angle = index as f32 / n as f32 * std::f32::consts::TAU;
+        let height = spec.height_m[0] + (spec.height_m[1] - spec.height_m[0]) * shaped;
+        let height = height * (1.0 - fade * 0.22);
+        let shoulder = radius + if mesa { 90.0 } else { 20.0 + shaped * 50.0 };
+        crest.push((angle, height.max(80.0), shoulder));
+    }
+    let rock = lerp_rgb([0.34, 0.42, 0.36], [0.58, 0.66, 0.78], fade);
+    let snow = lerp_rgb([0.86, 0.88, 0.90], [0.78, 0.84, 0.90], fade);
     let base_y = -spec.base_drop_m;
     for index in 0..n as usize {
         let next = (index + 1) % n as usize;
@@ -67,11 +83,20 @@ fn push_ring(out: &mut Vec<Tri>, spec: &Backdrop, radius: f32, fade: f32, seed: 
         let top0 = peak(s0, h0, a0, snowline, rock, snow);
         let top1 = peak(s1, h1, a1, snowline, rock, snow);
         out.push(Tri { v: [p0, p1, top1] });
-        out.push(Tri { v: [p0, top1, top0] });
+        out.push(Tri {
+            v: [p0, top1, top0],
+        });
     }
 }
 
-fn peak(radius: f32, height: f32, angle: f32, snowline: f32, rock: [f32; 3], snow: [f32; 3]) -> Vert {
+fn peak(
+    radius: f32,
+    height: f32,
+    angle: f32,
+    snowline: f32,
+    rock: [f32; 3],
+    snow: [f32; 3],
+) -> Vert {
     let colour = if height >= snowline { snow } else { rock };
     polar(radius, height, angle, colour)
 }
@@ -136,12 +161,17 @@ mod tests {
 
     #[test]
     fn mesas_reuse_heights_and_zero_rings_draw_nothing() {
-        let mut spec = Backdrop::default();
-        spec.rings = 0;
+        let spec = Backdrop {
+            rings: 0,
+            ..Backdrop::default()
+        };
         assert!(build(&spec, 100.0, 1).is_empty());
-        spec.rings = 1;
-        spec.style = "mesas".to_owned();
-        spec.segments = 24;
+        let spec = Backdrop {
+            rings: 1,
+            style: "mesas".to_owned(),
+            segments: 24,
+            ..Backdrop::default()
+        };
         let tris = build(&spec, 100.0, 2);
         let mut heights: Vec<i32> = tris
             .iter()

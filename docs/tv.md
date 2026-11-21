@@ -13,18 +13,43 @@ It is not the game picture.
 3. Open the TV browser and type one of those addresses. The default port
    is 7878, so a typical address looks like `http://192.168.1.20:7878/`.
 
-The numbers update a few times a second. If the stream drops, the page
-says `reconnecting` and tries again on its own. A missing sensor is an
-em dash, not a zero.
+The numbers update about four times a second. If the browser loses the
+stream, the page says `Reconnecting`, dims the numbers, and tries again
+on its own. That is separate from the trainer losing its link: the game
+can report the trainer as reconnecting while the page itself stays live.
+A missing sensor is an em dash, not a zero.
 
 ## What the page shows
 
-Large tiles for power (W), speed (km/h), cadence (rpm), and heart rate
-(bpm). A second row shows grade (%), distance (km), lap, elapsed time
-(h:mm:ss), and elevation (m). Grade color tracks how steep the road is.
+The layout matches the game UI. Power is the large number on the left,
+coloured by zone once the game has sent an FTP. Speed, grade, cadence,
+and heart rate sit beside it. Time, distance, elevation, and lap are
+across the top on a TV and along the bottom on a phone. Under the numbers
+is the lap profile, ridden in grey and ahead coloured by gradient, plus
+the next kilometre.
 
-Under the numbers is the lap elevation profile. A marker sits at your
-position on the lap and moves as you ride.
+The page serves its own copy of Barlow Semi Condensed. Nothing is loaded
+from the internet. The font licence is at `/fonts/OFL.txt`.
+
+## Ride status
+
+The game can publish a status alongside each telemetry snapshot. Until
+the first one arrives, zones stay off and the trainer chip stays hidden.
+
+`CastServer::publish_status` takes a `RideStatus`:
+
+| Field | JSON | Meaning |
+| --- | --- | --- |
+| `ftp_w` | number or null | FTP in watts. Null means no zone colours. |
+| `source` | `unknown`, `simulated`, or `trainer` | Where the watts come from. |
+| `trainer_name` | string or null | Name when the source is a trainer. |
+| `link` | `unknown`, `connected`, `reconnecting`, or `searching` | The trainer link, not the browser stream. |
+| `resistance` | `controlled`, `reading_only`, or null | Whether the trainer is being told a grade. |
+| `power_3s_w` | number or null | Three-second average power. The hero number uses this when it is present. |
+
+`GET /api/status` returns that object. The event stream sends it as an
+`event: status` message. `GET /api/telemetry` is unchanged. `GET /api/zones`
+is the power-zone and gradient table the page colours from.
 
 ## Try it without the game
 
@@ -54,6 +79,16 @@ target/debug/examples/demo 127.0.0.1:7878
 ```
 
 Then open `http://127.0.0.1:7878/`.
+
+To hold the sample numbers from the design mockup (345 W, +10.0 % grade)
+instead of a moving ride:
+
+```bash
+target/debug/examples/demo --sample 127.0.0.1:7878
+```
+
+Open `http://127.0.0.1:7878/?preview=reconnecting` to see the dimmed
+page the browser shows when the stream drops.
 
 ## Limits
 

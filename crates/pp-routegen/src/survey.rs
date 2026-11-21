@@ -33,11 +33,17 @@ pub struct RouteSurvey {
 #[must_use]
 pub fn survey(course: &Course, step_m: f64) -> RouteSurvey {
     let length = course.length_m();
-    let step = if step_m.is_finite() && step_m > 0.0 {
+    let mut step = if step_m.is_finite() && step_m > 0.0 {
         step_m
     } else {
         5.0
     };
+    // Keep the pair check under a few thousand samples. Callers that need
+    // a tighter clearance pass a short course or a smaller step on a
+    // course that is already short.
+    if length / step > 4_000.0 {
+        step = length / 4_000.0;
+    }
     let n = ((length / step).round() as usize).max(8);
     let mut min_g = f64::MAX;
     let mut max_g = f64::MIN;
@@ -78,7 +84,8 @@ pub fn survey(course: &Course, step_m: f64) -> RouteSurvey {
         }
     }
     let along = length / n as f64;
-    let closest = geom::closest_approach(&pts, along, length, crate::spec::CLEARANCE_WINDOW_M);
+    let closest =
+        geom::closest_approach_brute(&pts, along, length, crate::spec::CLEARANCE_WINDOW_M);
     RouteSurvey {
         length_m: length,
         ascent_m: f64::from(course.total_ascent_m()),

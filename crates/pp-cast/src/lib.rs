@@ -29,8 +29,12 @@
 
 mod http;
 mod server;
+mod status;
+mod zones;
 
 pub use server::{CastError, CastServer, DEFAULT_PORT};
+pub use status::{LinkPhase, ResistanceMode, RideSource, RideStatus};
+pub use zones::{GradeBand, ZoneStep, grade_bands, grade_color, power_zones, zone_for_power};
 
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;

@@ -180,6 +180,14 @@ impl INode3D for Game {
     }
 
     fn process(&mut self, delta: f64) {
+        if self
+            .launch
+            .as_ref()
+            .is_some_and(|launch| launch.quit_from_menu)
+        {
+            self.confirm_menu_quit();
+            return;
+        }
         // A stalled frame should not fling the bike. Hold-to-repeat uses the same cap.
         let dt = delta.clamp(0.0, 0.1);
         let menu_open = self.menu.as_ref().is_some_and(RideMenu::is_open);
@@ -803,6 +811,24 @@ impl Game {
         menu::apply_window_mode(settings.fullscreen);
         self.session_mut().apply_settings(settings);
         self.save_settings();
+    }
+
+    fn confirm_menu_quit(&mut self) {
+        if let Some(launch) = self.launch.as_mut() {
+            launch.quit_from_menu = false;
+        }
+        let path = self.settings_path().clone();
+        let mut menu = self.menu.take().expect("menu");
+        menu.open(self.session());
+        for _ in 0..9 {
+            menu.handle(Command::Down, self.session_mut(), &path);
+        }
+        menu.handle(Command::Accept, self.session_mut(), &path);
+        let effect = menu.handle(Command::Accept, self.session_mut(), &path);
+        self.menu = Some(menu);
+        if effect == Effect::Quit {
+            self.base().get_tree().quit();
+        }
     }
 
     fn on_menu_key(&mut self) {

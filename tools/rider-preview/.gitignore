@@ -3,3 +3,6 @@
 
 # Exported models that render.sh regenerates
 /.cache/
+
+# Scratch crops and helpers from picture review
+/.scratch/

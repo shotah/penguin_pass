@@ -3,8 +3,8 @@
 use std::f64::consts::TAU;
 
 use pp_rider::{
-    CRANK_LENGTH_M, MAX_STEER_RAD, PartId, PoseInput, RiderModel, RiderStyle, StyleColor,
-    WHEEL_RADIUS_M,
+    CRANK_LENGTH_M, MAX_STEER_RAD, PartId, PoseInput, RideAnimator, RideSample, RiderModel,
+    RiderStyle, StyleColor, WHEEL_RADIUS_M,
 };
 
 fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
@@ -81,4 +81,54 @@ fn a_settings_menu_can_recolour_the_model() {
     assert!(recoloured(StyleColor::Frame, red));
     assert!(recoloured(StyleColor::JerseyPrimary, [0.1, 0.3, 0.7]));
     assert!(recoloured(StyleColor::Helmet, RiderStyle::default().helmet));
+}
+
+#[test]
+fn telemetry_alone_can_drive_the_rider() {
+    // What `Rider::place` in the game does: one sample per frame in, one
+    // pose out. A climb at a grinding cadence, then a coasting descent.
+    let model = RiderModel::build(&RiderStyle::default());
+    let mut animator = RideAnimator::new();
+    let dt = 1.0 / 60.0;
+    let mut distance_m = 0.0_f64;
+    let mut stood = false;
+    let mut tucked = false;
+    let mut cleat_reach = None;
+    for frame in 0..(60 * 20) {
+        let climbing = frame < 60 * 8;
+        let speed_mps = if climbing { 3.5 } else { 17.0 };
+        distance_m += speed_mps * dt;
+        let input = animator.step(
+            &RideSample {
+                distance_m,
+                cadence_rpm: Some(if climbing { 58.0 } else { 0.0 }),
+                lean_rad: 0.2 * (frame as f32 * 0.01).sin(),
+                grade_pct: if climbing { 9.5 } else { -7.0 },
+                ..RideSample::default()
+            },
+            dt,
+        );
+        stood |= input.stand == 1.0;
+        tucked |= input.tuck == 1.0;
+        assert!(
+            input.stand == 0.0 || input.tuck == 0.0,
+            "one posture at a time"
+        );
+        assert!(input.steer_rad.abs() < MAX_STEER_RAD);
+        let pose = model.pose(&input);
+        // Whatever the posture, the feet stay on the pedals: each cleat
+        // keeps its distance from the bottom bracket, also while the bike
+        // rocks under a standing rider.
+        let bb = pose.anchors.bottom_bracket;
+        for foot in [PartId::FootL, PartId::FootR] {
+            let reach = distance(pose.transform(foot).translation, bb);
+            let expected = *cleat_reach.get_or_insert(reach);
+            assert!(expected > CRANK_LENGTH_M && expected < CRANK_LENGTH_M + 0.06);
+            assert!((reach - expected).abs() < 1.0e-3, "frame {frame}");
+        }
+    }
+    assert!(stood, "the rider never got out of the saddle on the climb");
+    assert!(tucked, "the rider never tucked on the descent");
+    let expected_wheel = distance_m / f64::from(WHEEL_RADIUS_M);
+    assert!((animator.wheel_angle_rad() - expected_wheel).abs() < 1.0e-9);
 }

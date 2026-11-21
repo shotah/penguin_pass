@@ -174,7 +174,7 @@ impl RideMenu {
                 Effect::None
             }
             Action::Connect(id) => {
-                let _ = session.connect(&id);
+                session.connect(&id);
                 Effect::None
             }
             Action::Disconnect => {

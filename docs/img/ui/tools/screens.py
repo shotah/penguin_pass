@@ -45,7 +45,7 @@ def title_menu(focus=0, trainer=("connected", "Tacx Neo 2T"), x=MENU_X, y=MENU_Y
 
 def course_card(course, x=MENU_X, y=600):
     w, h = MENU_W, 96
-    out = rect(x, y, w, h, 12, INK, 0.72) + rect(x + 0.5, y + 0.5, w - 1, h - 1, 11.5, "none", None, SNOW, 0.14, 1)
+    out = rect(x, y, w, h, 12, INK, 0.88) + rect(x + 0.5, y + 0.5, w - 1, h - 1, 11.5, "none", None, SNOW, 0.14, 1)
     out += caption(x + 28, y + 32, "Course")
     out += text(x + 28, y + 60, course.name, 24, 600)
     out += text(x + 28, y + 82, f"{course.length / 1000:.1f} km loop \u00b7 {course.ascent:.0f} m ascent", 18, 500, MIST)
@@ -57,13 +57,14 @@ def course_card(course, x=MENU_X, y=600):
     return out
 
 
-def wordmark(x, y, size=112):
-    """Brand lockup: the badge, then PENGUIN / PASS on two lines."""
+def wordmark(x, y, size=120):
+    """Brand lockup: the badge, then PENGUIN / PASS on two lines. The type
+    is 56 px at a 120 px badge and scales with it."""
+    k = size / 120.0
     out = u.logo(x, y, size)
-    tx = x + size + 24
-    fs = size * 0.46
-    out += text(tx, y + size * 0.44, "PENGUIN", fs, 700, SNOW, tracking=0.03)
-    out += text(tx, y + size * 0.44 + fs * 0.98, "PASS", fs, 700, SUN, tracking=0.03)
+    tx = x + size + 24 * k
+    out += text(tx, y + 53 * k, "PENGUIN", 56 * k, 700, SNOW, tracking=0.03)
+    out += text(tx, y + 107 * k, "PASS", 56 * k, 700, SUN, tracking=0.03)
     return out
 
 

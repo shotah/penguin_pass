@@ -60,12 +60,12 @@ pub fn render_svg(course: &Course) -> String {
     let used_h = (max_z - min_z) * s;
     let x0 = ox + (map_w - used_w) * 0.5;
     let y0 = oy + (map_h - used_h) * 0.5;
-    let map_xy = |x: f64, z: f64| -> (f64, f64) {
-        (x0 + (x - min_x) * s, y0 + (max_z - z) * s)
-    };
+    let map_xy = |x: f64, z: f64| -> (f64, f64) { (x0 + (x - min_x) * s, y0 + (max_z - z) * s) };
 
     // Casing, then a coloured centerline.
-    let mut casing = String::from("<polyline fill=\"none\" stroke=\"#4a4338\" stroke-width=\"7\" stroke-linejoin=\"round\" stroke-linecap=\"round\" points=\"");
+    let mut casing = String::from(
+        "<polyline fill=\"none\" stroke=\"#4a4338\" stroke-width=\"7\" stroke-linejoin=\"round\" stroke-linecap=\"round\" points=\"",
+    );
     for (x, z, _, _) in &pts {
         let (px, py) = map_xy(*x, *z);
         casing.push_str(&format!("{px:.1},{py:.1} "));
@@ -119,17 +119,13 @@ pub fn render_svg(course: &Course) -> String {
             - f64::from(point.elevation_m) / f64::from(max_e) * (profile_h - 16.0);
         poly.push_str(&format!(" L {px:.1} {py:.1}"));
     }
-    poly.push_str(&format!(
-        " L {:.1} {:.1} Z",
-        ox + map_w,
-        prof_y + profile_h
-    ));
+    poly.push_str(&format!(" L {:.1} {:.1} Z", ox + map_w, prof_y + profile_h));
     out.push_str(&format!(
         "<path d=\"{poly}\" fill=\"#d9c7a2\" stroke=\"#6b4f2a\" stroke-width=\"1.5\"/>\n"
     ));
     let ascent = course.total_ascent_m();
     out.push_str(&format!(
-        "<text x=\"24\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"14\" fill=\"#2b2a26\">{} km    ascent {:.0} m    grade {:.1}% to {:.1}%</text>\n",
+        "<text x=\"24\" y=\"{:.1}\" font-family=\"sans-serif\" font-size=\"14\" fill=\"#2b2a26\">{:.2} km    ascent {:.0} m    grade {:.1}% to {:.1}%</text>\n",
         height - 18.0,
         length / 1000.0,
         ascent,
@@ -223,13 +219,23 @@ fn grade_color(grade: f32) -> String {
 fn mix(a: &str, b: &str, t: f32) -> String {
     let (ar, ag, ab) = hex(a);
     let (br, bg, bb) = hex(b);
-    let lerp = |p: u8, q: u8| -> u8 { (f32::from(p) + (f32::from(q) - f32::from(p)) * t).round() as u8 };
-    format!("#{:02x}{:02x}{:02x}", lerp(ar, br), lerp(ag, bg), lerp(ab, bb))
+    let lerp =
+        |p: u8, q: u8| -> u8 { (f32::from(p) + (f32::from(q) - f32::from(p)) * t).round() as u8 };
+    format!(
+        "#{:02x}{:02x}{:02x}",
+        lerp(ar, br),
+        lerp(ag, bg),
+        lerp(ab, bb)
+    )
 }
 
 fn hex(s: &str) -> (u8, u8, u8) {
     let n = u32::from_str_radix(s.trim_start_matches('#'), 16).unwrap_or(0);
-    (((n >> 16) & 0xff) as u8, ((n >> 8) & 0xff) as u8, (n & 0xff) as u8)
+    (
+        ((n >> 16) & 0xff) as u8,
+        ((n >> 8) & 0xff) as u8,
+        (n & 0xff) as u8,
+    )
 }
 
 fn nice_bar(span_m: f64) -> f64 {

@@ -4,6 +4,8 @@
 //! bike and the rider as rigid, named parts of plain mesh data, and
 //! [`RiderModel::pose`] gives each part a transform for a crank angle, with
 //! the feet locked to the pedals and the hands to the bars.
+//! [`RideAnimator`] turns ride telemetry (distance, cadence, lean, grade)
+//! into that pose input frame by frame.
 //!
 //! # Conventions
 //!
@@ -36,6 +38,7 @@
 //! }
 //! ```
 
+mod animate;
 mod bike;
 mod body;
 #[cfg(test)]
@@ -50,6 +53,7 @@ mod style;
 #[cfg(test)]
 mod tests;
 
+pub use animate::{RideAnimator, RideSample};
 pub use mesh::{Material, Part, PartId, Surface};
 pub use model::RiderModel;
 pub use pose::{Anchors, MAX_STEER_RAD, PartTransform, Pose, PoseInput};

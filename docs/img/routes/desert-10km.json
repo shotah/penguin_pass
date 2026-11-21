@@ -1,0 +1,176 @@
+{
+  "grade": [
+    {
+      "grade_pct": 0.0,
+      "length_m": 462.16598047906757,
+      "type": "hold"
+    },
+    {
+      "length_m": 35.83014184684725,
+      "to_grade_pct": 2.546739179719344,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 2.546739179719344,
+      "length_m": 1381.7622746845432,
+      "type": "hold"
+    },
+    {
+      "length_m": 16.05832687813882,
+      "to_grade_pct": 1.7976982445077718,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 1.7976982445077718,
+      "length_m": 975.3616056596776,
+      "type": "hold"
+    },
+    {
+      "length_m": 69.55262829093877,
+      "to_grade_pct": 6.741368416904145,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 6.741368416904145,
+      "length_m": 341.3765619808872,
+      "type": "hold"
+    },
+    {
+      "length_m": 63.229662082671595,
+      "to_grade_pct": 2.247122805634715,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 2.247122805634715,
+      "length_m": 1178.5619401721099,
+      "type": "hold"
+    },
+    {
+      "length_m": 31.61483104133581,
+      "to_grade_pct": 0.0,
+      "type": "smooth"
+    },
+    {
+      "amplitude_pct": 0.6973816534107558,
+      "cycles": 1,
+      "length_m": 544.3281878506848,
+      "type": "wave"
+    },
+    {
+      "length_m": 33.27084600064387,
+      "to_grade_pct": -2.3548519626594686,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -2.3548519626594686,
+      "length_m": 1508.429837227351,
+      "type": "hold"
+    },
+    {
+      "length_m": 16.05832687813882,
+      "to_grade_pct": -1.6622484442302132,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -1.6622484442302132,
+      "length_m": 1064.7740027487184,
+      "type": "hold"
+    },
+    {
+      "length_m": 64.58458341301458,
+      "to_grade_pct": -6.2334316658633,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -6.2334316658633,
+      "length_m": 372.6709009620515,
+      "type": "hold"
+    },
+    {
+      "length_m": 58.71325764819507,
+      "to_grade_pct": -2.0778105552877664,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -2.0778105552877664,
+      "length_m": 1286.6019199880348,
+      "type": "hold"
+    },
+    {
+      "length_m": 29.35662882409753,
+      "to_grade_pct": 0.0,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 0.0,
+      "length_m": 462.16598047906393,
+      "type": "hold"
+    }
+  ],
+  "name": "Desert 10 km",
+  "segments": [
+    {
+      "length_m": 462.16598047906757,
+      "type": "line"
+    },
+    {
+      "angle_rad": 1.2481692697403697,
+      "radius_m": 248.63123612399298,
+      "type": "arc"
+    },
+    {
+      "length_m": 1955.58468530096,
+      "type": "line"
+    },
+    {
+      "angle_rad": 0.8477232220498045,
+      "radius_m": 374.3473272852151,
+      "type": "arc"
+    },
+    {
+      "length_m": 931.8882425377645,
+      "type": "line"
+    },
+    {
+      "angle_rad": 1.123705995016281,
+      "radius_m": 354.4454000005724,
+      "type": "arc"
+    },
+    {
+      "length_m": 1057.4846699963944,
+      "type": "line"
+    },
+    {
+      "angle_rad": 1.2039287053457468,
+      "radius_m": 637.9135238486285,
+      "type": "arc"
+    },
+    {
+      "length_m": 1370.542560742501,
+      "type": "line"
+    },
+    {
+      "angle_rad": 0.7630057245967794,
+      "radius_m": 414.7197278078768,
+      "type": "arc"
+    },
+    {
+      "length_m": 860.566110614819,
+      "type": "line"
+    },
+    {
+      "angle_rad": 1.0966523904306045,
+      "radius_m": 716.4212295208921,
+      "type": "arc"
+    },
+    {
+      "length_m": 462.16598047906757,
+      "type": "line"
+    }
+  ],
+  "start": {
+    "heading_rad": 5.331601797883875,
+    "x": -1291.0294936498567,
+    "z": -1043.4960170148593
+  }
+}

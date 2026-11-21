@@ -160,7 +160,7 @@ def screen_title(s, x=PX, y=68):
 SETTINGS = [
     # key, label, kind, explanation
     ("trainer", "Trainer", "nav", "Pair a smart trainer, or ride with the simulated rider."),
-    ("follow", "Resistance follows the road", "toggle",
+    ("follow", "Trainer resistance follows the road", "toggle",
      "On: the trainer gets harder on climbs and easier downhill. Off: it only reports power."),
     ("difficulty", "Trainer difficulty", "value",
      "How much of each climb the trainer makes you feel. On-screen speed is not affected."),
@@ -337,7 +337,7 @@ def pairing(state, keyboard=False, live=None):
             out += device_row(x, list_y + i * 66, w, name, kind, bars, "connected" if i == 0 else "idle",
                               focused=i == 0)
         out += row(x, sim_y, w, "Disconnect and use the simulated rider", "action", icon=key)
-        items = [("ud", "Move"), ("A", "Select"), ("B", "Back to ride")]
+        items = [("ud", "Move"), ("A", "Select"), ("B", "Back")]
     elif state == "failed":
         out += status_block(bx, PY + 24, "bad", "Could not connect to Tacx Neo 2T 12345",
                             "The trainer did not answer in time.")

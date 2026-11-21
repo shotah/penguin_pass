@@ -1,5 +1,6 @@
 //! Background thread that owns the HTTP server.
 
+use crate::RideStatus;
 use crate::http::{self, AppState};
 use pp_core::Telemetry;
 use std::io;
@@ -56,6 +57,9 @@ pub struct CastServer {
     /// Keeps the watch channel open so [`Self::publish`] still stores a value
     /// when no browser is connected.
     _telemetry_rx: watch::Receiver<Telemetry>,
+    status: watch::Sender<RideStatus>,
+    /// Keeps the status channel open before any browser connects.
+    _status_rx: watch::Receiver<RideStatus>,
     shutdown: Option<watch::Sender<bool>>,
     thread: Option<JoinHandle<()>>,
 }
@@ -87,10 +91,12 @@ impl CastServer {
         let local_addr = listener.local_addr().map_err(CastError::Bind)?;
 
         let (telemetry, telemetry_rx) = watch::channel(Telemetry::default());
+        let (status, status_rx) = watch::channel(RideStatus::default());
         let (shutdown, _) = watch::channel(false);
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let state = AppState {
             telemetry: telemetry.clone(),
+            status: status.clone(),
             course: std::sync::Arc::new(config.course),
             shutdown: shutdown.clone(),
         };
@@ -105,6 +111,8 @@ impl CastServer {
                 local_addr,
                 telemetry,
                 _telemetry_rx: telemetry_rx,
+                status,
+                _status_rx: status_rx,
                 shutdown: Some(shutdown),
                 thread: Some(thread),
             }),
@@ -122,6 +130,15 @@ impl CastServer {
     /// the newest value is kept; browsers are updated a few times a second.
     pub fn publish(&self, telemetry: Telemetry) {
         self.telemetry.send_replace(telemetry);
+    }
+
+    /// Store the latest ride status for connected browsers.
+    ///
+    /// Non-blocking, same as [`Self::publish`]. The newest status replaces any
+    /// that has not been sent yet. Before the first call the page uses
+    /// [`RideStatus::default`]: no zone colours and a neutral connection chip.
+    pub fn publish_status(&self, status: RideStatus) {
+        self.status.send_replace(status);
     }
 
     /// Address the server actually bound, including a port chosen by the

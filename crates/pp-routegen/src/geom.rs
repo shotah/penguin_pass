@@ -130,7 +130,9 @@ pub fn scale(segs: &mut [Seg], k: f64) {
 /// Smallest arc radius, in meters. Lines do not count.
 #[must_use]
 pub fn min_radius(segs: &[Seg]) -> f64 {
-    segs.iter().filter_map(Seg::radius).fold(f64::INFINITY, f64::min)
+    segs.iter()
+        .filter_map(Seg::radius)
+        .fold(f64::INFINITY, f64::min)
 }
 
 /// Point and heading `distance` meters along a circular arc.
@@ -266,18 +268,43 @@ pub fn closure_error(segs: &[Seg], h0: f64) -> (f64, f64) {
     (x.hypot(z), angle_diff(h, h0).abs())
 }
 
-/// Minimum distance between samples whose along-track separation is at
-/// least `window_m`, in meters.
+/// Brute-force minimum distance between samples whose along-track separation
+/// is at least `window_m`, in meters.
 ///
-/// `step_m` is the spacing used to build `points` along a loop of length
-/// `length_m`. The search is a grid, so it is linear in the sample count.
+/// Use this when the answer itself matters. [`closest_approach`] is the fast
+/// check for "is anything nearer than about 50 m?".
 #[must_use]
-pub fn closest_approach(
+pub fn closest_approach_brute(
     points: &[(f64, f64)],
     step_m: f64,
     length_m: f64,
     window_m: f64,
 ) -> f64 {
+    let mut best = f64::INFINITY;
+    for i in 0..points.len() {
+        for j in (i + 1)..points.len() {
+            let along = (j - i) as f64 * step_m;
+            let along = along.min(length_m - along);
+            if along < window_m {
+                continue;
+            }
+            let d = (points[i].0 - points[j].0).hypot(points[i].1 - points[j].1);
+            if d < best {
+                best = d;
+            }
+        }
+    }
+    best
+}
+
+/// Minimum distance between samples whose along-track separation is at
+/// least `window_m`, in meters, ignoring pairs farther apart than about 50 m.
+///
+/// `step_m` is the spacing used to build `points` along a loop of length
+/// `length_m`. The search is a grid, so it is linear in the sample count.
+/// Returns infinity when nothing inside the grid neighbourhood is that close.
+#[must_use]
+pub fn closest_approach(points: &[(f64, f64)], step_m: f64, length_m: f64, window_m: f64) -> f64 {
     if points.len() < 2 {
         return f64::INFINITY;
     }

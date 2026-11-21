@@ -542,7 +542,10 @@ mod tests {
         assert_eq!(ranked[1].name, "Fake Kickr");
         let mut menu = MenuState::default();
         menu.open_main();
-        assert!(matches!(menu.handle(Command::Accept, &snap()), Action::Scan));
+        assert!(matches!(
+            menu.handle(Command::Accept, &snap()),
+            Action::Scan
+        ));
         let view = menu.view(&snap());
         assert_eq!(view.title, "Trainers");
         assert!(view.lines[0].contains("Fake Neo 2T"));
@@ -565,11 +568,17 @@ mod tests {
         menu.handle(Command::Accept, &snap());
         assert_eq!(menu.page(), Page::ConfirmQuit);
         menu.handle(Command::Down, &snap());
-        assert!(matches!(menu.handle(Command::Accept, &snap()), Action::None));
+        assert!(matches!(
+            menu.handle(Command::Accept, &snap()),
+            Action::None
+        ));
         assert_eq!(menu.page(), Page::Main);
         menu.index = 9;
         menu.handle(Command::Accept, &snap());
-        assert!(matches!(menu.handle(Command::Accept, &snap()), Action::Quit));
+        assert!(matches!(
+            menu.handle(Command::Accept, &snap()),
+            Action::Quit
+        ));
         let mut offline = snap();
         offline.status_line = "Bluetooth unavailable: off".to_owned();
         offline.devices.clear();

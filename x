@@ -64,7 +64,10 @@ cmd_build() {
             ;;
     esac
     mkdir -p godot/bin
-    cp -f "$target_dir/libpp_godot.so" "$dest"
+    # Copy beside the destination, then rename. Overwriting in place cuts
+    # the library out from under a running game, which dies with SIGBUS.
+    cp -f "$target_dir/libpp_godot.so" "$dest.new"
+    mv -f "$dest.new" "$dest"
 }
 
 cmd_test() {

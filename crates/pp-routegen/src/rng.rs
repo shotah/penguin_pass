@@ -32,7 +32,7 @@ impl Stream {
     ///
     /// Returns `lo` when `hi <= lo`.
     pub fn range(&mut self, lo: f64, hi: f64) -> f64 {
-        if !(hi > lo) {
+        if hi <= lo {
             return lo;
         }
         lo + (hi - lo) * self.f64()
