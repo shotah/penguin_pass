@@ -7,7 +7,20 @@
 # GDExtension libraries copied by `./x build`
 /godot/bin/
 
+# Assets load at runtime (see docs/assets.md), so Godot's import sidecars stay out
+/godot/assets/**/*.import
+
+# Downloaded asset archives waiting to be unpacked
+/godot/assets/third_party/_incoming/
+
 # Editor and OS cruft
+__pycache__/
 *.rs.bk
 *~
 .DS_Store
+
+# Official Godot editor, export templates, and license texts (./x fetch)
+/tools/godot/
+
+# Play logs, export stage, and player packages (./x play, ./x export, ./x package)
+/dist/

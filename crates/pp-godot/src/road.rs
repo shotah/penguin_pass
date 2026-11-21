@@ -13,34 +13,61 @@ pub struct CenterSample {
     pub tangent: Vector3,
 }
 
+/// Full ribbon width in meters: 6 m of asphalt plus shoulders.
+pub const RIBBON_WIDTH_M: f32 = 9.0;
+
 const ROAD_SHADER: &str = r#"shader_type spatial;
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+uniform sampler2D asphalt_tex : source_color, repeat_enable, filter_linear_mipmap;
+uniform sampler2D gravel_tex : source_color, repeat_enable, filter_linear_mipmap;
+uniform float asphalt_tile = 4.0;
+uniform float gravel_tile = 3.0;
+uniform float textured = 0.0;
 
 void fragment() {
     float u = UV.x;
     float along = UV.y;
-    vec3 asphalt = vec3(0.15, 0.15, 0.16);
-    float grain = fract(sin(dot(floor(vec2(u * 48.0, along * 0.85)), vec2(127.1, 311.7))) * 43758.5453);
-    asphalt = mix(asphalt, vec3(0.20, 0.20, 0.21), grain * 0.4);
-    vec3 paint = vec3(0.93, 0.91, 0.84);
-    float edge = step(u, 0.026) + step(0.974, u);
-    float dash = step(fract(along / 8.0), 0.42);
-    float center = 1.0 - step(0.016, abs(u - 0.5));
-    float mark = clamp(edge + dash * center, 0.0, 1.0);
-    ALBEDO = mix(asphalt, paint, mark);
-    ROUGHNESS = mix(0.95, 0.55, mark);
-    METALLIC = 0.0;
+    float from_center = abs(u - 0.5);
+    // 9 m ribbon. Asphalt is the middle 6 m (from_center < 0.333).
+    float shoulder = smoothstep(0.30, 0.36, from_center);
+    float verge = smoothstep(0.44, 0.50, from_center);
+    float grain = hash(floor(vec2(u * 70.0, along * 1.4)));
+    float streak = hash(vec2(floor(along * 0.35), floor(u * 12.0)));
+    vec3 asphalt = mix(vec3(0.30, 0.30, 0.31), vec3(0.40, 0.39, 0.37), grain);
+    asphalt = mix(asphalt, vec3(0.27, 0.27, 0.28), streak * 0.35);
+    vec3 gravel = mix(vec3(0.42, 0.36, 0.28), vec3(0.55, 0.48, 0.36), grain);
+    vec2 across = vec2((u - 0.5) * 9.0, along);
+    vec3 photo_asphalt = texture(asphalt_tex, across / asphalt_tile).rgb;
+    vec3 photo_gravel = texture(gravel_tex, across / gravel_tile).rgb;
+    asphalt = mix(asphalt, photo_asphalt, textured);
+    gravel = mix(gravel, photo_gravel, textured);
+    vec3 grass = vec3(0.28, 0.40, 0.20);
+    vec3 surface = mix(asphalt, gravel, shoulder);
+    surface = mix(surface, grass, verge);
+    vec3 paint = vec3(0.93, 0.92, 0.86);
+    float edge = step(0.30, from_center) * step(from_center, 0.325);
+    float dash = step(fract(along / 6.0), 0.45);
+    float center = step(from_center, 0.008);
+    float mark = clamp(edge + dash * center, 0.0, 1.0) * (1.0 - verge);
+    ALBEDO = mix(surface, paint, mark);
+    ROUGHNESS = mix(0.88, 0.96, shoulder);
 }
 "#;
 
 /// Asphalt shader with a dashed center line and solid edges.
 ///
 /// `UV.x` runs across the road (0 left, 1 right). `UV.y` is distance in meters.
-pub fn road_material() -> Gd<ShaderMaterial> {
+pub fn road_material(catalog: &crate::assets::Catalog) -> Gd<ShaderMaterial> {
     let mut shader = Shader::new_gd();
     shader.set_code(ROAD_SHADER);
     let mut material = ShaderMaterial::new_gd();
     material.set_shader(&shader);
+    catalog.bind_road(&mut material);
     material
 }
 
@@ -119,23 +146,6 @@ pub fn build_ribbon(samples: &[CenterSample], width_m: f32) -> Gd<ArrayMesh> {
         );
     }
     tool.commit().unwrap_or_else(ArrayMesh::new_gd)
-}
-
-/// Straight centerline along -Z (Godot forward), raised by `y` so it clears the ground.
-pub fn straight_road(length_m: f32, y: f32, step_m: f32) -> Vec<CenterSample> {
-    let step = step_m.max(0.5);
-    let mut samples = Vec::new();
-    // A little road behind the rider, then `length_m` ahead.
-    let mut z = 30.0_f32;
-    let end = -length_m;
-    while z >= end {
-        samples.push(CenterSample {
-            position: Vector3::new(0.0, y, z),
-            tangent: Vector3::FORWARD,
-        });
-        z -= step;
-    }
-    samples
 }
 
 fn push_vertex(tool: &mut Gd<SurfaceTool>, position: Vector3, normal: Vector3, uv: Vector2) {

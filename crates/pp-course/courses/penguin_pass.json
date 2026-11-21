@@ -2,141 +2,286 @@
   "grade": [
     {
       "grade_pct": 0.0,
-      "length_m": 246.046101907376,
+      "length_m": 246.14934044959168,
       "type": "hold"
     },
     {
-      "length_m": 268.01605205976676,
-      "to_grade_pct": 8.515817628666175,
+      "length_m": 139.19417273563383,
+      "to_grade_pct": 5.4,
       "type": "smooth"
     },
     {
-      "grade_pct": 8.515817628666175,
-      "length_m": 1697.434996378523,
+      "length_m": 36.0,
+      "to_grade_pct": 7.6,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 7.6,
+      "length_m": 235.6866755619896,
       "type": "hold"
     },
     {
-      "length_m": 268.01605205976676,
+      "length_m": 36.0,
+      "to_grade_pct": 5.2,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 5.2,
+      "length_m": 103.19417273563383,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": 8.6,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 8.6,
+      "length_m": 271.6866755619896,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": 3.5,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 3.5,
+      "length_m": 103.19417273563383,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": 8.0,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 8.0,
+      "length_m": 271.6866755619896,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": 5.2,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 5.2,
+      "length_m": 103.19417273563383,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": 8.8,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 8.8,
+      "length_m": 271.6866755619896,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": 5.2,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 5.2,
+      "length_m": 139.19417273563383,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": 10.0,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": 10.0,
+      "length_m": 201.6866755619896,
+      "type": "hold"
+    },
+    {
+      "length_m": 70.0,
       "to_grade_pct": 0.0,
       "type": "smooth"
     },
     {
       "amplitude_pct": 7.0,
       "cycles": 2,
-      "length_m": 528.9991191008585,
+      "length_m": 529.221081966622,
       "type": "wave"
     },
     {
-      "length_m": 207.4887109905521,
-      "to_grade_pct": -11.0,
+      "length_m": 80.0,
+      "to_grade_pct": -9.028449787885075,
       "type": "smooth"
     },
     {
-      "grade_pct": -11.0,
-      "length_m": 1314.09516960683,
+      "grade_pct": -9.028449787885075,
+      "length_m": 115.99028789272302,
       "type": "hold"
     },
     {
-      "length_m": 207.4887109905521,
+      "length_m": 36.0,
+      "to_grade_pct": -10.432875310444976,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -10.432875310444976,
+      "length_m": 308.60907662942833,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": -10.83413974546209,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -10.83413974546209,
+      "length_m": 195.99028789272302,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": -9.630346440410746,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -9.630346440410746,
+      "length_m": 344.60907662942833,
+      "type": "hold"
+    },
+    {
+      "grade_pct": -9.630346440410746,
+      "length_m": 19.99514394636151,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": -5.517385981485323,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -5.517385981485323,
+      "length_m": 120.0,
+      "type": "hold"
+    },
+    {
+      "length_m": 36.0,
+      "to_grade_pct": -9.630346440410746,
+      "type": "smooth"
+    },
+    {
+      "grade_pct": -9.630346440410746,
+      "length_m": 19.99514394636151,
+      "type": "hold"
+    },
+    {
+      "grade_pct": -9.630346440410746,
+      "length_m": 274.60907662942833,
+      "type": "hold"
+    },
+    {
+      "length_m": 70.0,
       "to_grade_pct": 0.0,
       "type": "smooth"
     },
     {
       "grade_pct": 0.0,
-      "length_m": 246.0461019073764,
+      "length_m": 246.14934044959136,
       "type": "hold"
     }
   ],
   "name": "Penguin Pass",
   "segments": [
     {
-      "length_m": 246.046101907376,
+      "length_m": 246.14934044959168,
       "type": "line"
     },
     {
       "angle_rad": -3.141592653589793,
-      "radius_m": 44.28829834332768,
+      "radius_m": 44.306881280926504,
       "type": "arc"
     },
     {
-      "length_m": 307.55762738422,
+      "length_m": 307.6866755619896,
       "type": "line"
     },
     {
       "angle_rad": 3.141592653589793,
-      "radius_m": 44.28829834332768,
+      "radius_m": 44.306881280926504,
       "type": "arc"
     },
     {
-      "length_m": 307.55762738422,
+      "length_m": 307.6866755619896,
       "type": "line"
     },
     {
       "angle_rad": -3.141592653589793,
-      "radius_m": 44.28829834332768,
+      "radius_m": 44.306881280926504,
       "type": "arc"
     },
     {
-      "length_m": 307.55762738422,
+      "length_m": 307.6866755619896,
       "type": "line"
     },
     {
       "angle_rad": 3.141592653589793,
-      "radius_m": 44.28829834332768,
+      "radius_m": 44.306881280926504,
       "type": "arc"
     },
     {
-      "length_m": 307.55762738422,
+      "length_m": 307.6866755619896,
       "type": "line"
     },
     {
       "angle_rad": -3.141592653589793,
-      "radius_m": 44.28829834332768,
+      "radius_m": 44.306881280926504,
       "type": "arc"
     },
     {
-      "length_m": 307.55762738422,
+      "length_m": 307.6866755619896,
       "type": "line"
     },
     {
-      "length_m": 528.9991191008584,
+      "length_m": 529.221081966622,
       "type": "line"
     },
     {
       "angle_rad": -3.141592653589793,
-      "radius_m": 73.8138305722128,
+      "radius_m": 73.8448021348775,
       "type": "arc"
     },
     {
-      "length_m": 344.4645426703264,
+      "length_m": 344.60907662942833,
       "type": "line"
     },
     {
       "angle_rad": 3.141592653589793,
-      "radius_m": 73.8138305722128,
+      "radius_m": 73.8448021348775,
       "type": "arc"
     },
     {
-      "length_m": 344.4645426703264,
+      "length_m": 344.60907662942833,
       "type": "line"
     },
     {
       "angle_rad": -3.141592653589793,
-      "radius_m": 73.8138305722128,
+      "radius_m": 73.8448021348775,
       "type": "arc"
     },
     {
-      "length_m": 344.4645426703264,
+      "length_m": 344.60907662942833,
       "type": "line"
     },
     {
-      "length_m": 246.046101907376,
+      "length_m": 246.14934044959168,
       "type": "line"
     }
   ],
   "start": {
     "heading_rad": 3.141592653589793,
-    "x": -186.9951171875,
-    "z": -221.4414978027342
+    "x": -187.0733184814453,
+    "z": -221.53440856933594
   }
 }

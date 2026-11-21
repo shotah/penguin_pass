@@ -80,13 +80,6 @@ impl fmt::Debug for Course {
 }
 
 impl Course {
-    /// Parses a course description.
-    ///
-    /// The text is JSON. See `docs/course.md` for the file shape. Validation
-    /// failures return [`CourseError`] instead of panicking: bad JSON, an
-    /// empty name, non-positive lengths, a path that does not close, a grade
-    /// discontinuity, grade steeper than 100%, or a net elevation change.
-    ///
     /// The built-in Penguin Pass loop.
     ///
     /// The description is embedded in the binary and parsed once. A corrupt
@@ -1262,5 +1255,254 @@ mod tests {
         });
         let err = Course::from_str(&climbed.to_string()).unwrap_err();
         assert!(err.to_string().contains("net elevation"), "{err}");
+    }
+
+    fn grade_samples(course: &Course) -> Vec<(f64, f32)> {
+        let steps = course.length_m().floor() as usize;
+        (0..steps)
+            .map(|i| {
+                let distance = i as f64;
+                (distance, course.grade_pct_at(distance))
+            })
+            .collect()
+    }
+
+    /// Climb from the first sustained rise through the kick, stopping where
+    /// the grade falls away onto the ridge.
+    fn climb_bounds(samples: &[(f64, f32)]) -> (f64, f64) {
+        let start = samples
+            .iter()
+            .find(|(_, grade)| *grade > 2.0)
+            .map(|(distance, _)| *distance)
+            .expect("climb starts");
+        let mut seen_kick = false;
+        let mut end = start;
+        for (distance, grade) in samples.iter().copied().filter(|(d, _)| *d >= start) {
+            if grade >= 9.0 {
+                seen_kick = true;
+            }
+            if seen_kick && grade < 1.0 {
+                end = distance;
+                break;
+            }
+        }
+        (start, end)
+    }
+
+    fn descent_bounds(samples: &[(f64, f32)], climb_end: f64) -> (f64, f64) {
+        // The ridge wave also dips below -2%. The descent is the first stretch
+        // that stays steeper than -8% for 40 m.
+        let start = samples
+            .windows(40)
+            .find(|window| {
+                window[0].0 >= climb_end && window.iter().all(|(_, grade)| *grade < -8.0)
+            })
+            .map(|window| window[0].0)
+            .expect("descent starts");
+        let mut end = samples
+            .last()
+            .map(|(distance, _)| *distance)
+            .unwrap_or(start);
+        for (distance, grade) in samples.iter().copied().filter(|(d, _)| *d >= start) {
+            if grade > -1.0 {
+                end = distance;
+                break;
+            }
+        }
+        (start, end)
+    }
+
+    fn stddev(values: &[f32]) -> f64 {
+        let n = values.len() as f64;
+        let mean = values.iter().map(|value| f64::from(*value)).sum::<f64>() / n;
+        let variance = values
+            .iter()
+            .map(|value| {
+                let delta = f64::from(*value) - mean;
+                delta * delta
+            })
+            .sum::<f64>()
+            / n;
+        variance.sqrt()
+    }
+
+    /// Runs where the grade stays inside a 0.3 point band for at least `min_len` meters.
+    fn plateaus(samples: &[(f64, f32)], min_len: f64) -> Vec<(f64, f64, f32)> {
+        let mut found = Vec::new();
+        let mut index = 0;
+        while index < samples.len() {
+            let origin = samples[index].1;
+            let mut end = index;
+            while end + 1 < samples.len()
+                && (samples[end + 1].1 - origin).abs() <= 0.3
+                && samples[end + 1].0 - samples[index].0 <= 5_000.0
+            {
+                end += 1;
+            }
+            let length = samples[end].0 - samples[index].0;
+            if length >= min_len {
+                let mean = samples[index..=end]
+                    .iter()
+                    .map(|(_, grade)| f64::from(*grade))
+                    .sum::<f64>()
+                    / (end - index + 1) as f64;
+                found.push((samples[index].0, samples[end].0, mean as f32));
+                index = end + 1;
+            } else {
+                index += 1;
+            }
+        }
+        found
+    }
+
+    fn distinct_pitches(means: &[f32], gap: f32) -> usize {
+        let mut ordered = means.to_vec();
+        ordered.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mut count = 1usize;
+        let mut last = ordered[0];
+        for value in ordered.iter().skip(1).copied() {
+            if value - last >= gap {
+                count += 1;
+                last = value;
+            }
+        }
+        count
+    }
+
+    fn longest_in_band(samples: &[(f64, f32)], lo: f32, hi: f32) -> Option<(f64, f64)> {
+        let mut best: Option<(f64, f64)> = None;
+        let mut run_start: Option<f64> = None;
+        for (distance, grade) in samples {
+            if (lo..=hi).contains(grade) {
+                if run_start.is_none() {
+                    run_start = Some(*distance);
+                }
+            } else if let Some(start) = run_start.take() {
+                best = longer_run(best, start, *distance);
+            }
+        }
+        if let Some(start) = run_start
+            && let Some((last, _)) = samples.last()
+        {
+            best = longer_run(best, start, *last);
+        }
+        best
+    }
+
+    fn longer_run(best: Option<(f64, f64)>, start: f64, end: f64) -> Option<(f64, f64)> {
+        match best {
+            Some((open, close)) if close - open >= end - start => best,
+            _ => Some((start, end)),
+        }
+    }
+
+    #[test]
+    fn penguin_pass_climb_is_not_one_pitch() {
+        let course = Course::penguin_pass();
+        let samples = grade_samples(&course);
+        let (start, end) = climb_bounds(&samples);
+        let climb: Vec<(f64, f32)> = samples
+            .iter()
+            .copied()
+            .filter(|(distance, _)| *distance >= start && *distance < end)
+            .collect();
+        let pitches: Vec<f32> = plateaus(&climb, 80.0)
+            .into_iter()
+            .map(|(_, _, mean)| mean)
+            .filter(|mean| *mean > 2.0)
+            .collect();
+        let distinct = distinct_pitches(&pitches, 1.5);
+        assert!(
+            distinct >= 4,
+            "climb plateaus {pitches:?} collapse to {distinct} pitches; a constant ramp would be 1"
+        );
+        let values: Vec<f32> = climb.iter().map(|(_, grade)| *grade).collect();
+        let spread = stddev(&values);
+        // A single 8% ramp stays near 0.5 once the opening transition is
+        // excluded by the plateau count; the spread here is the whole climb,
+        // including transitions, and a flat ramp still lands well under 1.2.
+        assert!(
+            spread > 1.2,
+            "climb grade standard deviation {spread:.2} is too small for a varied pitch (bounds {start:.0}..{end:.0})"
+        );
+    }
+
+    #[test]
+    fn penguin_pass_climb_has_a_breather_and_a_kick() {
+        let course = Course::penguin_pass();
+        let samples = grade_samples(&course);
+        let (start, end) = climb_bounds(&samples);
+        let span = end - start;
+        let climb: Vec<(f64, f32)> = samples
+            .iter()
+            .copied()
+            .filter(|(distance, _)| *distance >= start && *distance < end)
+            .collect();
+        let breather = longest_in_band(&climb, 3.0, 4.2).expect("breather run");
+        let breather_len = breather.1 - breather.0;
+        let breather_mid = (breather.0 + breather.1) * 0.5;
+        assert!(
+            (100.0..=160.0).contains(&breather_len),
+            "breather length {breather_len:.0} m ({breather:?})"
+        );
+        let breather_fraction = (breather_mid - start) / span;
+        assert!(
+            (0.30..=0.60).contains(&breather_fraction),
+            "breather sits at {breather_fraction:.2} of the climb, not around the middle"
+        );
+        let kick = longest_in_band(&climb, 9.5, 10.5).expect("kick run");
+        let kick_len = kick.1 - kick.0;
+        let kick_mid = (kick.0 + kick.1) * 0.5;
+        assert!(
+            (150.0..=260.0).contains(&kick_len),
+            "kick length {kick_len:.0} m ({kick:?})"
+        );
+        let kick_fraction = (kick_mid - start) / span;
+        assert!(
+            kick_fraction >= 0.66,
+            "kick midpoint is at {kick_fraction:.2} of the climb, not in the upper third"
+        );
+    }
+
+    #[test]
+    fn penguin_pass_descent_changes_pitch() {
+        let course = Course::penguin_pass();
+        let samples = grade_samples(&course);
+        let (climb_start, climb_end) = climb_bounds(&samples);
+        let (descent_start, descent_end) = descent_bounds(&samples, climb_end);
+        let descent: Vec<(f64, f32)> = samples
+            .iter()
+            .copied()
+            .filter(|(distance, _)| *distance >= descent_start && *distance < descent_end)
+            .collect();
+        let values: Vec<f32> = descent.iter().map(|(_, grade)| *grade).collect();
+        let spread = stddev(&values);
+        assert!(
+            spread > 1.0,
+            "descent grade standard deviation {spread:.2} still looks like one ramp"
+        );
+        let easing = longest_in_band(&descent, -7.5, -4.5).expect("descent easing");
+        assert!(
+            easing.1 - easing.0 >= 80.0,
+            "descent easing is only {:.0} m",
+            easing.1 - easing.0
+        );
+        let steep = longest_in_band(&descent, -12.0, -9.0).expect("steep descent");
+        assert!(
+            steep.1 - steep.0 >= 100.0,
+            "steep descent run is only {:.0} m",
+            steep.1 - steep.0
+        );
+        let ridge: Vec<f32> = samples
+            .iter()
+            .filter(|(distance, _)| *distance >= climb_end && *distance < descent_start)
+            .map(|(_, grade)| *grade)
+            .collect();
+        let ridge_max = ridge.iter().copied().fold(f32::MIN, f32::max);
+        let ridge_min = ridge.iter().copied().fold(f32::MAX, f32::min);
+        assert!(
+            ridge_max > 4.0 && ridge_min < -4.0,
+            "ridge between {climb_end:.0} and {descent_start:.0} spans {ridge_min:.1}..{ridge_max:.1}, climb started at {climb_start:.0}"
+        );
     }
 }

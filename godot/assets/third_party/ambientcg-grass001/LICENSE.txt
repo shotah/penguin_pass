@@ -1,0 +1,12 @@
+ambientCG assets are released under the Creative Commons CC0 1.0 Universal
+licence. This covers the downloadable files.
+
+https://docs.ambientcg.com/license/
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The ambientCG licence page states that you can copy, modify, distribute and
+perform the assets, including for commercial purposes, without asking
+permission. Credit is not required.
+
+This file is a copy of that statement. The Grass001 zip itself does not
+contain a licence file.

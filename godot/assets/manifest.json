@@ -1,0 +1,1394 @@
+{
+  "generator": "Measured in Godot 4.7.2 mobile renderer with GLTFDocument and Image.load on 2026-11-20.",
+  "assets": [
+    {
+      "id": "pine_1",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_conifer",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/pine_1.gltf",
+      "license": "CC0-1.0",
+      "triangles": 3947,
+      "height_m": 7.317,
+      "footprint_radius_m": 2.472,
+      "origin_at_base": false,
+      "lift_m": 0.235,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -2.449,
+        -0.235,
+        -2.477
+      ],
+      "aabb_size_m": [
+        4.945,
+        7.317,
+        4.538
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_NormalTree",
+          "triangles": 3177,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Leaves_Pine",
+          "triangles": 770,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (3947). Pivot is 0.235 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "pine_2",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_conifer",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/pine_2.gltf",
+      "license": "CC0-1.0",
+      "triangles": 3648,
+      "height_m": 7.376,
+      "footprint_radius_m": 2.864,
+      "origin_at_base": false,
+      "lift_m": 0.235,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -2.892,
+        -0.235,
+        -2.694
+      ],
+      "aabb_size_m": [
+        5.728,
+        7.376,
+        5.221
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_NormalTree",
+          "triangles": 2878,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Leaves_Pine",
+          "triangles": 770,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (3648). Pivot is 0.235 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "pine_3",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_conifer",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/pine_3.gltf",
+      "license": "CC0-1.0",
+      "triangles": 4964,
+      "height_m": 7.392,
+      "footprint_radius_m": 1.998,
+      "origin_at_base": false,
+      "lift_m": 0.235,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -2.114,
+        -0.235,
+        -2.292
+      ],
+      "aabb_size_m": [
+        3.611,
+        7.392,
+        3.996
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_NormalTree",
+          "triangles": 4502,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Leaves_Pine",
+          "triangles": 462,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (4964). Pivot is 0.235 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "pine_4",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_conifer",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/pine_4.gltf",
+      "license": "CC0-1.0",
+      "triangles": 3370,
+      "height_m": 10.236,
+      "footprint_radius_m": 2.901,
+      "origin_at_base": false,
+      "lift_m": 0.235,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -2.872,
+        -0.235,
+        -2.946
+      ],
+      "aabb_size_m": [
+        5.802,
+        10.236,
+        5.371
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_NormalTree",
+          "triangles": 2160,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Leaves_Pine",
+          "triangles": 1210,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (3370). Pivot is 0.235 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "pine_5",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_conifer",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/pine_5.gltf",
+      "license": "CC0-1.0",
+      "triangles": 1646,
+      "height_m": 8.724,
+      "footprint_radius_m": 3.21,
+      "origin_at_base": false,
+      "lift_m": 0.235,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -2.988,
+        -0.235,
+        -3.778
+      ],
+      "aabb_size_m": [
+        6.42,
+        8.724,
+        6.222
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_NormalTree",
+          "triangles": 488,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Leaves_Pine",
+          "triangles": 1158,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (1646). Pivot is 0.235 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "common_tree_3",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_broadleaf",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/common_tree_3.gltf",
+      "license": "CC0-1.0",
+      "triangles": 3505,
+      "height_m": 9.425,
+      "footprint_radius_m": 2.121,
+      "origin_at_base": false,
+      "lift_m": 0.243,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -1.986,
+        -0.243,
+        -2.061
+      ],
+      "aabb_size_m": [
+        4.063,
+        9.425,
+        4.241
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_NormalTree",
+          "triangles": 1705,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Leaves_NormalTree",
+          "triangles": 1800,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (3505). Pivot is 0.243 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "common_tree_4",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_broadleaf",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/common_tree_4.gltf",
+      "license": "CC0-1.0",
+      "triangles": 4066,
+      "height_m": 9.438,
+      "footprint_radius_m": 1.913,
+      "origin_at_base": false,
+      "lift_m": 0.243,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -1.797,
+        -0.243,
+        -2.08
+      ],
+      "aabb_size_m": [
+        3.826,
+        9.438,
+        3.755
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_NormalTree",
+          "triangles": 3280,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Leaves_NormalTree",
+          "triangles": 786,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (4066). Pivot is 0.243 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "common_tree_5",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_broadleaf",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/common_tree_5.gltf",
+      "license": "CC0-1.0",
+      "triangles": 3182,
+      "height_m": 7.006,
+      "footprint_radius_m": 2.11,
+      "origin_at_base": false,
+      "lift_m": 0.243,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -1.912,
+        -0.243,
+        -2.162
+      ],
+      "aabb_size_m": [
+        3.671,
+        7.006,
+        4.22
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_NormalTree",
+          "triangles": 1882,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Leaves_NormalTree",
+          "triangles": 1300,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (3182). Pivot is 0.243 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "dead_tree_4",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_dead",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/dead_tree_4.gltf",
+      "license": "CC0-1.0",
+      "triangles": 5702,
+      "height_m": 12.771,
+      "footprint_radius_m": 3.98,
+      "origin_at_base": false,
+      "lift_m": 0.336,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -3.363,
+        -0.336,
+        -3.599
+      ],
+      "aabb_size_m": [
+        7.961,
+        12.771,
+        7.732
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_DeadTree",
+          "triangles": 5702,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (5702). Pivot is 0.336 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "dead_tree_5",
+      "pack": "quaternius-stylized-nature",
+      "kind": "tree_dead",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/dead_tree_5.gltf",
+      "license": "CC0-1.0",
+      "triangles": 5648,
+      "height_m": 16.437,
+      "footprint_radius_m": 4.207,
+      "origin_at_base": false,
+      "lift_m": 0.336,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -3.971,
+        -0.336,
+        -4.797
+      ],
+      "aabb_size_m": [
+        8.356,
+        16.437,
+        8.413
+      ],
+      "surfaces": [
+        {
+          "material": "Bark_DeadTree",
+          "triangles": 5648,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 1500-triangle tree guide (5648). Pivot is 0.336 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "bush_common_flowers",
+      "pack": "quaternius-stylized-nature",
+      "kind": "bush",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/bush_common_flowers.gltf",
+      "license": "CC0-1.0",
+      "triangles": 1368,
+      "height_m": 1.582,
+      "footprint_radius_m": 0.983,
+      "origin_at_base": false,
+      "lift_m": 0.235,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.923,
+        -0.235,
+        -0.974
+      ],
+      "aabb_size_m": [
+        1.915,
+        1.582,
+        1.965
+      ],
+      "surfaces": [
+        {
+          "material": "Leaves_NormalTree",
+          "triangles": 900,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Flowers",
+          "triangles": 468,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Above the rough 500-triangle bush guide (1368). Pivot is 0.235 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "plant_1_big",
+      "pack": "quaternius-stylized-nature",
+      "kind": "bush",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/plant_1_big.gltf",
+      "license": "CC0-1.0",
+      "triangles": 360,
+      "height_m": 2.348,
+      "footprint_radius_m": 0.977,
+      "origin_at_base": true,
+      "lift_m": 0.035,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.871,
+        -0.035,
+        -1.036
+      ],
+      "aabb_size_m": [
+        1.807,
+        2.348,
+        1.954
+      ],
+      "surfaces": [
+        {
+          "material": "Leaves",
+          "triangles": 360,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Leafy undergrowth plant from the same atlas as the ferns and clovers. Pivot is 0.035 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "fern_1",
+      "pack": "quaternius-stylized-nature",
+      "kind": "bush",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/fern_1.gltf",
+      "license": "CC0-1.0",
+      "triangles": 288,
+      "height_m": 0.84,
+      "footprint_radius_m": 1.413,
+      "origin_at_base": false,
+      "lift_m": 0.077,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -1.381,
+        -0.077,
+        -1.279
+      ],
+      "aabb_size_m": [
+        2.827,
+        0.84,
+        2.652
+      ],
+      "surfaces": [
+        {
+          "material": "Leaves",
+          "triangles": 288,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Fern. Filed as bush because the scatter kinds have no fern value. Pivot is 0.077 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "grass_common_short",
+      "pack": "quaternius-stylized-nature",
+      "kind": "grass",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/grass_common_short.gltf",
+      "license": "CC0-1.0",
+      "triangles": 155,
+      "height_m": 1.334,
+      "footprint_radius_m": 0.369,
+      "origin_at_base": true,
+      "lift_m": 0.022,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.356,
+        -0.022,
+        -0.479
+      ],
+      "aabb_size_m": [
+        0.639,
+        1.334,
+        0.737
+      ],
+      "surfaces": [
+        {
+          "material": "Grass",
+          "triangles": 155,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Modeled blades, not a card. Above the rough 50-triangle tuft guide (155). Pivot is 0.022 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "grass_common_tall",
+      "pack": "quaternius-stylized-nature",
+      "kind": "grass",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/grass_common_tall.gltf",
+      "license": "CC0-1.0",
+      "triangles": 326,
+      "height_m": 1.873,
+      "footprint_radius_m": 0.497,
+      "origin_at_base": true,
+      "lift_m": 0.031,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.404,
+        -0.031,
+        -0.479
+      ],
+      "aabb_size_m": [
+        0.895,
+        1.873,
+        0.993
+      ],
+      "surfaces": [
+        {
+          "material": "Grass",
+          "triangles": 326,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Modeled blades, not a card. Above the rough 50-triangle tuft guide (326). Pivot is 0.031 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "grass_wispy_short",
+      "pack": "quaternius-stylized-nature",
+      "kind": "grass",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/grass_wispy_short.gltf",
+      "license": "CC0-1.0",
+      "triangles": 494,
+      "height_m": 1.072,
+      "footprint_radius_m": 0.661,
+      "origin_at_base": false,
+      "lift_m": 0.086,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.728,
+        -0.086,
+        -0.583
+      ],
+      "aabb_size_m": [
+        1.322,
+        1.072,
+        1.21
+      ],
+      "surfaces": [
+        {
+          "material": "Grass",
+          "triangles": 494,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Modeled blades, not a card. Above the rough 50-triangle tuft guide (494). Pivot is 0.086 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "grass_wispy_tall",
+      "pack": "quaternius-stylized-nature",
+      "kind": "grass",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/grass_wispy_tall.gltf",
+      "license": "CC0-1.0",
+      "triangles": 622,
+      "height_m": 1.672,
+      "footprint_radius_m": 0.797,
+      "origin_at_base": true,
+      "lift_m": 0.036,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.739,
+        -0.036,
+        -0.819
+      ],
+      "aabb_size_m": [
+        1.54,
+        1.672,
+        1.594
+      ],
+      "surfaces": [
+        {
+          "material": "Grass",
+          "triangles": 622,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Modeled blades, not a card. Above the rough 50-triangle tuft guide (622). Pivot is 0.036 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "flower_3_single",
+      "pack": "quaternius-stylized-nature",
+      "kind": "flower",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/flower_3_single.gltf",
+      "license": "CC0-1.0",
+      "triangles": 285,
+      "height_m": 2.068,
+      "footprint_radius_m": 0.453,
+      "origin_at_base": true,
+      "lift_m": 0.018,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.481,
+        -0.018,
+        -0.521
+      ],
+      "aabb_size_m": [
+        0.907,
+        2.068,
+        0.878
+      ],
+      "surfaces": [
+        {
+          "material": "Leaves",
+          "triangles": 270,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Flowers",
+          "triangles": 15,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "flower_3_group",
+      "pack": "quaternius-stylized-nature",
+      "kind": "flower",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/flower_3_group.gltf",
+      "license": "CC0-1.0",
+      "triangles": 755,
+      "height_m": 2.055,
+      "footprint_radius_m": 0.796,
+      "origin_at_base": true,
+      "lift_m": 0.035,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.614,
+        -0.035,
+        -0.802
+      ],
+      "aabb_size_m": [
+        1.488,
+        2.055,
+        1.591
+      ],
+      "surfaces": [
+        {
+          "material": "Leaves",
+          "triangles": 710,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Flowers",
+          "triangles": 45,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Pivot is 0.035 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "flower_4_single",
+      "pack": "quaternius-stylized-nature",
+      "kind": "flower",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/flower_4_single.gltf",
+      "license": "CC0-1.0",
+      "triangles": 642,
+      "height_m": 2.419,
+      "footprint_radius_m": 0.536,
+      "origin_at_base": true,
+      "lift_m": 0.03,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 2,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.505,
+        -0.03,
+        -0.402
+      ],
+      "aabb_size_m": [
+        1.072,
+        2.419,
+        0.773
+      ],
+      "surfaces": [
+        {
+          "material": "Leaves",
+          "triangles": 162,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        },
+        {
+          "material": "Flowers",
+          "triangles": 480,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Pivot is 0.03 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "clover_1",
+      "pack": "quaternius-stylized-nature",
+      "kind": "flower",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/clover_1.gltf",
+      "license": "CC0-1.0",
+      "triangles": 379,
+      "height_m": 1.145,
+      "footprint_radius_m": 0.398,
+      "origin_at_base": true,
+      "lift_m": 0.013,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": true,
+      "vertex_color": true,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.502,
+        -0.013,
+        -0.4
+      ],
+      "aabb_size_m": [
+        0.796,
+        1.145,
+        0.764
+      ],
+      "surfaces": [
+        {
+          "material": "Leaves",
+          "triangles": 379,
+          "transparency": "alpha_scissor",
+          "alpha_scissor_threshold": 0.2,
+          "cull_disabled": true,
+          "vertex_color": true
+        }
+      ],
+      "notes": "Low clover patch. Filed as flower."
+    },
+    {
+      "id": "rock_medium_1",
+      "pack": "quaternius-stylized-nature",
+      "kind": "rock",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/rock_medium_1.gltf",
+      "license": "CC0-1.0",
+      "triangles": 342,
+      "height_m": 2.26,
+      "footprint_radius_m": 1.613,
+      "origin_at_base": false,
+      "lift_m": 0.271,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": false,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -1.727,
+        -0.271,
+        -1.15
+      ],
+      "aabb_size_m": [
+        3.225,
+        2.26,
+        2.989
+      ],
+      "surfaces": [
+        {
+          "material": "Rocks",
+          "triangles": 342,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": false
+        }
+      ],
+      "notes": "Pivot is 0.271 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "rock_medium_2",
+      "pack": "quaternius-stylized-nature",
+      "kind": "rock",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/rock_medium_2.gltf",
+      "license": "CC0-1.0",
+      "triangles": 244,
+      "height_m": 1.899,
+      "footprint_radius_m": 1.524,
+      "origin_at_base": false,
+      "lift_m": 0.051,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": false,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -1.714,
+        -0.051,
+        -1.159
+      ],
+      "aabb_size_m": [
+        3.049,
+        1.899,
+        2.479
+      ],
+      "surfaces": [
+        {
+          "material": "Rocks",
+          "triangles": 244,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": false
+        }
+      ],
+      "notes": "Pivot is 0.051 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "rock_medium_3",
+      "pack": "quaternius-stylized-nature",
+      "kind": "rock",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/rock_medium_3.gltf",
+      "license": "CC0-1.0",
+      "triangles": 522,
+      "height_m": 2.316,
+      "footprint_radius_m": 1.738,
+      "origin_at_base": false,
+      "lift_m": 0.316,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": false,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -1.824,
+        -0.316,
+        -0.89
+      ],
+      "aabb_size_m": [
+        3.42,
+        2.316,
+        3.476
+      ],
+      "surfaces": [
+        {
+          "material": "Rocks",
+          "triangles": 522,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": false
+        }
+      ],
+      "notes": "Above the rough 500-triangle rock guide (522). Pivot is 0.316 m above the lowest vertex. Lift the instance by lift_m so the base sits on the ground."
+    },
+    {
+      "id": "pebble_round_1",
+      "pack": "quaternius-stylized-nature",
+      "kind": "rock",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/pebble_round_1.gltf",
+      "license": "CC0-1.0",
+      "triangles": 136,
+      "height_m": 0.095,
+      "footprint_radius_m": 0.25,
+      "origin_at_base": true,
+      "lift_m": 0.008,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": false,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.22,
+        -0.008,
+        -0.16
+      ],
+      "aabb_size_m": [
+        0.5,
+        0.095,
+        0.367
+      ],
+      "surfaces": [
+        {
+          "material": "PathRocks",
+          "triangles": 136,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": false
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "pebble_round_2",
+      "pack": "quaternius-stylized-nature",
+      "kind": "rock",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/pebble_round_2.gltf",
+      "license": "CC0-1.0",
+      "triangles": 114,
+      "height_m": 0.094,
+      "footprint_radius_m": 0.225,
+      "origin_at_base": true,
+      "lift_m": 0.003,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": false,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.215,
+        -0.003,
+        -0.222
+      ],
+      "aabb_size_m": [
+        0.449,
+        0.094,
+        0.411
+      ],
+      "surfaces": [
+        {
+          "material": "PathRocks",
+          "triangles": 114,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": false
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "pebble_round_3",
+      "pack": "quaternius-stylized-nature",
+      "kind": "rock",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/pebble_round_3.gltf",
+      "license": "CC0-1.0",
+      "triangles": 128,
+      "height_m": 0.099,
+      "footprint_radius_m": 0.242,
+      "origin_at_base": true,
+      "lift_m": 0.002,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": false,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.227,
+        -0.002,
+        -0.221
+      ],
+      "aabb_size_m": [
+        0.45,
+        0.099,
+        0.485
+      ],
+      "surfaces": [
+        {
+          "material": "PathRocks",
+          "triangles": 128,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": false
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "pebble_square_1",
+      "pack": "quaternius-stylized-nature",
+      "kind": "rock",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/pebble_square_1.gltf",
+      "license": "CC0-1.0",
+      "triangles": 104,
+      "height_m": 0.13,
+      "footprint_radius_m": 0.22,
+      "origin_at_base": true,
+      "lift_m": 0.002,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": false,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.233,
+        -0.002,
+        -0.202
+      ],
+      "aabb_size_m": [
+        0.435,
+        0.13,
+        0.44
+      ],
+      "surfaces": [
+        {
+          "material": "PathRocks",
+          "triangles": 104,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": false
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "rockpath_square_small_2",
+      "pack": "quaternius-stylized-nature",
+      "kind": "rock",
+      "path": "res://assets/third_party/quaternius-stylized-nature/models/rockpath_square_small_2.gltf",
+      "license": "CC0-1.0",
+      "triangles": 559,
+      "height_m": 0.149,
+      "footprint_radius_m": 0.496,
+      "origin_at_base": true,
+      "lift_m": 0.013,
+      "up_axis": "Y",
+      "scale": "1 unit = 1 metre. The glTF node has no translation, rotation, or scale.",
+      "material_count": 1,
+      "mesh_count": 1,
+      "alpha_cutout": false,
+      "vertex_color": false,
+      "vertex_color_use_as_albedo": false,
+      "aabb_min_m": [
+        -0.498,
+        -0.013,
+        -0.494
+      ],
+      "aabb_size_m": [
+        0.993,
+        0.149,
+        0.966
+      ],
+      "surfaces": [
+        {
+          "material": "PathRocks",
+          "triangles": 559,
+          "transparency": "none",
+          "alpha_scissor_threshold": null,
+          "cull_disabled": true,
+          "vertex_color": false
+        }
+      ],
+      "notes": "Flat path stone from the pack's rock-path set. Treat as a ground rock, not a repeating road tile. Above the rough 500-triangle rock guide (559)."
+    },
+    {
+      "id": "ground_meadow",
+      "pack": "ambientcg-grass001",
+      "kind": "ground_texture",
+      "path": "res://assets/third_party/ambientcg-grass001/textures/Grass001_1K-JPG_Color.jpg",
+      "license": "CC0-1.0",
+      "resolution": [
+        1024,
+        1024
+      ],
+      "maps": {
+        "albedo": "res://assets/third_party/ambientcg-grass001/textures/Grass001_1K-JPG_Color.jpg",
+        "normal": "res://assets/third_party/ambientcg-grass001/textures/Grass001_1K-JPG_NormalGL.jpg",
+        "roughness": "res://assets/third_party/ambientcg-grass001/textures/Grass001_1K-JPG_Roughness.jpg"
+      },
+      "normal_space": "opengl",
+      "tile_m": 4.0,
+      "native_sample_m": 1.4,
+      "notes": "Photographed lawn, 1.4 m sample. Tile at 4 m so the blades stay soft next to the painted trees."
+    },
+    {
+      "id": "ground_forest",
+      "pack": "polyhaven",
+      "kind": "ground_texture",
+      "path": "res://assets/third_party/polyhaven/textures/forest_ground_06_diff_1k.jpg",
+      "license": "CC0-1.0",
+      "resolution": [
+        1024,
+        1024
+      ],
+      "maps": {
+        "albedo": "res://assets/third_party/polyhaven/textures/forest_ground_06_diff_1k.jpg",
+        "normal": "res://assets/third_party/polyhaven/textures/forest_ground_06_nor_gl_1k.jpg",
+        "roughness": "res://assets/third_party/polyhaven/textures/forest_ground_06_rough_1k.jpg"
+      },
+      "normal_space": "opengl",
+      "tile_m": 4.0,
+      "native_sample_m": 2.11,
+      "notes": "Forest soil. Native sample is 2.11 m; 4 m keeps the twigs small."
+    },
+    {
+      "id": "ground_rock",
+      "pack": "polyhaven",
+      "kind": "ground_texture",
+      "path": "res://assets/third_party/polyhaven/textures/rock_ground_02_diff_1k.jpg",
+      "license": "CC0-1.0",
+      "resolution": [
+        1024,
+        1024
+      ],
+      "maps": {
+        "albedo": "res://assets/third_party/polyhaven/textures/rock_ground_02_diff_1k.jpg",
+        "normal": "res://assets/third_party/polyhaven/textures/rock_ground_02_nor_gl_1k.jpg",
+        "roughness": "res://assets/third_party/polyhaven/textures/rock_ground_02_rough_1k.jpg"
+      },
+      "normal_space": "opengl",
+      "tile_m": 6.0,
+      "native_sample_m": 3.0,
+      "notes": "Loose scree. Native sample is 3 m."
+    },
+    {
+      "id": "ground_snow",
+      "pack": "polyhaven",
+      "kind": "ground_texture",
+      "path": "res://assets/third_party/polyhaven/textures/snow_02_diff_1k.jpg",
+      "license": "CC0-1.0",
+      "resolution": [
+        1024,
+        1024
+      ],
+      "maps": {
+        "albedo": "res://assets/third_party/polyhaven/textures/snow_02_diff_1k.jpg",
+        "normal": "res://assets/third_party/polyhaven/textures/snow_02_nor_gl_1k.jpg",
+        "roughness": "res://assets/third_party/polyhaven/textures/snow_02_rough_1k.jpg"
+      },
+      "normal_space": "opengl",
+      "tile_m": 8.0,
+      "native_sample_m": 2.0,
+      "notes": "Soft snow. Native sample is 2 m; tile wider so the footprints do not repeat every stride."
+    },
+    {
+      "id": "ground_gravel",
+      "pack": "polyhaven",
+      "kind": "ground_texture",
+      "path": "res://assets/third_party/polyhaven/textures/gravel_ground_01_diff_1k.jpg",
+      "license": "CC0-1.0",
+      "resolution": [
+        1024,
+        1024
+      ],
+      "maps": {
+        "albedo": "res://assets/third_party/polyhaven/textures/gravel_ground_01_diff_1k.jpg",
+        "normal": "res://assets/third_party/polyhaven/textures/gravel_ground_01_nor_gl_1k.jpg",
+        "roughness": "res://assets/third_party/polyhaven/textures/gravel_ground_01_rough_1k.jpg"
+      },
+      "normal_space": "opengl",
+      "tile_m": 3.0,
+      "native_sample_m": 3.0,
+      "notes": "Road shoulder. Native sample is 3 m."
+    },
+    {
+      "id": "road_asphalt",
+      "pack": "polyhaven",
+      "kind": "road_texture",
+      "path": "res://assets/third_party/polyhaven/textures/asphalt_01_diff_1k.jpg",
+      "license": "CC0-1.0",
+      "resolution": [
+        1024,
+        1024
+      ],
+      "maps": {
+        "albedo": "res://assets/third_party/polyhaven/textures/asphalt_01_diff_1k.jpg",
+        "normal": "res://assets/third_party/polyhaven/textures/asphalt_01_nor_gl_1k.jpg",
+        "roughness": "res://assets/third_party/polyhaven/textures/asphalt_01_rough_1k.jpg"
+      },
+      "normal_space": "opengl",
+      "tile_m": 4.0,
+      "native_sample_m": 2.08,
+      "notes": "Plain dark asphalt, no painted lane lines. Native sample is 2.08 m."
+    },
+    {
+      "id": "sky_morning",
+      "pack": "polyhaven",
+      "kind": "sky",
+      "path": "res://assets/third_party/polyhaven/sky/kloppenheim_06_puresky_2k.hdr",
+      "license": "CC0-1.0",
+      "resolution": [
+        2048,
+        1024
+      ],
+      "format": "hdr",
+      "notes": "Kloppenheim 06 pure sky, 2K equirectangular. Partly cloudy sunrise. No ground in the panorama."
+    }
+  ]
+}

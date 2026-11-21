@@ -4,6 +4,20 @@ extends SceneTree
 ## render as an em dash. A failed check quits non-zero and skips the sentinel.
 
 func _init() -> void:
+	# ./x smoke cannot forward arguments after `--`. Set the same switches
+	# the command line would, before the scene is added, so this process
+	# never opens Bluetooth and never reads the owner's settings.
+	var settings_path := "/tmp/penguin-pass-smoke-%d.toml" % OS.get_process_id()
+	var settings_file := FileAccess.open(settings_path, FileAccess.WRITE)
+	if settings_file == null:
+		_fail("could not write the temp settings file")
+		return
+	settings_file.store_string("this is not toml [[[\n")
+	settings_file.close()
+	OS.set_environment("PENGUIN_PASS_SETTINGS", settings_path)
+	OS.set_environment("PENGUIN_PASS_FAKE_TRAINER", "1")
+	OS.set_environment("PENGUIN_PASS_DASHBOARD_PORT", "0")
+	OS.set_environment("PENGUIN_PASS_DASHBOARD_LOOPBACK", "1")
 	var version := _probe()
 	if version.is_empty():
 		return
@@ -81,15 +95,28 @@ func _exercise(game: Node, version: String) -> void:
 	if grade_text.find(".") < 0:
 		_fail("grade should show one decimal, got '%s'" % grade_text)
 		return
-	var elevation := str(game.hud_elevation_text())
-	if elevation == "0" or elevation == "—":
-		_fail("elevation should be a real altitude, got '%s'" % elevation)
+	var rider_at: Vector3 = game.rider_position()
+	var course_at: Vector3 = game.course_position()
+	if rider_at.distance_to(course_at) > 1.5:
+		_fail("rider is not on the course: %s vs %s" % [rider_at, course_at])
+		return
+	var grade_label := str(game.hud_grade_text())
+	var grade_value := float(game.grade_pct())
+	if abs(float(grade_label) - grade_value) > 0.15:
+		_fail("grade label '%s' does not match %s" % [grade_label, grade_value])
+		return
+	if str(game.hud_elevation_text()) == "—":
+		_fail("elevation should be a number")
 		return
 	if int(game.profile_point_count()) < 2:
 		_fail("elevation profile is empty")
 		return
 	if int(game.lap()) < 1:
-		_fail("lap should start at 1")
+		_fail("lap should be at least 1 after moving")
+		return
+	game.debug_seek(game.course_length_m() + 40.0, 400.0, 0.0)
+	if int(game.lap()) < 2:
+		_fail("a full lap should increment the lap counter, got %s" % game.lap())
 		return
 	if str(game.hud_status_text()).find("Simulated") < 0:
 		_fail("status line missing, got '%s'" % game.hud_status_text())
@@ -116,8 +143,164 @@ func _exercise(game: Node, version: String) -> void:
 	if str(game.hud_power_text()) == "—":
 		_fail("power is not a missing sensor")
 		return
+	if str(game.theme_name()) != "alpine":
+		_fail("theme name '%s'" % game.theme_name())
+		return
+	if game.theme_fell_back():
+		_fail("alpine theme should load")
+		return
+	if not game.debug_bad_theme_falls_back():
+		_fail("a broken theme was accepted")
+		return
+	if game.scatter_count() < 10:
+		_fail("scatter placed too little: %s" % game.scatter_count())
+		return
+	if game.scatter_checksum() != game.debug_scatter_checksum_again():
+		_fail("scatter checksum changed between runs")
+		return
+	if game.scatter_road_violations() != 0:
+		_fail("scatter sits on the road: %s" % game.scatter_road_violations())
+		return
+	if game.wheel_angle() < 1.0:
+		_fail("wheels did not turn: %s" % game.wheel_angle())
+		return
+	if game.crank_angle() < 0.5:
+		_fail("cranks did not turn: %s" % game.crank_angle())
+		return
+	var crank_stopped: float = game.crank_angle()
+	game.debug_set_target_power(0.0)
+	game.debug_advance(0.4)
+	if abs(float(game.crank_angle()) - crank_stopped) > 0.01:
+		_fail("cranks moved while coasting")
+		return
+	if not game.unknown_kind_is_empty():
+		_fail("unknown scatter kind resolved to a mesh")
+		return
+	var assets := str(game.asset_line())
+	if not assets.begins_with("PENGUIN_PASS_ASSETS models="):
+		_fail("asset line missing: %s" % assets)
+		return
+	if assets.find("textures=") < 0 or assets.find("sky=") < 0:
+		_fail("asset line incomplete: %s" % assets)
+		return
+	if FileAccess.file_exists("res://assets/manifest.json") and game.asset_model_count() < 1:
+		_fail("manifest present but no models parsed")
+		return
+	if str(game.settings_warning()).find("could not parse") < 0:
+		_fail("corrupt settings did not warn: '%s'" % game.settings_warning())
+		return
+	if not _menu_and_trainer(game):
+		return
+	if game is Node:
+		game.free()
 	print("PENGUIN_PASS_SMOKE_OK %s" % version)
 	quit(0)
+
+
+func _menu_and_trainer(game: Node) -> bool:
+	game.debug_menu_open()
+	if not game.debug_menu_open_state():
+		_fail("menu did not open")
+		return false
+	if str(game.debug_menu_title()) != "Settings":
+		_fail("menu title '%s'" % game.debug_menu_title())
+		return false
+	game.debug_menu_action("down")
+	game.debug_menu_action("down")
+	game.debug_menu_action("left")
+	if abs(float(game.debug_difficulty()) - 0.45) > 0.001:
+		_fail("difficulty did not step to 45 percent: %s" % game.debug_difficulty())
+		return false
+	game.debug_menu_action("down")
+	game.debug_menu_action("right")
+	if abs(float(game.debug_rider_mass_kg()) - 75.5) > 0.01:
+		_fail("rider mass did not step: %s" % game.debug_rider_mass_kg())
+		return false
+	game.debug_menu_close()
+	if game.debug_menu_open_state():
+		_fail("menu did not close")
+		return false
+	var saved := FileAccess.get_file_as_string(str(game.settings_file()))
+	if saved.find("75.5") < 0:
+		_fail("settings file did not store the new weight: %s" % saved)
+		return false
+	if abs(float(game.debug_reload_settings()) - 75.5) > 0.01:
+		_fail("a second load did not read the weight back")
+		return false
+	game.debug_menu_open()
+	game.debug_menu_action("accept")
+	game.debug_advance(0.35)
+	var found := str(game.debug_discovered())
+	if found.find("Fake Neo 2T") < 0 or found.find("Fake Kickr") < 0:
+		_fail("fake trainers were not listed: %s" % found)
+		return false
+	if not found.begins_with("Fake Neo 2T"):
+		_fail("strongest trainer should be first: %s" % found)
+		return false
+	game.debug_menu_action("accept")
+	game.debug_advance(0.4)
+	if str(game.debug_status_line()).find("connected") < 0:
+		_fail("fake trainer did not connect: %s" % game.debug_status_line())
+		return false
+	if str(game.hud_power_text()) != "210":
+		_fail("trainer power did not reach the HUD: %s" % game.hud_power_text())
+		return false
+	if str(game.hud_heart_text()) != "142":
+		_fail("trainer heart rate did not reach the HUD: %s" % game.hud_heart_text())
+		return false
+	var grade := float(game.grade_pct()) * float(game.debug_difficulty())
+	var sent := float(game.debug_fake_grade())
+	if abs(sent - grade) > 0.15:
+		_fail("grade command %s is not road grade times difficulty %s" % [sent, grade])
+		return false
+	var commands: int = game.debug_fake_grade_count()
+	game.debug_menu_action("back")
+	game.debug_menu_action("down")
+	game.debug_menu_action("accept")
+	game.debug_advance(0.5)
+	if int(game.debug_fake_grade_count()) != commands:
+		_fail("grade commands continued while resistance was off")
+		return false
+	if game.debug_control_trainer():
+		_fail("resistance toggle did not turn off")
+		return false
+	game.debug_menu_action("accept")
+	game.debug_advance(0.5)
+	if not game.debug_control_trainer():
+		_fail("resistance toggle did not turn back on")
+		return false
+	game.debug_menu_action("up")
+	game.debug_menu_action("accept")
+	game.debug_menu_action("down")
+	game.debug_menu_action("down")
+	game.debug_menu_action("down")
+	game.debug_menu_action("accept")
+	game.debug_advance(0.2)
+	if str(game.debug_status_line()).find("Simulated") < 0:
+		_fail("disconnect did not return to the simulated rider: %s" % game.debug_status_line())
+		return false
+	var blocked := "/tmp/penguin-pass-smoke-dir-%d" % OS.get_process_id()
+	DirAccess.make_dir_recursive_absolute(blocked)
+	game.debug_set_settings_path(blocked)
+	game.debug_menu_action("back")
+	game.debug_menu_action("down")
+	game.debug_menu_action("right")
+	if str(game.debug_menu_detail()).find("Could not save") < 0:
+		_fail("a failed save did not show a message: %s" % game.debug_menu_detail())
+		return false
+	game.debug_use_no_bluetooth()
+	game.debug_menu_open()
+	game.debug_menu_action("accept")
+	if str(game.debug_status_line()).find("Bluetooth unavailable") < 0:
+		_fail("no-bluetooth did not report unavailable: %s" % game.debug_status_line())
+		return false
+	var before: float = game.distance_m()
+	game.debug_set_target_power(200.0)
+	game.debug_advance(1.0)
+	if float(game.distance_m()) <= before:
+		_fail("ride stopped when Bluetooth was unavailable")
+		return false
+	return true
 
 
 func _fail(message: String) -> void:

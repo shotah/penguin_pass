@@ -1,5 +1,7 @@
 # Penguin Pass
 
+<img src="docs/img/logo.svg" alt="Penguin Pass logo" width="160">
+
 A native Linux indoor-cycling game. Pair a smart trainer over Bluetooth,
 ride a 5 km mountain loop, and put the ride on the TV. No Wine, no
 controller hacks.
@@ -36,6 +38,17 @@ Tacx Neo 2T  <-- BLE / FTMS -->  pp-trainer  -->  pp-course (physics)
 - With no trainer connected, a simulated rider drives the game from the
   keyboard. Development and tests do not need the bike.
 
+## Courses
+
+A course is a data file, not code. `crates/pp-course/courses/penguin_pass.json`
+lists the road as straights and arcs plus a gradient profile, and
+`Course::from_str` loads any other file in the same format. The 3D world
+(terrain, road, scenery) is generated from the course at startup, so a
+new route does not need hand-built scenery. See `docs/course.md`.
+
+Not built yet: choosing between courses in the game, per-course themes
+(alpine, desert), and routes generated from a seed and a distance.
+
 ## Layout
 
 | Path | What it holds |
@@ -45,8 +58,12 @@ Tacx Neo 2T  <-- BLE / FTMS -->  pp-trainer  -->  pp-course (physics)
 | `crates/pp-course` | Course data, grade lookup, bike physics |
 | `crates/pp-trainer` | `Trainer` trait, BLE trainer (BlueZ), simulated trainer |
 | `crates/pp-cast` | LAN TV dashboard: HTTP page plus live telemetry stream |
-| `crates/pp-godot` | GDExtension library: world, HUD, ride session |
+| `crates/pp-session` | Ride loop without Godot: settings file, trainer connect, TV dashboard |
+| `crates/pp-world` | Which world chunks to load around the rider, and per-chunk seeds |
+| `crates/pp-rider` | The bike and rider as generated meshes, with pedalling poses |
+| `crates/pp-godot` | GDExtension library: world, HUD, rider, camera |
 | `godot/` | Godot project: `project.godot`, scenes, export presets |
+| `godot/assets/` | CC0 models, textures, and sky. Credits in `docs/assets.md` |
 | `docs/` | Design notes and the Steam release checklist |
 | `tools/` | Build container definition and helper scripts |
 
@@ -71,21 +88,32 @@ script. The `Makefile` calls the same script on hosts that have `make`.
 | `./x toolbox` | Build the build container (once) |
 | `./x build` | Build the GDExtension library into `godot/bin/` |
 | `./x test` | Run all Rust tests |
-| `./x lint` | `cargo fmt --check` and `cargo clippy -D warnings` |
+| `./x fmt` | `cargo fmt --check` |
+| `./x clippy` | `cargo clippy -D warnings` |
+| `./x lint` | `./x fmt`, then `./x clippy` |
 | `./x typecheck` | `cargo check` across the workspace |
 | `./x smoke` | Load the game headless in Godot and check it starts |
-| `./x run` | Run the game with Bluetooth access |
+| `./x run` | Open the project with the Godot flatpak, with Bluetooth access |
 | `./x scan` | List nearby trainers over Bluetooth |
+| `./x fetch` | Download the official Godot editor and export templates, checksum-checked, into `tools/godot/` |
+| `./x play` | Build if needed and start the game full screen. `--windowed`, `--resolution WxH` |
+| `./x export` | Export the player build into `dist/penguin-pass-linux-x86_64/` |
+| `./x package` | Make a versioned `.tar.gz` of the export and print its SHA-256 |
 
-Narrow `test`, `lint`, and `typecheck` to one crate with `CRATE=`, for
-example `CRATE=pp-core ./x test`. `PROFILE=release ./x build` makes the
-release library.
+Narrow `test`, `fmt`, `clippy`, `lint`, and `typecheck` to one crate
+with `CRATE=`, for example `CRATE=pp-core ./x test`.
+`PROFILE=release ./x build` makes the release library.
+
+`PP_NATIVE=1` runs cargo on the host instead of in the build container.
+`GODOT=/path/to/godot ./x smoke` uses that binary instead of the Godot
+flatpak. CI sets both.
 
 ## Checks
 
-After `git init`, run `lefthook install`. `pre-commit` runs `./x lint`
-when Rust or Cargo files are staged. `pre-push` runs `./x typecheck`,
-then `./x test`. GitHub Actions runs the same cargo commands on
+After `git init`, run `lefthook install`. `pre-commit` runs `./x fmt`
+and `./x clippy` in parallel when Rust or Cargo files are staged.
+`pre-push` runs `./x typecheck`, then `./x test`. GitHub Actions runs
+`./x lint`, `./x typecheck`, `./x test`, and `./x smoke` on
 `ubuntu-latest`. Details are in `docs/dev-workflow.md`.
 
 ## Riding
@@ -93,10 +121,11 @@ then `./x test`. GitHub Actions runs the same cargo commands on
 1. Wake the trainer (plug it in or pedal).
 2. Close any other app paired to it. A trainer accepts one Bluetooth
    controller at a time.
-3. `./x run`, pick the trainer, ride.
+3. `./x play`, pick the trainer, ride.
 
 Without a trainer, the game starts with the simulated rider. Hold `Up`
-to push more watts and `Down` to ease off.
+to push more watts and `Down` to ease off. `docs/play.md` covers the
+desktop entry and adding the game to Steam as a non-Steam game.
 
 ## TV
 
@@ -119,7 +148,13 @@ Three tiers, in the order they arrive:
 - [ ] M4: settings menu (rider and bike weight, FTP, trainer difficulty,
   trainer pairing, TV dashboard on or off), saved between sessions
 - [ ] M5: Steam export presets and release checklist
-- [ ] Later: Chromecast video, ANT+, heart-rate straps, more courses
+- [ ] M5: Flatpak bundle built by GitHub Actions and attached to GitHub
+  Releases. A Flathub listing is a separate, later step with its own rules
+- [ ] M6: free CC0 art assets, textured terrain and road, a real rider
+- [ ] M7: themes as data (alpine, desert) and a course picker
+- [ ] M8: generated routes from a seed and a chosen distance, with the
+  world streamed in chunks; then an endless mode
+- [ ] Later: Chromecast video, ANT+, heart-rate straps
 
 ## Steam
 

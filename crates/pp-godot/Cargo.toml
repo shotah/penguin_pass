@@ -18,6 +18,13 @@ doctest = false
 # Godot 4.7 and does not need libclang, bindgen, or a Godot binary.
 godot = { version = "=0.5.5", features = ["api-4-7"] }
 pp-core = { path = "../pp-core" }
+pp-view = { path = "../pp-view" }
+pp-course = { path = "../pp-course" }
+pp-rider = { path = "../pp-rider" }
+pp-session = { path = "../pp-session" }
+pp-trainer = { path = "../pp-trainer" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [lints]
 workspace = true

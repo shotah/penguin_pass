@@ -62,18 +62,20 @@ impl CameraRig {
             self.initialized = false;
         }
         let (desired_pos, desired_look, fov) = if first_person {
-            // Between the chest and the bars, looking down the road.
+            // Just above the hoods, looking down the road, so the bars and
+            // front wheel sit in the lower frame.
             (
-                point(rider_global, Vector3::new(0.0, 1.16, -0.32)),
-                point(rider_global, Vector3::new(0.0, 1.02, -24.0)),
-                74.0,
+                point(rider_global, Vector3::new(0.0, 1.22, -0.18)),
+                point(rider_global, Vector3::new(0.0, 0.55, -6.0)),
+                72.0,
             )
         } else {
-            // Almost level, so the horizon and the peaks sit under the top HUD.
+            // Close and a little low. A high, distant camera turned the 6 m
+            // road into a black wedge that filled the frame.
             (
-                point(rider_global, Vector3::new(0.35, 2.05, 4.6)),
-                point(rider_global, Vector3::new(0.0, 1.7, -40.0)),
-                55.0,
+                point(rider_global, Vector3::new(0.7, 1.48, 3.05)),
+                point(rider_global, Vector3::new(0.0, 1.05, -8.0)),
+                50.0,
             )
         };
         let snap = !self.initialized || dt <= 0.0;

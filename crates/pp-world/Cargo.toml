@@ -1,0 +1,12 @@
+[package]
+name = "pp-world"
+description = "Chunk grid and streaming planner for the Penguin Pass world"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+pp-course = { path = "../pp-course" }
+
+[lints]
+workspace = true

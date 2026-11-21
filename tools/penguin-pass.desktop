@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Penguin Pass
+GenericName=Indoor cycling game
+Comment=Ride a 5 km mountain loop on a smart trainer.
+Exec=/home/deck/repos/training_game/tools/penguin-pass.sh
+Icon=/home/deck/repos/training_game/godot/icon.svg
+Terminal=false
+Categories=Game;
+StartupNotify=false

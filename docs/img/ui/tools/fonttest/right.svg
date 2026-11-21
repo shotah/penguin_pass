@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420">
+<rect width="900" height="420" fill="#0b1220"/>
+<g font-family="Barlow Semi Condensed" fill="#f4f8ff">
+<text x="20" y="40" font-size="24" font-weight="500">family: Barlow Semi Condensed — Medium 500: Trainer difficulty 50 %</text>
+<text x="20" y="110" font-size="64" font-weight="700">1111 W</text><text x="300" y="110" font-size="64" font-weight="700">0000 W</text><text x="600" y="110" font-size="64" font-weight="700">0:11:54</text>
+<g style="font-feature-settings: 'tnum' 1">
+<text x="20" y="190" font-size="64" font-weight="700">1111 W</text><text x="300" y="190" font-size="64" font-weight="700">0000 W</text><text x="600" y="190" font-size="64" font-weight="700">0:11:54</text>
+</g>
+<g font-variant-numeric="tabular-nums">
+<text x="20" y="270" font-size="64" font-weight="700">1111 W</text><text x="300" y="270" font-size="64" font-weight="700">0000 W</text><text x="600" y="270" font-size="64" font-weight="700">0:11:54</text>
+</g>
+<text x="20" y="330" font-size="40" font-weight="600">SemiBold 600 — 23.8 km/h · 85 rpm · — bpm</text>
+<text x="20" y="390" font-size="40" font-weight="500">Medium 500 +8.6 % −10.5 % 158 m › … × °</text>
+</g></svg>

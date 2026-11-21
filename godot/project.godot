@@ -7,6 +7,7 @@ config_version=5
 
 config/name="Penguin Pass"
 config/description="Ride a 5 km mountain loop on a smart trainer."
+config/icon="res://icon.svg"
 config/features=PackedStringArray("4.7", "Mobile")
 run/main_scene="res://main.tscn"
 

@@ -1,0 +1,12 @@
+"AppBuild"
+{
+	"AppID" "YOUR_APP_ID" // replace with the Steamworks app ID
+	"Desc" "Penguin Pass Linux x86_64" // visible only in Steamworks build history
+	"Preview" "0" // set to "1" for a local manifest only; nothing is uploaded
+	"ContentRoot" "../../dist/penguin-pass-linux-x86_64" // relative to this file
+	"BuildOutput" "../../dist/steam-build-output" // logs and chunk cache, gitignored
+	"Depots"
+	{
+		"YOUR_LINUX_DEPOT_ID" "depot_build_linux.vdf"
+	}
+}

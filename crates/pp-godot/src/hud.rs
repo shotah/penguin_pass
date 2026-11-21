@@ -16,11 +16,11 @@ use crate::format::{
     format_heart_rate, format_lap, format_power_w, format_speed_kph, grade_rgb,
 };
 
-const VALUE_POWER: i32 = 84;
-const VALUE_PRIMARY: i32 = 46;
-const VALUE_SECONDARY: i32 = 32;
-const CAPTION: i32 = 15;
-const UNIT: i32 = 15;
+const VALUE_POWER: i32 = 36;
+const VALUE_PRIMARY: i32 = 20;
+const VALUE_SECONDARY: i32 = 16;
+const CAPTION: i32 = 10;
+const UNIT: i32 = 10;
 
 /// Full-screen HUD layer.
 #[derive(GodotClass)]
@@ -267,7 +267,7 @@ impl Hud {
         bottom_box.set_mouse_filter(MouseFilter::IGNORE);
         let mut strip = ElevationStrip::new_alloc();
         strip.set_name("Elevation");
-        strip.set_custom_minimum_size(Vector2::new(0.0, 96.0));
+        strip.set_custom_minimum_size(Vector2::new(0.0, 48.0));
         strip.set_h_size_flags(SizeFlags::EXPAND_FILL);
         strip.set_mouse_filter(MouseFilter::IGNORE);
         bottom_box.add_child(&strip);
@@ -279,13 +279,13 @@ impl Hud {
         status.set_name("Status");
         status.set_text(" ");
         status.set_h_size_flags(SizeFlags::EXPAND_FILL);
-        status.add_theme_font_size_override("font_size", 18);
+        status.add_theme_font_size_override("font_size", 13);
         status.add_theme_color_override("font_color", Color::from_rgb(0.82, 0.86, 0.90));
         let mut tv = Label::new_alloc();
         tv.set_name("TvUrl");
         tv.set_text("TV —");
         tv.set_horizontal_alignment(HorizontalAlignment::RIGHT);
-        tv.add_theme_font_size_override("font_size", 18);
+        tv.add_theme_font_size_override("font_size", 13);
         tv.add_theme_color_override("font_color", Color::from_rgb(0.82, 0.86, 0.90));
         status_row.add_child(&status);
         status_row.add_child(&tv);
@@ -380,34 +380,17 @@ fn paint(
     if size.x < 4.0 || size.y < 4.0 || points.len() < 2 || lap <= 0.0 {
         return;
     }
-    let pad = 8.0_f32;
-    let width = (size.x - pad * 2.0).max(1.0);
-    let height = (size.y - pad * 2.0).max(1.0);
-    let mut min_e = f32::MAX;
-    let mut max_e = f32::MIN;
-    for (_, elevation) in points {
-        min_e = min_e.min(*elevation);
-        max_e = max_e.max(*elevation);
-    }
-    let span = (max_e - min_e).max(1.0);
-    let plot = Plot {
-        lap,
-        min_e,
-        span,
-        pad,
-        width,
-        height,
+    let Some(layout) = pp_view::elevation::layout(size.x, size.y, points, lap, marker) else {
+        return;
     };
     let mut poly = PackedVector2Array::new();
     let mut line = PackedVector2Array::new();
-    let origin = Vector2::new(pad, pad + height);
-    poly.push(origin);
-    for (distance, elevation) in points {
-        let point = plot.point(*distance, *elevation);
-        poly.push(point);
-        line.push(point);
+    for point in &layout.fill {
+        poly.push(Vector2::new(point.x, point.y));
     }
-    poly.push(Vector2::new(pad + width, pad + height));
+    for point in &layout.line {
+        line.push(Vector2::new(point.x, point.y));
+    }
     strip
         .base_mut()
         .draw_colored_polygon(&poly, Color::from_rgba(0.45, 0.72, 0.55, 0.55));
@@ -419,7 +402,10 @@ fn paint(
         .done();
 
     let (red, green, blue) = grade_rgb(grade);
-    let ahead = upcoming_line(points, marker, &plot);
+    let mut ahead = PackedVector2Array::new();
+    for point in &layout.ahead {
+        ahead.push(Vector2::new(point.x, point.y));
+    }
     if ahead.len() >= 2 {
         strip
             .base_mut()
@@ -429,64 +415,25 @@ fn paint(
             .done();
     }
 
-    let marker_x = pad + (marker as f32 / lap as f32).clamp(0.0, 1.0) * width;
+    let marker_x = layout.marker_top.x;
     strip
         .base_mut()
         .draw_line_ex(
-            Vector2::new(marker_x, pad),
-            Vector2::new(marker_x, pad + height),
+            Vector2::new(layout.marker_top.x, layout.marker_top.y),
+            Vector2::new(layout.marker_bottom.x, layout.marker_bottom.y),
             Color::from_rgb(1.0, 0.86, 0.35),
         )
         .width(2.0)
         .antialiased(true)
         .done();
     let mut tip = PackedVector2Array::new();
-    tip.push(Vector2::new(marker_x, pad));
-    tip.push(Vector2::new(marker_x - 6.0, pad + 10.0));
-    tip.push(Vector2::new(marker_x + 6.0, pad + 10.0));
+    let tip_y = layout.marker_top.y;
+    tip.push(Vector2::new(marker_x, tip_y));
+    tip.push(Vector2::new(marker_x - 6.0, tip_y + 10.0));
+    tip.push(Vector2::new(marker_x + 6.0, tip_y + 10.0));
     strip
         .base_mut()
         .draw_colored_polygon(&tip, Color::from_rgb(1.0, 0.86, 0.35));
-}
-
-/// Screen mapping for one elevation strip.
-struct Plot {
-    lap: f64,
-    min_e: f32,
-    span: f32,
-    pad: f32,
-    width: f32,
-    height: f32,
-}
-
-impl Plot {
-    fn point(&self, distance: f64, elevation: f32) -> Vector2 {
-        let x = self.pad + (distance as f32 / self.lap as f32).clamp(0.0, 1.0) * self.width;
-        let y = self.pad + self.height - ((elevation - self.min_e) / self.span) * self.height;
-        Vector2::new(x, y)
-    }
-}
-
-fn upcoming_line(points: &[(f64, f32)], marker: f64, plot: &Plot) -> PackedVector2Array {
-    let end = (marker + 400.0).min(plot.lap);
-    let mut line = PackedVector2Array::new();
-    for window in points.windows(2) {
-        let (d0, e0) = window[0];
-        let (d1, e1) = window[1];
-        if d1 < marker || d0 > end {
-            continue;
-        }
-        let from = d0.max(marker);
-        let to = d1.min(end);
-        let span_d = (d1 - d0).max(1.0e-3);
-        let e_from = e0 + (e1 - e0) * ((from - d0) / span_d) as f32;
-        let e_to = e0 + (e1 - e0) * ((to - d0) / span_d) as f32;
-        if line.is_empty() {
-            line.push(plot.point(from, e_from));
-        }
-        line.push(plot.point(to, e_to));
-    }
-    line
 }
 
 fn ride_theme() -> Gd<Theme> {
@@ -497,9 +444,9 @@ fn ride_theme() -> Gd<Theme> {
     }
     theme.set_default_font_size(20);
     let mut panel = godot::classes::StyleBoxFlat::new_gd();
-    panel.set_bg_color(Color::from_rgba(0.04, 0.06, 0.09, 0.82));
-    panel.set_corner_radius_all(12);
-    panel.set_content_margin_all(12.0);
+    panel.set_bg_color(Color::from_rgba(0.04, 0.06, 0.09, 0.58));
+    panel.set_corner_radius_all(8);
+    panel.set_content_margin_all(6.0);
     panel.set_border_width_all(1);
     panel.set_border_color(Color::from_rgba(1.0, 1.0, 1.0, 0.10));
     theme.set_stylebox("panel", "PanelContainer", &panel);

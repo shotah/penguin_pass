@@ -34,6 +34,59 @@ pub fn install() {
         &[JoyButton::START],
         None,
     );
+    bind_keys(
+        &mut map,
+        "menu_up",
+        &[Key::UP, Key::W],
+        &[JoyButton::DPAD_UP],
+        None,
+    );
+    // Left stick up is the negative half of the same axis.
+    let mut stick_up = InputEventJoypadMotion::new_gd();
+    stick_up.set_axis(JoyAxis::LEFT_Y);
+    stick_up.set_axis_value(-1.0);
+    map.action_add_event("menu_up", &stick_up);
+    bind_keys(
+        &mut map,
+        "menu_down",
+        &[Key::DOWN, Key::S],
+        &[JoyButton::DPAD_DOWN],
+        None,
+    );
+    let mut stick_down = InputEventJoypadMotion::new_gd();
+    stick_down.set_axis(JoyAxis::LEFT_Y);
+    stick_down.set_axis_value(1.0);
+    map.action_add_event("menu_down", &stick_down);
+    bind_keys(
+        &mut map,
+        "menu_left",
+        &[Key::LEFT, Key::A],
+        &[JoyButton::DPAD_LEFT],
+        None,
+    );
+    let mut stick_left = InputEventJoypadMotion::new_gd();
+    stick_left.set_axis(JoyAxis::LEFT_X);
+    stick_left.set_axis_value(-1.0);
+    map.action_add_event("menu_left", &stick_left);
+    bind_keys(
+        &mut map,
+        "menu_right",
+        &[Key::RIGHT, Key::D],
+        &[JoyButton::DPAD_RIGHT],
+        None,
+    );
+    let mut stick_right = InputEventJoypadMotion::new_gd();
+    stick_right.set_axis(JoyAxis::LEFT_X);
+    stick_right.set_axis_value(1.0);
+    map.action_add_event("menu_right", &stick_right);
+    bind_keys(
+        &mut map,
+        "menu_accept",
+        &[Key::ENTER, Key::KP_ENTER, Key::SPACE],
+        &[JoyButton::A],
+        None,
+    );
+    bind_keys(&mut map, "menu_back", &[Key::ESCAPE], &[JoyButton::B], None);
 }
 
 fn bind_keys(

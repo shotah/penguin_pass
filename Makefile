@@ -13,14 +13,20 @@
 #   smoke       Headless Godot load of the Rust extension
 #   run         Launch Godot with per-run Bluetooth D-Bus access
 #   scan        List nearby FTMS trainers via pp-scan on the host
+#   fetch       Download and checksum the Godot editor and export templates
+#   play        Build the debug library if needed and launch the game
+#   export      Export dist/penguin-pass-linux-x86_64
+#   package     Tar the export and print its size and SHA-256
+#   licenses    Write docs/third-party-licenses.md from cargo metadata
 #
 # PROFILE=release selects a release build. The default is debug.
 # PP_NATIVE=1 runs cargo on the host. GODOT=/path/to/godot selects the
 # smoke binary. The default smoke launch is the Godot flatpak.
+# Window flags belong on ./x play, not on make play.
 
 PROFILE ?= debug
 
-.PHONY: toolbox build test fmt clippy lint typecheck smoke run scan
+.PHONY: toolbox build test fmt clippy lint typecheck smoke run scan fetch play export package licenses
 
-toolbox build test fmt clippy lint typecheck smoke run scan:
+toolbox build test fmt clippy lint typecheck smoke run scan fetch play export package licenses:
 	PROFILE="$(PROFILE)" CRATE="$(CRATE)" ./x $@

@@ -1,0 +1,14 @@
+Poly Haven assets are licensed as CC0 1.0 Universal.
+
+https://polyhaven.com/license
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Poly Haven states: "Our assets are all licensed as CC0, which is effectively
+Public Domain even in jurisdictions that do not support the Public Domain."
+Their licence page says the assets can be used for any purpose, including
+commercial work, with no credit required, and that they can be redistributed
+or included in a product you sell. Credit is appreciated. The website's
+terms of service cover the site itself, not the CC0 files.
+
+This file is a copy of that statement. Individual texture and HDRI downloads
+do not contain a licence file.

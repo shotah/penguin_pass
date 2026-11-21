@@ -120,6 +120,18 @@ impl Ride {
         &self.rider
     }
 
+    /// Replace the rider used by later steps.
+    ///
+    /// Speed, distance, lap, elapsed time, and the last telemetry snapshot
+    /// stay as they are. The profile is stored as given, the same way
+    /// [`Ride::new`] stores its rider. A non-positive or non-finite total
+    /// mass cannot poison the ride: the next step treats that mass as zero
+    /// acceleration, the same rule [`acceleration_mps2`](crate::acceleration_mps2)
+    /// already applies, so speed stays finite.
+    pub fn set_rider(&mut self, rider: RiderProfile) {
+        self.rider = rider;
+    }
+
     fn integrate(&mut self, h: f64, power_w: f32) {
         let grade = self.course.grade_pct_at(self.lap_distance_m);
         let a = acceleration_mps2(self.speed_mps, power_w, grade, &self.rider);
@@ -417,5 +429,84 @@ mod tests {
         assert!(frame.elapsed_s <= MAX_DT_S + 1e-9);
         assert!(frame.distance_m > 0.0);
         assert!(frame.lap >= 1);
+    }
+
+    fn mass(rider_mass_kg: f32) -> RiderProfile {
+        RiderProfile {
+            rider_mass_kg,
+            ..RiderProfile::default()
+        }
+    }
+
+    #[test]
+    fn set_rider_keeps_state_and_a_heavier_rider_accelerates_less() {
+        let course = Course::penguin_pass();
+        let sample = sample(200);
+        let mut light = Ride::new(course.clone(), mass(60.0));
+        let mut heavy = Ride::new(course, mass(60.0));
+        light.step(1.0, &sample);
+        heavy.step(1.0, &sample);
+        assert_eq!(light.telemetry(), heavy.telemetry());
+
+        let before = heavy.telemetry();
+        heavy.set_rider(mass(140.0));
+        assert_eq!(heavy.telemetry(), before);
+        assert_eq!(heavy.rider().rider_mass_kg, 140.0);
+        assert_eq!(light.rider().rider_mass_kg, 60.0);
+        assert_eq!(heavy.telemetry().distance_m, before.distance_m);
+        assert_eq!(heavy.telemetry().elapsed_s, before.elapsed_s);
+        assert_eq!(heavy.telemetry().lap, before.lap);
+        assert_eq!(heavy.telemetry().speed_mps, before.speed_mps);
+
+        let light_frame = light.step(0.5, &sample);
+        let heavy_frame = heavy.step(0.5, &sample);
+        assert!(
+            light_frame.speed_mps > heavy_frame.speed_mps,
+            "light {} m/s, heavy {} m/s",
+            light_frame.speed_mps,
+            heavy_frame.speed_mps
+        );
+        assert!(heavy_frame.distance_m > before.distance_m);
+        assert!(heavy_frame.elapsed_s > before.elapsed_s);
+        assert_eq!(heavy_frame.grade_pct, light_frame.grade_pct);
+    }
+
+    #[test]
+    fn set_rider_with_non_finite_or_non_positive_mass_stays_finite() {
+        let sample = sample(180);
+        for rider in [
+            RiderProfile {
+                rider_mass_kg: f32::NAN,
+                bike_mass_kg: f32::INFINITY,
+                cda_m2: f32::NAN,
+                crr: f32::NAN,
+                ..RiderProfile::default()
+            },
+            RiderProfile {
+                rider_mass_kg: 0.0,
+                bike_mass_kg: 0.0,
+                ..RiderProfile::default()
+            },
+            RiderProfile {
+                rider_mass_kg: -10.0,
+                bike_mass_kg: -3.0,
+                ..RiderProfile::default()
+            },
+        ] {
+            let mut ride = Ride::new(Course::penguin_pass(), mass(75.0));
+            ride.step(1.0, &sample);
+            let speed = ride.telemetry().speed_mps;
+            assert!(speed > 0.0);
+            ride.set_rider(rider);
+            let frame = ride.step(1.0, &sample);
+            assert!(frame.speed_mps.is_finite());
+            assert!(frame.distance_m.is_finite());
+            assert!(frame.elapsed_s.is_finite());
+            assert!(
+                (frame.speed_mps - speed).abs() < 1e-3,
+                "bad mass changed speed from {speed} to {}",
+                frame.speed_mps
+            );
+        }
     }
 }

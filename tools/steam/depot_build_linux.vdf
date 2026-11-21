@@ -1,0 +1,10 @@
+"DepotBuild"
+{
+	"DepotID" "YOUR_LINUX_DEPOT_ID" // same number as in app_build.vdf
+	"FileMapping"
+	{
+		"LocalPath" "*"
+		"DepotPath" "."
+		"recursive" "1"
+	}
+}

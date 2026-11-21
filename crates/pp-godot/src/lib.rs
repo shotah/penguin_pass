@@ -4,15 +4,20 @@
 //! [`game::Game`] node. [`PenguinPass`] stays registered so the headless smoke
 //! test can prove the library loaded.
 
+mod assets;
 mod camera;
+mod fake_trainer;
 mod format;
 mod game;
 mod hud;
 mod input_map;
+mod launch;
+mod menu;
 mod mesh_util;
 mod rider;
 mod road;
 mod sim;
+mod theme;
 mod world;
 
 use godot::classes::{INode, Node};
