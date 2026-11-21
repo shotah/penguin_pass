@@ -10,11 +10,14 @@ use std::thread::JoinHandle;
 use pp_cast::{CastConfig, CastServer, CourseProfile, ProfilePoint as CastPoint};
 use pp_core::{Telemetry, TrainerCommand, TrainerSample};
 use pp_course::{Course, Ride};
-use pp_trainer::{ConnectionState, DiscoveredTrainer, SessionMode, SimTrainer, Trainer};
+use pp_trainer::{
+    ConnectionState, DiscoveredTrainer, HeartRateLink, SessionMode, SimTrainer, Trainer,
+};
 
 use crate::connection::{self, ConnectionStatus, LinkPhase, ResistanceMode};
 use crate::course_sel::{self, CourseChoice, CourseOption, RidePhase};
 use crate::events::{EventQueue, RideEvent};
+use crate::heart::{self, HeartRateFactory, SensorEntry};
 use crate::link::{BleTrainerFactory, TrainerFactory, TrainerLink};
 use crate::readout::{LiveReadout, PowerWindow};
 use crate::settings::{LoadedSettings, Settings};
@@ -234,6 +237,14 @@ pub struct Session {
     trace: RideTrace,
     last_grade_sent: Option<f32>,
     traced_speed_mps: f32,
+    heart_factory: Option<Box<dyn HeartRateFactory>>,
+    heart: Option<Box<dyn HeartRateLink>>,
+    heart_error: Option<String>,
+    heart_was_connected: bool,
+    recorder: Option<pp_record::Recorder>,
+    rides_dir_override: Option<PathBuf>,
+    settings_path: Option<PathBuf>,
+    last_saved_ride: Option<PathBuf>,
 }
 
 impl Session {
@@ -300,12 +311,53 @@ impl Session {
             trace: RideTrace::from_env(),
             last_grade_sent: None,
             traced_speed_mps: 0.0,
+            heart_factory: None,
+            heart: None,
+            heart_error: None,
+            heart_was_connected: false,
+            recorder: None,
+            rides_dir_override: None,
+            settings_path: None,
+            last_saved_ride: None,
         };
         if let Some(detail) = fallback {
             session.events.push(RideEvent::CourseUnavailable { detail });
         }
         session.start_dashboard();
+        session.start_recording();
         session
+    }
+
+    /// Directory FIT ride files are written to.
+    ///
+    /// [`Settings::rides_folder`] wins. Otherwise this is a `rides` folder
+    /// next to the settings file passed to [`Self::set_settings_path`].
+    /// [`Self::set_rides_dir`] replaces both. With none of those set, the
+    /// returned path is `rides` and nothing is written.
+    #[must_use]
+    pub fn rides_dir(&self) -> PathBuf {
+        self.resolved_rides_dir()
+            .unwrap_or_else(|| PathBuf::from("rides"))
+    }
+
+    /// Path of the last ride file this session wrote.
+    #[must_use]
+    pub fn last_saved_ride(&self) -> Option<PathBuf> {
+        self.last_saved_ride.clone()
+    }
+
+    /// Write rides to `dir`, or stop overriding the settings folder when `None`.
+    ///
+    /// Tests pass a temporary directory. A missing directory is created on
+    /// the first save. Without this, without [`Settings::rides_folder`], and
+    /// without [`Self::set_settings_path`], ending a ride writes nothing.
+    pub fn set_rides_dir(&mut self, dir: Option<PathBuf>) {
+        self.rides_dir_override = dir;
+    }
+
+    /// Remember the settings file so rides default to `<its folder>/rides`.
+    pub fn set_settings_path(&mut self, path: impl Into<PathBuf>) {
+        self.settings_path = Some(path.into());
     }
 
     /// Write each later tick to `dir/ride.csv`, or stop when `dir` is `None`.
@@ -320,6 +372,121 @@ impl Session {
             Some(dir) => RideTrace::open(&dir),
             None => RideTrace::off(),
         };
+    }
+
+    /// Install the heart-rate strap link, or drop it when `factory` is `None`.
+    ///
+    /// Nothing is spawned until this is called. A remembered
+    /// [`Settings::heart_rate_id`] is connected immediately. Straps that are
+    /// only nearby are listed and left alone until [`Self::connect_heart_rate`].
+    /// The trainer link is not touched.
+    pub fn set_heart_rate_factory(&mut self, factory: Option<Box<dyn HeartRateFactory>>) {
+        self.disconnect_heart();
+        self.heart_factory = factory;
+        self.open_heart();
+    }
+
+    /// Straps seen by the strap link, strongest first.
+    ///
+    /// Empty when no strap link is installed. `remembered` matches
+    /// [`Settings::heart_rate_id`] or [`Settings::heart_rate_name`].
+    /// [`crate::signal_bars`] is the same rule as the trainer pairing list.
+    #[must_use]
+    pub fn heart_rate_entries(&self) -> Vec<SensorEntry> {
+        let Some(link) = self.heart.as_ref() else {
+            return Vec::new();
+        };
+        let saved_id = self.settings.heart_rate_id.as_deref();
+        let saved_name = self.settings.heart_rate_name.as_deref();
+        let mut entries: Vec<SensorEntry> = link
+            .discovered()
+            .iter()
+            .map(|sensor| heart::entry(sensor, saved_id, saved_name))
+            .collect();
+        entries.sort_by(|left, right| {
+            right
+                .bars
+                .cmp(&left.bars)
+                .then_with(|| rssi_rank(right.rssi_dbm).cmp(&rssi_rank(left.rssi_dbm)))
+                .then_with(|| left.name.cmp(&right.name))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        entries
+    }
+
+    /// Connect the strap link to `id` and remember it.
+    ///
+    /// `id` is a Bluetooth address or a name fragment. Does nothing when no
+    /// strap link is installed. The trainer is left as it is.
+    pub fn connect_heart_rate(&mut self, id: &str) {
+        let query = id.trim();
+        if query.is_empty() || self.heart.is_none() {
+            return;
+        }
+        let matched = self.heart.as_ref().and_then(|link| {
+            link.discovered().into_iter().find(|sensor| {
+                sensor.id.eq_ignore_ascii_case(query)
+                    || sensor
+                        .name
+                        .to_ascii_lowercase()
+                        .contains(&query.to_ascii_lowercase())
+            })
+        });
+        if self.heart_was_connected {
+            let name = self
+                .heart
+                .as_ref()
+                .and_then(|link| link.name())
+                .or_else(|| self.settings.heart_rate_name.clone())
+                .unwrap_or_else(|| "Heart rate".to_owned());
+            self.events.push(RideEvent::HeartRateLost { name });
+            self.heart_was_connected = false;
+        }
+        if let Some(sensor) = matched {
+            self.settings.heart_rate_id = Some(sensor.id);
+            self.settings.heart_rate_name = Some(sensor.name);
+        } else {
+            self.settings.heart_rate_id = Some(query.to_owned());
+        }
+        if let Some(link) = self.heart.as_mut() {
+            link.connect(query);
+        }
+        self.note_heart_events();
+    }
+
+    /// Forget the remembered strap and disconnect it.
+    ///
+    /// Later launches do not reconnect. The trainer link stays up.
+    pub fn forget_heart_rate(&mut self) {
+        self.settings.heart_rate_id = None;
+        self.settings.heart_rate_name = None;
+        if let Some(link) = self.heart.as_mut() {
+            link.disconnect();
+        }
+        self.note_heart_events();
+    }
+
+    /// Lifecycle of the strap link.
+    ///
+    /// [`ConnectionState::Disconnected`] when no link was installed.
+    #[must_use]
+    pub fn heart_rate_state(&self) -> ConnectionState {
+        if let Some(link) = self.heart.as_ref() {
+            return link.state();
+        }
+        if let Some(err) = &self.heart_error {
+            return ConnectionState::Failed(err.clone());
+        }
+        ConnectionState::Disconnected
+    }
+
+    /// Name of the connected strap, or the remembered name when the link is down.
+    #[must_use]
+    pub fn heart_rate_name(&self) -> Option<String> {
+        self.heart
+            .as_ref()
+            .and_then(|link| link.name())
+            .or_else(|| self.settings.heart_rate_name.clone())
     }
 
     /// Advance the ride by `dt_s` seconds and return the new telemetry.
@@ -337,6 +504,7 @@ impl Session {
     pub fn tick(&mut self, dt_s: f64) -> Telemetry {
         self.reap_drops();
         self.poll_dashboard();
+        self.note_heart_events();
         if self.phase == RidePhase::Ended {
             let frame = self.ride.telemetry();
             self.publish_dashboard(frame);
@@ -363,6 +531,7 @@ impl Session {
         ) {
             self.events.push(event);
         }
+        self.record_sample(&telemetry);
         self.note_link_events();
         self.refresh_pairing();
         self.send_grade(telemetry.grade_pct);
@@ -644,6 +813,7 @@ impl Session {
         self.stats.clear();
         self.power.clear();
         self.rebuild_ride();
+        self.recorder = None;
     }
 
     /// Leave [`RidePhase::Ready`] and start the ride clock from zero.
@@ -656,6 +826,7 @@ impl Session {
         }
         self.phase = RidePhase::Riding;
         self.ride_ended = false;
+        self.start_recording();
     }
 
     /// Course currently loaded.
@@ -728,6 +899,10 @@ impl Session {
         let name = self.ride.course().name().to_owned();
         self.events.push(RideEvent::CourseSelected { name });
         self.push_dashboard_course();
+        if self.phase == RidePhase::Riding {
+            self.save_ride();
+            self.start_recording();
+        }
         Ok(())
     }
 
@@ -755,6 +930,8 @@ impl Session {
         self.events.clear();
         self.clock_s = 0.0;
         self.rebuild_ride();
+        self.save_ride();
+        self.start_recording();
     }
 
     /// HUD numbers for this moment, separate from the physics sample.
@@ -857,6 +1034,7 @@ impl Session {
         self.phase = RidePhase::Ended;
         self.send_flat_grade();
         self.trace.flush();
+        self.save_ride();
     }
 
     /// Whether [`Session::end_ride`] is in effect.
@@ -1123,12 +1301,12 @@ impl Session {
                 cadence_rpm: Some(0.0),
                 ..TrainerSample::default()
             });
-            return Observation {
+            return self.with_strap_heart(Observation {
                 physics: sample,
                 power_w: sample.power_w.map(f32::from),
                 cadence_rpm: sample.cadence_rpm,
                 heart_rate_bpm: sample.heart_rate_bpm,
-            };
+            });
         }
         let down = Observation {
             physics: zero_power(),
@@ -1137,15 +1315,15 @@ impl Session {
             heart_rate_bpm: None,
         };
         let Some(trainer) = self.trainer.as_ref() else {
-            return down;
+            return self.with_strap_heart(down);
         };
         if !matches!(trainer.state(), ConnectionState::Connected) {
-            return down;
+            return self.with_strap_heart(down);
         }
         let Some(sample) = trainer.latest_sample() else {
-            return down;
+            return self.with_strap_heart(down);
         };
-        Observation {
+        self.with_strap_heart(Observation {
             physics: TrainerSample {
                 power_w: Some(sample.power_w.unwrap_or(0)),
                 cadence_rpm: sample.cadence_rpm,
@@ -1155,6 +1333,75 @@ impl Session {
             power_w: sample.power_w.map(f32::from),
             cadence_rpm: sample.cadence_rpm,
             heart_rate_bpm: sample.heart_rate_bpm,
+        })
+    }
+
+    fn with_strap_heart(&self, mut observed: Observation) -> Observation {
+        if let Some(bpm) = self
+            .heart
+            .as_ref()
+            .and_then(|link| heart::strap_bpm_u8(link.as_ref()))
+        {
+            observed.heart_rate_bpm = Some(bpm);
+            observed.physics.heart_rate_bpm = Some(bpm);
+        }
+        observed
+    }
+
+    fn open_heart(&mut self) {
+        let Some(factory) = self.heart_factory.as_mut() else {
+            return;
+        };
+        match factory.spawn() {
+            Ok(mut link) => {
+                if let Some(id) = self.settings.heart_rate_id.clone() {
+                    link.connect(&id);
+                }
+                self.heart = Some(link);
+                self.heart_error = None;
+                self.note_heart_events();
+            }
+            Err(err) => {
+                self.heart = None;
+                self.heart_error = Some(err);
+            }
+        }
+    }
+
+    fn disconnect_heart(&mut self) {
+        if let Some(mut link) = self.heart.take() {
+            link.disconnect();
+        }
+        self.heart_error = None;
+        self.note_heart_events();
+    }
+
+    fn note_heart_events(&mut self) {
+        let connected = self
+            .heart
+            .as_ref()
+            .is_some_and(|link| heart::is_connected(&link.state()));
+        if connected && !self.heart_was_connected {
+            let name = self
+                .heart
+                .as_ref()
+                .and_then(|link| link.name())
+                .or_else(|| self.settings.heart_rate_name.clone())
+                .unwrap_or_else(|| "Heart rate".to_owned());
+            if self.settings.heart_rate_name.is_none() {
+                self.settings.heart_rate_name = Some(name.clone());
+            }
+            self.events.push(RideEvent::HeartRateConnected { name });
+            self.heart_was_connected = true;
+        } else if !connected && self.heart_was_connected {
+            let name = self
+                .settings
+                .heart_rate_name
+                .clone()
+                .or_else(|| self.heart.as_ref().and_then(|link| link.name()))
+                .unwrap_or_else(|| "Heart rate".to_owned());
+            self.events.push(RideEvent::HeartRateLost { name });
+            self.heart_was_connected = false;
         }
     }
 
@@ -1380,6 +1627,92 @@ impl Session {
             distance_m: frame.distance_m,
             power_3s_w: self.power.average_3s(self.clock_s),
         });
+    }
+
+    fn resolved_rides_dir(&self) -> Option<PathBuf> {
+        if let Some(dir) = &self.rides_dir_override {
+            return Some(dir.clone());
+        }
+        if let Some(dir) = &self.settings.rides_folder {
+            return Some(dir.clone());
+        }
+        self.settings_path.as_ref().and_then(|path| {
+            path.parent()
+                .map(|parent| parent.join("rides"))
+                .filter(|parent| !parent.as_os_str().is_empty())
+        })
+    }
+
+    fn start_recording(&mut self) {
+        if self.phase != RidePhase::Riding {
+            return;
+        }
+        let rider = self.rider();
+        let trainer_name = if self.using_trainer {
+            self.trainer_name().filter(|name| !name.is_empty())
+        } else {
+            Some("Simulated rider".to_owned())
+        };
+        self.recorder = Some(pp_record::Recorder::new(pp_record::RideMeta {
+            started_at: std::time::SystemTime::now(),
+            course_name: self.course().name().to_owned(),
+            rider_mass_kg: rider.rider_mass_kg,
+            bike_mass_kg: rider.bike_mass_kg,
+            ftp_w: rider.ftp_w,
+            trainer_name,
+            game_version: env!("CARGO_PKG_VERSION").to_owned(),
+        }));
+    }
+
+    fn record_sample(&mut self, frame: &Telemetry) {
+        if self.phase != RidePhase::Riding || self.recorder.is_none() {
+            return;
+        }
+        let readout = self.readout();
+        let Some(recorder) = self.recorder.as_mut() else {
+            return;
+        };
+        recorder.push(pp_record::RideSample {
+            elapsed_s: frame.elapsed_s,
+            power_w: readout.power_w,
+            cadence_rpm: readout.cadence_rpm,
+            heart_rate_bpm: readout.heart_rate_bpm.map(u16::from),
+            speed_mps: frame.speed_mps,
+            distance_m: frame.distance_m,
+            altitude_m: frame.elevation_m,
+            grade_pct: frame.grade_pct,
+            lap: frame.lap,
+        });
+    }
+
+    fn save_ride(&mut self) {
+        let Some(recorder) = self.recorder.take() else {
+            return;
+        };
+        let Some(dir) = self.resolved_rides_dir() else {
+            return;
+        };
+        match recorder.finish().write(&dir) {
+            Ok(pp_record::WriteOutcome::Written(path)) => {
+                eprintln!("pp-session: ride {}", path.display());
+                self.last_saved_ride = Some(path.clone());
+                self.events.push(RideEvent::RideSaved { path });
+            }
+            Ok(pp_record::WriteOutcome::Skipped(reason)) => {
+                let reason = match reason {
+                    pp_record::SkipReason::TooShort { .. }
+                    | pp_record::SkipReason::TooShortDistance { .. } => {
+                        "Ride too short to save".to_owned()
+                    }
+                };
+                self.events.push(RideEvent::RideNotSaved { reason });
+            }
+            Err(err) => {
+                self.events.push(RideEvent::RideNotSaved {
+                    reason: format!("Could not save the ride: {err}"),
+                });
+            }
+        }
     }
 
     fn send_flat_grade(&mut self) {
@@ -1638,6 +1971,7 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         self.trace.flush();
+        self.save_ride();
         if let Some(trainer) = self.trainer.take() {
             self.defer_drop(trainer);
         }
@@ -1895,10 +2229,13 @@ mod tests {
     use crate::events::RideEvent;
     use crate::link::TrainerFactory;
     use crate::settings::LoadedSettings;
-    use crate::{CourseChoice, RidePhase, TerrainPreset};
+    use crate::{CourseChoice, HeartRateFactory, RidePhase, TerrainPreset};
     use pp_core::{RiderProfile, TrainerCommand, TrainerSample};
     use pp_course::Ride;
-    use pp_trainer::{ConnectionState, DiscoveredTrainer, Trainer, TrainerError};
+    use pp_trainer::{
+        ConnectionState, DiscoveredSensor, DiscoveredTrainer, HeartRateLink, SimHeartRate, Trainer,
+        TrainerError,
+    };
     use std::net::{Ipv4Addr, TcpListener};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex, MutexGuard};
@@ -3565,6 +3902,432 @@ mod tests {
         assert_eq!(session.tick(0.2).power_w, 40.0);
         assert!(!quiet.join("ride.csv").exists());
         let _ = std::fs::remove_dir_all(&quiet);
+    }
+
+    #[test]
+    fn heart_rate_strap_wins_falls_back_and_stays_off_the_trainer() {
+        let trainer = Handle::new();
+        trainer.set_discovered(vec![neo()]);
+        let strap = strap_sim();
+        strap.lock().set_discovered(vec![hrm()]);
+        strap.lock().set_bpm(Some(150));
+        let mut session = session_with(offline(), &trainer);
+        session.set_heart_rate_factory(Some(Box::new(strap.factory())));
+        assert_eq!(session.heart_rate_state(), ConnectionState::Scanning);
+        assert!(
+            session
+                .heart_rate_entries()
+                .iter()
+                .any(|row| row.id == "hrm-1")
+        );
+        assert!(session.drain_events().is_empty());
+
+        session.connect_heart_rate("hrm-1");
+        assert_eq!(session.heart_rate_state(), ConnectionState::Connected);
+        assert_eq!(session.heart_rate_name().as_deref(), Some("HRM-Dual"));
+        assert_eq!(session.settings().heart_rate_id.as_deref(), Some("hrm-1"));
+        let connected = session.drain_events();
+        assert_eq!(
+            connected
+                .iter()
+                .filter(|event| matches!(event, RideEvent::HeartRateConnected { .. }))
+                .count(),
+            1
+        );
+
+        session.connect("neo-1");
+        trainer.set_state(ConnectionState::Connected);
+        trainer.set_sample(Some(TrainerSample {
+            power_w: Some(180),
+            cadence_rpm: Some(85.0),
+            heart_rate_bpm: Some(100),
+            ..TrainerSample::default()
+        }));
+        let frame = session.tick(0.2);
+        assert_eq!(frame.heart_rate_bpm, Some(150));
+        assert_eq!(session.readout().heart_rate_bpm, Some(150));
+        assert_eq!(session.connection().phase, LinkPhase::Connected);
+        session.tick(0.2);
+        assert!(
+            !session
+                .drain_events()
+                .iter()
+                .any(|event| matches!(event, RideEvent::HeartRateConnected { .. }))
+        );
+
+        strap.lock().set_bpm(None);
+        let quiet = session.tick(0.2);
+        assert_eq!(quiet.heart_rate_bpm, Some(100));
+        assert_eq!(session.connection().phase, LinkPhase::Connected);
+
+        let grades_before = trainer.grades().len();
+        strap.lock().drop_link();
+        session.tick(0.2);
+        let lost = session.drain_events();
+        assert_eq!(
+            lost.iter()
+                .filter(|event| matches!(event, RideEvent::HeartRateLost { .. }))
+                .count(),
+            1
+        );
+        session.tick(0.2);
+        assert!(
+            !session
+                .drain_events()
+                .iter()
+                .any(|event| matches!(event, RideEvent::HeartRateLost { .. }))
+        );
+        assert!(trainer.grades().len() > grades_before);
+        assert_eq!(session.connection().phase, LinkPhase::Connected);
+
+        session.forget_heart_rate();
+        assert_eq!(session.settings().heart_rate_id, None);
+        assert_eq!(session.settings().heart_rate_name, None);
+        assert_eq!(session.heart_rate_state(), ConnectionState::Disconnected);
+        assert_eq!(session.connection().phase, LinkPhase::Connected);
+    }
+
+    #[test]
+    fn remembered_strap_connects_at_start_and_an_unremembered_one_does_not() {
+        let remembered = strap_sim();
+        remembered.lock().set_discovered(vec![hrm(), other_strap()]);
+        let mut settings = offline();
+        settings.heart_rate_id = Some("hrm-1".to_owned());
+        settings.heart_rate_name = Some("HRM-Dual".to_owned());
+        let mut session = Session::new(settings);
+        session.set_heart_rate_factory(Some(Box::new(remembered.factory())));
+        assert_eq!(session.heart_rate_state(), ConnectionState::Connected);
+        assert_eq!(session.heart_rate_name().as_deref(), Some("HRM-Dual"));
+        assert!(
+            session
+                .heart_rate_entries()
+                .iter()
+                .any(|row| row.id == "hrm-1" && row.remembered && row.bars == 4)
+        );
+        assert_eq!(
+            session
+                .drain_events()
+                .iter()
+                .filter(|event| matches!(event, RideEvent::HeartRateConnected { .. }))
+                .count(),
+            1
+        );
+
+        let nearby = strap_sim();
+        nearby.lock().set_discovered(vec![hrm()]);
+        let mut session = Session::new(offline());
+        session.set_heart_rate_factory(Some(Box::new(nearby.factory())));
+        assert_eq!(session.heart_rate_state(), ConnectionState::Scanning);
+        assert!(session.drain_events().is_empty());
+        assert!(!session.heart_rate_entries()[0].remembered);
+
+        let mut bare = Session::new(offline());
+        assert_eq!(bare.heart_rate_state(), ConnectionState::Disconnected);
+        assert!(bare.heart_rate_entries().is_empty());
+        bare.connect_heart_rate("hrm-1");
+        assert_eq!(bare.heart_rate_state(), ConnectionState::Disconnected);
+        assert_eq!(bare.settings().heart_rate_id, None);
+    }
+
+    fn strap_sim() -> HeartSim {
+        HeartSim(Arc::new(Mutex::new(SimHeartRate::new())))
+    }
+
+    fn hrm() -> DiscoveredSensor {
+        DiscoveredSensor {
+            id: "hrm-1".to_owned(),
+            name: "HRM-Dual".to_owned(),
+            rssi_dbm: Some(-55),
+        }
+    }
+
+    fn other_strap() -> DiscoveredSensor {
+        DiscoveredSensor {
+            id: "other".to_owned(),
+            name: "Tickr".to_owned(),
+            rssi_dbm: Some(-82),
+        }
+    }
+
+    struct HeartSim(Arc<Mutex<SimHeartRate>>);
+
+    impl HeartSim {
+        fn lock(&self) -> std::sync::MutexGuard<'_, SimHeartRate> {
+            self.0.lock().unwrap_or_else(|err| err.into_inner())
+        }
+
+        fn factory(&self) -> HeartSimFactory {
+            HeartSimFactory(Arc::clone(&self.0))
+        }
+    }
+
+    struct HeartSimFactory(Arc<Mutex<SimHeartRate>>);
+
+    struct HeartSimLink(Arc<Mutex<SimHeartRate>>);
+
+    impl HeartRateFactory for HeartSimFactory {
+        fn spawn(&mut self) -> Result<Box<dyn HeartRateLink>, String> {
+            Ok(Box::new(HeartSimLink(Arc::clone(&self.0))))
+        }
+    }
+
+    impl HeartRateLink for HeartSimLink {
+        fn state(&self) -> ConnectionState {
+            self.0.lock().unwrap_or_else(|err| err.into_inner()).state()
+        }
+
+        fn discovered(&self) -> Vec<DiscoveredSensor> {
+            self.0
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .discovered()
+        }
+
+        fn connect(&mut self, id_or_name: &str) {
+            self.0
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .connect(id_or_name);
+        }
+
+        fn disconnect(&mut self) {
+            self.0
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .disconnect();
+        }
+
+        fn bpm(&self) -> Option<u16> {
+            self.0.lock().unwrap_or_else(|err| err.into_inner()).bpm()
+        }
+
+        fn name(&self) -> Option<String> {
+            self.0.lock().unwrap_or_else(|err| err.into_inner()).name()
+        }
+    }
+
+    #[test]
+    fn a_long_ride_is_saved_and_a_short_one_is_not() {
+        let dir = trace_dir("saved");
+        let trainer = Handle::new();
+        trainer.set_discovered(vec![neo()]);
+        let strap = strap_sim();
+        strap.lock().set_discovered(vec![hrm()]);
+        strap.lock().set_bpm(Some(142));
+        let mut session = session_with(offline(), &trainer);
+        session.set_rides_dir(Some(dir.clone()));
+        session.set_heart_rate_factory(Some(Box::new(strap.factory())));
+        session.connect_heart_rate("hrm-1");
+        session.connect("neo-1");
+        trainer.set_state(ConnectionState::Connected);
+        trainer.set_sample(Some(TrainerSample {
+            power_w: Some(250),
+            cadence_rpm: Some(90.0),
+            heart_rate_bpm: Some(100),
+            ..TrainerSample::default()
+        }));
+        for _ in 0..75 {
+            session.tick(1.0);
+        }
+        session.end_ride();
+        let saved = session
+            .drain_events()
+            .into_iter()
+            .find_map(|event| match event {
+                RideEvent::RideSaved { path } => Some(path),
+                RideEvent::RideNotSaved { reason } => panic!("ride not saved: {reason}"),
+                _ => None,
+            })
+            .expect("saved event");
+        assert_eq!(session.last_saved_ride().as_ref(), Some(&saved));
+        assert!(saved.starts_with(&dir), "{}", saved.display());
+        let records = fit_records(&saved);
+        assert!(records.len() >= 60, "{}", records.len());
+        let heart = fit_number(fit_field(&records[10], "heart_rate")).expect("heart");
+        assert!(
+            (heart - 142.0).abs() < 1.0,
+            "strap heart {heart}, not the trainer's 100"
+        );
+        let power = fit_number(fit_field(&records[10], "power")).expect("power");
+        assert!(power > 200.0, "{power}");
+        drop(session);
+        assert_eq!(fit_files(&dir).len(), 1);
+
+        let short = trace_dir("short");
+        let mut session = Session::new(offline());
+        session.set_rides_dir(Some(short.clone()));
+        session.set_sim_power(200);
+        for _ in 0..20 {
+            session.tick(1.0);
+        }
+        session.end_ride();
+        let reason = session
+            .drain_events()
+            .into_iter()
+            .find_map(|event| match event {
+                RideEvent::RideNotSaved { reason } => Some(reason),
+                RideEvent::RideSaved { path } => panic!("short ride wrote {}", path.display()),
+                _ => None,
+            });
+        assert_eq!(reason.as_deref(), Some("Ride too short to save"));
+        assert!(fit_files(&short).is_empty());
+        assert!(session.last_saved_ride().is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&short);
+    }
+
+    #[test]
+    fn ready_ticks_are_not_recorded_and_restart_starts_a_second_file() {
+        let dir = trace_dir("two");
+        let mut session = Session::new(offline());
+        session.set_rides_dir(Some(dir.clone()));
+        session.hold_at_start();
+        session.set_sim_power(220);
+        for _ in 0..30 {
+            session.tick(1.0);
+        }
+        assert!(
+            !session
+                .drain_events()
+                .iter()
+                .any(|event| matches!(event, RideEvent::RideSaved { .. }))
+        );
+        assert!(fit_files(&dir).is_empty());
+
+        session.begin_ride();
+        for _ in 0..75 {
+            session.tick(1.0);
+        }
+        session.restart();
+        assert_eq!(fit_files(&dir).len(), 1);
+        let first = session.last_saved_ride().expect("first file");
+        for _ in 0..75 {
+            session.tick(1.0);
+        }
+        session.end_ride();
+        assert_eq!(fit_files(&dir).len(), 2);
+        let second = session.last_saved_ride().expect("second file");
+        assert_ne!(first, second);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unwritable_rides_directory_does_not_stop_the_ride_and_drop_writes() {
+        let dir = trace_dir("drop");
+        let blocker = dir.join("not-a-directory");
+        std::fs::write(&blocker, b"x").expect("blocker");
+        let mut session = Session::new(offline());
+        session.set_rides_dir(Some(blocker));
+        session.set_sim_power(220);
+        for _ in 0..75 {
+            session.tick(1.0);
+        }
+        session.end_ride();
+        let mut reason = None;
+        for event in session.drain_events() {
+            if let RideEvent::RideNotSaved { reason: text } = event {
+                reason = Some(text);
+                break;
+            }
+        }
+        let reason = reason.expect("not saved");
+        assert!(reason.starts_with("Could not save the ride:"), "{reason}");
+        session.restart();
+        assert_eq!(session.tick(0.2).power_w, 220.0);
+        drop(session);
+
+        let kept = trace_dir("quit");
+        {
+            let mut session = Session::new(offline());
+            session.set_rides_dir(Some(kept.clone()));
+            session.set_sim_power(220);
+            for _ in 0..75 {
+                session.tick(1.0);
+            }
+        }
+        assert_eq!(fit_files(&kept).len(), 1, "drop mid-ride writes the file");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&kept);
+    }
+
+    #[test]
+    fn one_hour_synthetic_ride_write_time() {
+        let dir = trace_dir("hour");
+        let mut recorder = pp_record::Recorder::new(pp_record::RideMeta {
+            started_at: std::time::SystemTime::UNIX_EPOCH
+                + std::time::Duration::from_secs(1_700_000_000),
+            course_name: "Hour".to_owned(),
+            rider_mass_kg: 75.0,
+            bike_mass_kg: 9.0,
+            ftp_w: 200,
+            trainer_name: Some("Simulated rider".to_owned()),
+            game_version: "0.1.0".to_owned(),
+        });
+        for second in 0..3600 {
+            recorder.push(pp_record::RideSample {
+                elapsed_s: f64::from(second) + 0.5,
+                power_w: Some(200.0),
+                cadence_rpm: Some(85.0),
+                heart_rate_bpm: Some(140),
+                speed_mps: 8.0,
+                distance_m: f64::from(second) * 8.0,
+                altitude_m: 12.0,
+                grade_pct: 1.0,
+                lap: 1,
+            });
+        }
+        let activity = recorder.finish();
+        let started = std::time::Instant::now();
+        let outcome = activity.write(&dir).expect("write hour");
+        eprintln!("RIDE_WRITE_1H {:?}", started.elapsed());
+        assert!(matches!(outcome, pp_record::WriteOutcome::Written(_)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn fit_files(dir: &std::path::Path) -> Vec<PathBuf> {
+        let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+            .expect("rides dir")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "fit"))
+            .collect();
+        files.sort();
+        files
+    }
+
+    fn fit_records(path: &std::path::Path) -> Vec<fitparser::FitDataRecord> {
+        let mut file = std::fs::File::open(path).expect("open fit");
+        let options = std::collections::HashSet::new();
+        fitparser::de::from_reader_with_options(&mut file, &options)
+            .expect("parse fit")
+            .into_iter()
+            .filter(|message| message.kind() == fitparser::profile::MesgNum::Record)
+            .collect()
+    }
+
+    fn fit_field<'a>(
+        message: &'a fitparser::FitDataRecord,
+        name: &str,
+    ) -> Option<&'a fitparser::Value> {
+        message
+            .fields()
+            .iter()
+            .find(|field| field.name() == name)
+            .map(|field| field.value())
+    }
+
+    fn fit_number(value: Option<&fitparser::Value>) -> Option<f64> {
+        use fitparser::Value;
+        match value? {
+            Value::UInt8(v) | Value::UInt8z(v) | Value::Byte(v) | Value::Enum(v) => {
+                Some(f64::from(*v))
+            }
+            Value::UInt16(v) | Value::UInt16z(v) => Some(f64::from(*v)),
+            Value::UInt32(v) | Value::UInt32z(v) => Some(f64::from(*v)),
+            Value::Float32(v) => Some(f64::from(*v)),
+            Value::Float64(v) => Some(*v),
+            _ => None,
+        }
     }
 
     fn trace_dir(name: &str) -> PathBuf {

@@ -338,12 +338,13 @@ func _settings_hides(game: Node) -> bool:
 	game.debug_menu_action("down")
 	game.debug_menu_action("down")
 	game.debug_menu_action("down")
+	game.debug_menu_action("down")
 	game.debug_menu_action("accept")
 	if not game.debug_settings_visible():
 		_fail("settings panel did not show from the title")
 		return false
 	var quiet: float = game.debug_music_bus_db()
-	for _step in 8:
+	for _step in 10:
 		game.debug_menu_action("down")
 	game.debug_menu_action("right")
 	if abs(float(game.debug_music_bus_db()) - quiet) < 0.05:
@@ -379,6 +380,7 @@ func _settings_hides(game: Node) -> bool:
 	game.debug_press_back()
 	game.debug_menu_action("down")
 	game.debug_menu_action("down")
+	game.debug_menu_action("down")
 	game.debug_menu_action("accept")
 	if not game.debug_settings_visible():
 		_fail("settings panel did not show from the pause menu")
@@ -400,6 +402,7 @@ func _end_and_course(game: Node) -> bool:
 	if str(game.debug_screen()) != "pause":
 		_fail("pause did not open: %s" % game.debug_screen())
 		return false
+	game.debug_menu_action("down")
 	game.debug_menu_action("down")
 	game.debug_menu_action("down")
 	game.debug_menu_action("accept")

@@ -9,7 +9,7 @@ use pp_session::{
     MIN_BIKE_MASS_KG, MIN_FTP_W, MIN_RIDER_MASS_KG, MIN_TRAINER_DIFFICULTY, Settings,
 };
 
-const MAIN_ROWS: usize = 12;
+const MAIN_ROWS: usize = 15;
 
 /// What the player just pressed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,6 +47,14 @@ pub enum Action {
     Disconnect,
     /// Open the folder picker.
     ChooseMusicFolder,
+    /// Show the rides folder in the file manager.
+    OpenRides,
+    /// Open the heart-rate list.
+    OpenHeart,
+    /// Connect the strap with this id.
+    ConnectHeart(String),
+    /// Forget the remembered strap.
+    ForgetHeart,
 }
 
 /// Which page is showing.
@@ -60,6 +68,8 @@ pub enum Page {
     ConfirmRestart,
     /// Quit confirmation.
     ConfirmQuit,
+    /// Heart-rate straps.
+    Heart,
 }
 
 /// One discovered trainer, already ordered or not.
@@ -73,6 +83,16 @@ pub struct Device {
     pub rssi_dbm: Option<i16>,
     /// Power meter only: no FTMS and no FE-C, so resistance cannot be set.
     pub power_only: bool,
+    /// Signal bars, 0 to 4.
+    pub bars: u8,
+    /// Fitness Machine Service.
+    pub ftms: bool,
+    /// Cycling Power Service.
+    pub cycling_power: bool,
+    /// Tacx FE-C.
+    pub fec: bool,
+    /// This is the trainer saved in settings.
+    pub remembered: bool,
 }
 
 /// What the menu needs to read. It does not touch the session.
@@ -92,6 +112,29 @@ pub struct Snapshot {
     pub devices: Vec<Device>,
     /// Last folder scan, for the music row. Empty when the row uses built-in tracks.
     pub music_report: String,
+    /// Link phase for the pairing headline.
+    pub phase: pp_session::LinkPhase,
+    /// Plain sentence when the link failed.
+    pub failure_reason: String,
+    /// Trainer name while connecting or connected.
+    pub connected_name: String,
+    /// Short Zwift-controller status, empty when the row is off.
+    pub controller_status: String,
+    /// Heart-rate straps from the strap link.
+    pub straps: Vec<Device>,
+    /// One line for the heart-rate list: scanning, connected, failed.
+    pub heart_line: String,
+    /// Rider presets, id then display name, in menu order.
+    pub riders: Vec<RiderOption>,
+}
+
+/// One rider the settings row can show. The id is what gets saved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RiderOption {
+    /// Settings id, such as `nils`.
+    pub id: String,
+    /// Name drawn in the row, such as `Nils`.
+    pub name: String,
 }
 
 /// Strings for one frame of the overlay.
@@ -105,6 +148,10 @@ pub struct MenuView {
     pub detail: String,
     /// Highlighted row.
     pub selected: usize,
+    /// Signal bars for each row. `None` hides the bars (settings and the disconnect row).
+    pub bars: Vec<Option<u8>>,
+    /// The detail line is a failure, drawn in the warning colour.
+    pub warn: bool,
 }
 
 /// The overlay's memory.
@@ -147,6 +194,21 @@ impl MenuState {
         self.index = 0;
     }
 
+    /// Open the heart-rate list.
+    pub fn open_heart(&mut self) {
+        self.open = true;
+        self.page = Page::Heart;
+        self.index = 0;
+        self.selected_id.clear();
+    }
+
+    /// Move the highlight. A mouse hover uses this.
+    pub fn hover(&mut self, index: usize) {
+        if self.open {
+            self.index = index;
+        }
+    }
+
     /// Hide the overlay.
     pub fn close(&mut self) {
         self.open = false;
@@ -165,6 +227,7 @@ impl MenuState {
         let action = match self.page {
             Page::Main => self.main_command(command, snap),
             Page::Pairing => self.pairing_command(command, snap),
+            Page::Heart => self.heart_command(command, snap),
             Page::ConfirmRestart => self.confirm(command, true),
             Page::ConfirmQuit => self.confirm(command, false),
         };
@@ -177,6 +240,7 @@ impl MenuState {
         match self.page {
             Page::Main => self.main_view(snap),
             Page::Pairing => self.pairing_view(snap),
+            Page::Heart => self.heart_view(snap),
             Page::ConfirmRestart => confirm_view(
                 "Restart the ride?",
                 "Distance and time go back to zero.",
@@ -202,24 +266,27 @@ impl MenuState {
                     self.selected_id.clear();
                     return Action::Scan;
                 }
-                9 => return Action::ChooseMusicFolder,
-                10 => {
+                11 => return Action::ChooseMusicFolder,
+                12 => {
                     self.page = Page::ConfirmRestart;
                     self.index = 0;
                 }
-                11 => {
+                13 => {
                     self.page = Page::ConfirmQuit;
                     self.index = 0;
                 }
-                1 | 6 | 7 => return Action::Apply(toggled(snap.settings.clone(), self.index)),
+                14 => return Action::OpenRides,
+                1 | 7 | 8 | 9 => return Action::Apply(toggled(snap.settings.clone(), self.index)),
                 _ => {}
             },
             Command::Left | Command::Right => {
-                if self.index == 9 && matches!(command, Command::Right) {
+                if self.index == 11 && matches!(command, Command::Right) {
                     return Action::ChooseMusicFolder;
                 }
                 let increase = matches!(command, Command::Right);
-                if let Some(settings) = stepped(snap.settings.clone(), self.index, increase) {
+                if let Some(settings) =
+                    stepped(snap.settings.clone(), self.index, increase, &snap.riders)
+                {
                     return Action::Apply(settings);
                 }
             }
@@ -260,6 +327,48 @@ impl MenuState {
             self.selected_id.clear();
         }
         action
+    }
+
+    fn heart_command(&mut self, command: Command, snap: &Snapshot) -> Action {
+        let count = snap.straps.len() + 1;
+        match command {
+            Command::Up => self.index = self.index.saturating_sub(1),
+            Command::Down => self.index = (self.index + 1).min(count.saturating_sub(1)),
+            Command::Back => {
+                self.page = Page::Main;
+                self.index = 0;
+            }
+            Command::Accept => {
+                if self.index >= snap.straps.len() {
+                    return Action::ForgetHeart;
+                }
+                return Action::ConnectHeart(snap.straps[self.index].id.clone());
+            }
+            Command::Left | Command::Right => {}
+        }
+        Action::None
+    }
+
+    fn heart_view(&mut self, snap: &Snapshot) -> MenuView {
+        let mut lines = Vec::new();
+        let mut bars = Vec::new();
+        for strap in &snap.straps {
+            let saved = if strap.remembered { "  saved" } else { "" };
+            lines.push(format!("{}{saved}", strap.name));
+            bars.push(Some(strap.bars));
+        }
+        lines.push("Forget this strap".to_owned());
+        bars.push(None);
+        let index = self.index.min(lines.len().saturating_sub(1));
+        self.index = index;
+        MenuView {
+            title: "Heart rate".to_owned(),
+            lines,
+            detail: snap.heart_line.clone(),
+            selected: index,
+            bars,
+            warn: snap.heart_line.to_ascii_lowercase().contains("fail"),
+        }
     }
 
     fn confirm(&mut self, command: Command, restart: bool) -> Action {
@@ -316,22 +425,32 @@ impl MenuState {
             format!("Rider weight    {:.1} kg", settings.rider_mass_kg),
             format!("Bike weight    {:.1} kg", settings.bike_mass_kg),
             format!("FTP    {} W", settings.ftp_w),
+            format!("Rider    ◀ {} ▶", rider_name(snap)),
+            format!(
+                "Zwift controllers    {}{}",
+                on_off(settings.zwift_controllers),
+                zwift_note(snap)
+            ),
             format!("TV dashboard    {}", dashboard_value(snap)),
             format!("Full screen    {}", on_off(settings.fullscreen)),
             format!("Music volume    {}%", settings.music_volume),
             format!("Music folder    {}", music_folder_line(snap)),
             "Restart ride".to_owned(),
             "Quit".to_owned(),
+            "Open rides folder".to_owned(),
         ];
         let detail = if !self.save_error.is_empty() {
             self.save_error.clone()
         } else {
             match self.index {
                 2 => "How much of the hill the trainer makes you feel. On-screen speed always uses the real hill.".to_owned(),
-                6 => dashboard_detail(snap),
+                6 => "Left and right change the rider.".to_owned(),
+                7 => "Look for Zwift Click, Play, and Ride controllers.".to_owned(),
+                8 => dashboard_detail(snap),
                 0 => "Open this to scan and connect. The ride keeps going.".to_owned(),
-                8 => "How loud the music is. Left and right change it immediately.".to_owned(),
-                9 => music_folder_detail(snap),
+                10 => "How loud the music is. Left and right change it immediately.".to_owned(),
+                11 => music_folder_detail(snap),
+                14 => "Show the folder of saved rides in the file manager.".to_owned(),
                 _ => String::new(),
             }
         };
@@ -340,6 +459,8 @@ impl MenuState {
             selected: self.index.min(lines.len().saturating_sub(1)),
             lines,
             detail,
+            bars: Vec::new(),
+            warn: false,
         }
     }
 
@@ -353,19 +474,41 @@ impl MenuState {
             self.index = position;
         }
         let mut lines = Vec::new();
+        let mut bars = Vec::new();
         for device in &devices {
-            let kind = if device.power_only {
-                "    power only, no resistance"
-            } else {
-                ""
-            };
+            let mut chips = String::new();
+            if device.remembered {
+                chips.push_str("  saved");
+            }
+            if device.ftms {
+                chips.push_str("  FTMS");
+            }
+            if device.cycling_power {
+                chips.push_str("  Power");
+            }
+            if device.fec {
+                chips.push_str("  FE-C");
+            }
+            if device.power_only {
+                chips.push_str("  power only, no resistance");
+            }
+            if snap.phase == pp_session::LinkPhase::Connecting && snap.connected_name == device.name
+            {
+                chips.push_str("  connecting");
+            }
+            if snap.phase == pp_session::LinkPhase::Connected && snap.connected_name == device.name
+            {
+                chips.push_str("  connected");
+            }
             lines.push(format!(
-                "{}    {}{kind}",
+                "{}    {}{chips}",
                 device.name,
                 signal(device.rssi_dbm)
             ));
+            bars.push(Some(device.bars));
         }
         lines.push("Disconnect and use the simulated rider".to_owned());
+        bars.push(None);
         let index = self.index.min(lines.len().saturating_sub(1));
         self.index = index;
         let hint = if snap.status_line.contains("Bluetooth unavailable") {
@@ -374,6 +517,12 @@ impl MenuState {
             "Looking for trainers. Wake yours by pedalling. Close other apps or bike computers that may already be connected to it.".to_owned()
         } else {
             snap.status_line.clone()
+        };
+        let failed = snap.phase == pp_session::LinkPhase::Failed && !snap.failure_reason.is_empty();
+        let hint = if failed {
+            snap.failure_reason.clone()
+        } else {
+            hint
         };
         let detail = if self.save_error.is_empty() {
             hint
@@ -385,6 +534,8 @@ impl MenuState {
             lines,
             detail,
             selected: index,
+            bars,
+            warn: failed,
         }
     }
 }
@@ -406,16 +557,30 @@ pub fn rank(devices: &[Device]) -> Vec<Device> {
 fn toggled(mut settings: Settings, index: usize) -> Settings {
     match index {
         1 => settings.control_trainer = !settings.control_trainer,
-        6 => settings.tv_dashboard_enabled = !settings.tv_dashboard_enabled,
-        7 => settings.fullscreen = !settings.fullscreen,
+        7 => settings.zwift_controllers = !settings.zwift_controllers,
+        8 => settings.tv_dashboard_enabled = !settings.tv_dashboard_enabled,
+        9 => settings.fullscreen = !settings.fullscreen,
         _ => {}
     }
     settings
 }
 
-fn stepped(mut settings: Settings, index: usize, increase: bool) -> Option<Settings> {
+fn rider_name(snap: &Snapshot) -> String {
+    snap.riders
+        .iter()
+        .find(|rider| rider.id == snap.settings.rider)
+        .map(|rider| rider.name.clone())
+        .unwrap_or_else(|| snap.settings.rider.clone())
+}
+
+fn stepped(
+    mut settings: Settings,
+    index: usize,
+    increase: bool,
+    riders: &[RiderOption],
+) -> Option<Settings> {
     match index {
-        1 | 6 | 7 => Some(toggled(settings, index)),
+        1 | 7 | 8 | 9 => Some(toggled(settings, index)),
         2 => {
             settings.trainer_difficulty = step_f32(
                 settings.trainer_difficulty,
@@ -452,12 +617,28 @@ fn stepped(mut settings: Settings, index: usize, increase: bool) -> Option<Setti
                 .unwrap_or(MIN_FTP_W);
             Some(settings)
         }
-        8 => {
+        6 => {
+            if riders.is_empty() {
+                return None;
+            }
+            let pos = riders
+                .iter()
+                .position(|rider| rider.id == settings.rider)
+                .unwrap_or(0);
+            let next = if increase {
+                (pos + 1) % riders.len()
+            } else {
+                (pos + riders.len() - 1) % riders.len()
+            };
+            settings.rider = riders[next].id.clone();
+            Some(settings)
+        }
+        10 => {
             let next = i32::from(settings.music_volume) + if increase { 5 } else { -5 };
             settings.music_volume = u8::try_from(next.clamp(0, 100)).unwrap_or(0);
             Some(settings)
         }
-        9 => {
+        11 => {
             if !increase {
                 settings.music_folder = None;
                 Some(settings)
@@ -472,6 +653,13 @@ fn stepped(mut settings: Settings, index: usize, increase: bool) -> Option<Setti
 fn step_f32(value: f32, step: f32, increase: bool, min: f32, max: f32) -> f32 {
     let next = if increase { value + step } else { value - step };
     (next.clamp(min, max) * 100.0).round() / 100.0
+}
+
+fn zwift_note(snap: &Snapshot) -> String {
+    if !snap.settings.zwift_controllers || snap.controller_status.is_empty() {
+        return String::new();
+    }
+    format!("  {}", snap.controller_status)
 }
 
 fn music_folder_line(snap: &Snapshot) -> String {
@@ -543,6 +731,8 @@ fn confirm_view(title: &str, detail: &str, index: usize) -> MenuView {
         lines: vec!["Yes".to_owned(), "No".to_owned()],
         detail: detail.to_owned(),
         selected: index.min(1),
+        bars: Vec::new(),
+        warn: false,
     }
 }
 
@@ -558,21 +748,65 @@ mod tests {
             dashboard_urls: Vec::new(),
             dashboard_error: None,
             music_report: String::new(),
+            phase: pp_session::LinkPhase::Idle,
+            failure_reason: String::new(),
+            connected_name: String::new(),
+            controller_status: String::new(),
+            straps: Vec::new(),
+            heart_line: String::new(),
+            riders: vec![
+                RiderOption {
+                    id: "nils".to_owned(),
+                    name: "Nils".to_owned(),
+                },
+                RiderOption {
+                    id: "sigrid".to_owned(),
+                    name: "Sigrid".to_owned(),
+                },
+            ],
             devices: vec![
                 Device {
                     id: "FAKE:KICKR".to_owned(),
                     name: "Fake Kickr".to_owned(),
                     rssi_dbm: Some(-72),
                     power_only: false,
+                    bars: 2,
+                    ftms: true,
+                    cycling_power: true,
+                    fec: false,
+                    remembered: false,
                 },
                 Device {
                     id: "FAKE:NEO".to_owned(),
                     name: "Fake Neo 2T".to_owned(),
                     rssi_dbm: Some(-48),
                     power_only: true,
+                    bars: 4,
+                    ftms: false,
+                    cycling_power: true,
+                    fec: false,
+                    remembered: false,
                 },
             ],
         }
+    }
+
+    #[test]
+    fn the_rider_row_shows_the_display_name_and_cycles_ids() {
+        let mut menu = MenuState::default();
+        menu.open_main();
+        menu.index = 6;
+        let view = menu.view(&snap());
+        assert_eq!(view.lines[6], "Rider    ◀ Nils ▶");
+        assert!(view.detail.contains("Left and right"));
+        let Action::Apply(settings) = menu.handle(Command::Right, &snap()) else {
+            panic!("rider");
+        };
+        assert_eq!(settings.rider, "sigrid");
+        let mut next = snap();
+        next.settings = settings;
+        let view = menu.view(&next);
+        assert_eq!(view.lines[6], "Rider    ◀ Sigrid ▶");
     }
 
     #[test]
@@ -634,7 +868,7 @@ mod tests {
     fn confirm_yes_quits_and_no_returns_and_bluetooth_has_a_plain_hint() {
         let mut menu = MenuState::default();
         menu.open_main();
-        menu.index = 11;
+        menu.index = 13;
         menu.handle(Command::Accept, &snap());
         assert_eq!(menu.page(), Page::ConfirmQuit);
         menu.handle(Command::Down, &snap());
@@ -643,7 +877,7 @@ mod tests {
             Action::None
         ));
         assert_eq!(menu.page(), Page::Main);
-        menu.index = 11;
+        menu.index = 13;
         menu.handle(Command::Accept, &snap());
         assert!(matches!(
             menu.handle(Command::Accept, &snap()),
@@ -669,12 +903,22 @@ mod tests {
                 name: "Beta".to_owned(),
                 rssi_dbm: Some(-70),
                 power_only: false,
+                bars: 2,
+                ftms: false,
+                cycling_power: false,
+                fec: false,
+                remembered: false,
             },
             Device {
                 id: "a".to_owned(),
                 name: "Alpha".to_owned(),
                 rssi_dbm: Some(-70),
                 power_only: false,
+                bars: 2,
+                ftms: false,
+                cycling_power: false,
+                fec: false,
+                remembered: false,
             },
         ];
         let ranked = rank(&devices);

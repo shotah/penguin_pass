@@ -317,7 +317,7 @@ impl Rider {
     fn discard_meshes(&mut self) {
         self.model = None;
         self.hidden_from_camera = false;
-        for mut node in std::mem::take(&mut self.parts) {
+        for node in std::mem::take(&mut self.parts) {
             self.base_mut().remove_child(&node);
             node.free();
         }

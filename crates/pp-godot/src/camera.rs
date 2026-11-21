@@ -82,10 +82,12 @@ impl CameraRig {
         } else if first_person {
             // Above the hoods, aimed so the bars sit just over the console
             // (the bottom 23% of the frame) and the road still fills the view.
+            // Far enough back, and high enough, that both arms and the bars
+            // stay inside a 16:9 frame as well as the 16:10 window.
             (
-                point(rider_global, Vector3::new(0.0, 1.16, -0.12)),
-                point(rider_global, Vector3::new(0.0, 0.98, -4.2)),
-                68.0,
+                point(rider_global, Vector3::new(0.0, 1.62, 1.55)),
+                point(rider_global, Vector3::new(0.0, 1.05, -5.5)),
+                66.0,
             )
         } else {
             // Close and a little low. A high, distant camera turned the 6 m

@@ -7,6 +7,10 @@ publish.workspace = true
 
 [dependencies]
 pp-course = { path = "../pp-course" }
+pp-view = { path = "../pp-view" }
+
+[dev-dependencies]
+pp-routegen = { path = "../pp-routegen" }
 
 [lints]
 workspace = true

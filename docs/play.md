@@ -62,6 +62,7 @@ Anything after a literal `--` is passed to the game:
 | `--skip-title` | Start on the road instead of the title screen |
 | `--play-through` | Title, Start, a short ride, End ride, then Quit |
 | `--no-music` | Start with the music bus muted |
+| `--no-hud` | Hide the console, the chips, and toasts |
 
 `./x play --trace` records the ride for diagnosis. It makes
 `target/traces/<date-time>/` and sets `PENGUIN_PASS_TRACE_DIR` to it. The
@@ -132,6 +133,7 @@ quit). The bindings and the menu are written up in `docs/game.md`.
 | --- | --- | --- |
 | More power | Up, W | D-pad up, right trigger |
 | Less power | Down, S | D-pad down, left trigger |
+| Move one lane slot | Left, A / Right, D | D-pad left / right |
 | Chase camera or handlebars | C | Y |
 | Full screen | F11 | |
 | Menu | Esc | Start |

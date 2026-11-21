@@ -11,6 +11,7 @@ pp-routegen = { path = "../pp-routegen" }
 [dependencies]
 pp-core = { path = "../pp-core" }
 pp-session = { path = "../pp-session" }
+pp-controllers = { path = "../pp-controllers" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

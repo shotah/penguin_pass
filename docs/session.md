@@ -99,12 +99,28 @@ music_folder = "/home/rider/Music/rides"
 | `course` | `penguin_pass` | `"penguin_pass"`, or `{ terrain, distance_km, seed }` |
 | `music_volume` | 60 | 0 to 100 |
 | `music_folder` | absent | path to the rider's music folder |
+| `rider` | `nils` | any name; `nils` and `sigrid` are the usual ones |
+| `zwift_controllers` | false | true or false |
+| `heart_rate_id` | absent | Bluetooth address of a heart-rate strap |
+| `heart_rate_name` | absent | advertised name of that strap |
 
 `fullscreen` is stored here. Godot applies it to the window. The session does not.
 
 `course` is the route loaded at the next start. `terrain` is `flat`, `rolling`, `mountain`, or `desert`. An older file with no `course` key loads Penguin Pass. A saved course that cannot be generated also loads Penguin Pass, and the session queues `CourseUnavailable` instead of crashing.
 
 `music_volume` is the playback level Godot applies, from 0 to 100. `music_folder` is the rider's own folder of music files. An older file without these keys loads volume 60 and no folder. A folder that is not on disk is kept. `Settings::missing_music_folder` returns that path so the menu can say it is missing.
+
+`rider` is the on-screen rider. A missing key loads `nils`. Any other text is kept. `zwift_controllers` loads `false` when the key is missing. `heart_rate_id` and `heart_rate_name` remember a strap. Delete them, or call `forget_heart_rate`, to forget it. An older file without these keys loads `nils`, controllers off, and no strap.
+
+## Saved rides
+
+Ending a ride writes one FIT file, marked cycling / virtual activity, with no map. A ride under 60 seconds or under 100 meters is not written. `end_ride` finishes the file. `restart` and `set_course` during a ride finish the current file and start another. Quitting mid-ride writes on drop. The title screen (`Ready`) records nothing; `hold_at_start` drops the open recording without writing it.
+
+`RideSaved` carries the path. `RideNotSaved` carries one sentence, such as `Ride too short to save` or `Could not save the ride: ...`. `last_saved_ride` is the last path this session wrote.
+
+Files go in `rides_folder` when that settings key is set. Otherwise they go in a `rides` directory next to the settings file passed to `set_settings_path`. `set_rides_dir` replaces both, which is how tests choose a temporary directory. With none of those set, nothing is written. The directory is created on the first save. For a normal `./x play` the settings file is `user://settings.toml`, so once the game passes that path the files land in `/home/deck/.local/share/godot/app_userdata/Penguin Pass/rides`.
+
+The ride trace is a separate CSV and is not this file.
 
 ## Ride trace
 
@@ -154,6 +170,8 @@ The HUD refreshes numbers a few times a second. `tick` still runs every frame. T
 **Connection chip.** `connection`, not the status line. `phase` is idle, searching, connecting, connected, reconnecting, or failed. `resistance` is `Controlled` or `ReadingOnly`. Reading only covers the settings toggle. When the trainer itself refuses control, `resistance` is still `ReadingOnly` and the status line says the trainer reports power only and cannot change resistance. `plain_failure` turns the trainer's `control not permitted` text into that same sentence. `bluetooth_available` is false when the adapter cannot start. `failure_reason` is one sentence when the link failed; `failure_detail` is the raw text for the log.
 
 **TV chip.** `status().dashboard`, `dashboard_urls`, and `dashboard_error`. Each publish also sends `CastServer::publish_status` with FTP, the link phase, the resistance mode, and the 3-second power.
+
+**Heart-rate strap.** The strap link is separate from the trainer. Nothing is spawned until `set_heart_rate_factory`. Pass `BleHeartRateFactory` for a real strap, a factory that returns `SimHeartRate` for the fake mode, and leave it unset when Bluetooth is off. A remembered `heart_rate_id` is connected as soon as the factory is set. `heart_rate_entries` is the nearby list, strongest first, with the same signal bars as the trainer list. `connect_heart_rate` remembers that strap. `forget_heart_rate` clears the two settings fields and disconnects. `heart_rate_state` is the trainer crate's `ConnectionState`. `heart_rate_name` is the live name, or the remembered name when the link is down. The readout, the summary, the TV telemetry, and the ride trace use the strap's bpm when it has one, and the trainer's bpm otherwise. `HeartRateConnected` and `HeartRateLost` fire once per transition. A strap drop does not touch the trainer or the grade.
 
 **Pairing rows.** `pairing` returns the list, strongest first, ties by name then id. `signal_bars` maps RSSI to 0..=4 and `signal_word` is the label. Unknown RSSI is 0 bars. A trainer stays for `PAIRING_HOLD_S` (8 s) after it was last seen. `remembered` flags `last_trainer_id`. `search_again` drops the current scan and starts a new one. Each row carries `ftms`, `cycling_power`, and `fec` from the advertisement. A device can take resistance when `ftms` or `fec` is set. A row with only `cycling_power` is a power meter.
 

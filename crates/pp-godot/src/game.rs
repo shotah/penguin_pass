@@ -54,6 +54,15 @@ pub struct Game {
     rider: Option<Gd<Rider>>,
     camera: Option<Gd<CameraRig>>,
     first_person: bool,
+    lane: pp_view::lane::Lane,
+    controllers: Option<Box<dyn pp_controllers::ControllerLink>>,
+    pad_up: bool,
+    pad_down: bool,
+    lane_moved: bool,
+    pad_badge: crate::hud::PadBadge,
+    pad_preview: bool,
+    trainer_preview: Option<(String, String)>,
+    ride_file: Option<pp_view::rides::RideFileNote>,
     last: Telemetry,
     theme_name: String,
     theme_fallback: bool,
@@ -69,8 +78,9 @@ pub struct Game {
     started: bool,
     /// Milliseconds from `ready` start to the parts line.
     ready_ms: u64,
-    /// Frames left after the music players were stopped, before the process quits.
-    quit_frames: u8,
+    /// Millisecond clock when the process may quit. The audio server needs
+    /// real time, not a handful of uncapped frames, to drop playbacks.
+    quit_at_ms: u64,
 }
 
 #[godot_api]
@@ -96,6 +106,19 @@ impl INode3D for Game {
             rider: None,
             camera: None,
             first_person: false,
+            lane: pp_view::lane::Lane::new(pp_view::lane::LaneSpec::right_lane(
+                crate::road::ASPHALT_WIDTH_M * 0.5,
+                crate::road::CENTER_LINE_HALF_M,
+                crate::road::EDGE_LINE_M,
+            )),
+            controllers: None,
+            pad_up: false,
+            pad_down: false,
+            lane_moved: false,
+            pad_badge: crate::hud::PadBadge::Off,
+            pad_preview: false,
+            trainer_preview: None,
+            ride_file: None,
             last: Telemetry::default(),
             theme_name: String::new(),
             theme_fallback: false,
@@ -109,7 +132,7 @@ impl INode3D for Game {
             menu_hold: pp_view::hold::MenuHold::default(),
             started: false,
             ready_ms: 0,
-            quit_frames: 0,
+            quit_at_ms: 0,
         }
     }
 
@@ -226,6 +249,15 @@ impl INode3D for Game {
         let mut parent = self.base_mut().clone();
         self.menu = Some(RideMenu::new(&mut parent));
         self.screens = Some(Screens::new(&mut parent));
+        let game = self.to_gd();
+        if let Some(menu) = self.menu.as_mut() {
+            menu.bind_pointer(&game);
+        }
+        let no_hud = self.launch.as_ref().is_some_and(|launch| launch.no_hud);
+        if let Some(screens) = self.screens.as_mut() {
+            screens.set_toasts(!no_hud);
+            screens.bind_pointer(&game);
+        }
         self.refresh_screens();
         let title_ms = stamp(title_mark);
 
@@ -247,9 +279,8 @@ impl INode3D for Game {
     }
 
     fn process(&mut self, delta: f64) {
-        if self.quit_frames > 0 {
-            self.quit_frames -= 1;
-            if self.quit_frames == 0 {
+        if self.quit_at_ms > 0 {
+            if Time::singleton().get_ticks_msec() >= self.quit_at_ms {
                 self.base().get_tree().quit();
             }
             return;
@@ -268,7 +299,16 @@ impl INode3D for Game {
         if self.shell.screen() == Screen::Riding {
             let up = Input::singleton().is_action_pressed("power_up");
             let down = Input::singleton().is_action_pressed("power_down");
-            self.keys.poll_keys(dt, up, down);
+            self.keys
+                .poll_keys(dt, up || self.pad_up, down || self.pad_down);
+            if Input::singleton().is_action_just_pressed("lane_left") {
+                self.lane.nudge(false);
+                self.lane_moved = true;
+            }
+            if Input::singleton().is_action_just_pressed("lane_right") {
+                self.lane.nudge(true);
+                self.lane_moved = true;
+            }
             let watts = self.keys.target_power_w().round() as u16;
             self.session_mut().set_sim_power(watts);
         } else {
@@ -277,6 +317,9 @@ impl INode3D for Game {
                 self.session_mut().set_sim_power(0);
             }
         }
+        self.sync_rider_preset();
+        self.sync_zwift();
+        self.poll_zwift();
         self.show_events();
         let telemetry = self.step_ride(dt);
         self.present(&telemetry, dt);
@@ -628,7 +671,7 @@ impl Game {
     pub fn debug_menu_open(&mut self) {
         self.shell.open_settings();
         let mut menu = self.menu.take().expect("menu");
-        menu.open(self.session());
+        menu.open(self.session_mut());
         self.menu = Some(menu);
     }
 
@@ -770,6 +813,95 @@ impl Game {
     #[func]
     pub fn debug_press_back(&mut self) {
         self.on_menu_key();
+    }
+
+    /// The pointer moved onto a title, pause, course, or summary row.
+    #[func]
+    fn on_screen_hover(&mut self, index: i64) {
+        if index >= 0 {
+            self.shell.hover(index as usize);
+            self.refresh_screens();
+        }
+    }
+
+    /// The pointer moved onto a settings row.
+    #[func]
+    fn on_menu_hover(&mut self, index: i64) {
+        if index < 0 {
+            return;
+        }
+        let Some(mut menu) = self.menu.take() else {
+            return;
+        };
+        menu.hover(index as usize);
+        menu.refresh(self.session_mut());
+        self.menu = Some(menu);
+    }
+
+    /// Show a controller chip from [`pp_controllers::SimControllers`]. No radio.
+    ///
+    /// `mode` is `scanning`, `1`, `2`, or `unavailable`.
+    #[func]
+    pub fn debug_show_controllers(&mut self, mode: GString) {
+        use pp_controllers::{
+            ControllerLink, DeviceKind, DiscoveredController, Side, SimControllers,
+        };
+        let mut sim = SimControllers::new();
+        let mode = mode.to_string();
+        match mode.as_str() {
+            "1" | "2" => {
+                let count = if mode == "2" { 2 } else { 1 };
+                let found = (0..count)
+                    .map(|index| DiscoveredController {
+                        id: format!("SIM:{index}"),
+                        name: format!("Play {index}"),
+                        rssi_dbm: Some(-40),
+                        kind: DeviceKind::Play,
+                        side: Some(if index == 0 { Side::Left } else { Side::Right }),
+                    })
+                    .collect();
+                sim.set_discovered(found);
+                sim.connect_all();
+            }
+            "unavailable" => sim.unavailable(),
+            _ => {
+                sim.connect_all();
+            }
+        }
+        self.controllers = Some(Box::new(sim));
+        self.pad_preview = true;
+        self.sync_zwift();
+    }
+
+    /// Trainer chip text for a screenshot of a long name.
+    #[func]
+    pub fn debug_trainer_label(&mut self, name: GString, detail: GString) {
+        self.trainer_preview = Some((name.to_string(), detail.to_string()));
+    }
+
+    /// Put the rider in a lane slot and finish the ease. 0 is the centre side, 2 the edge.
+    #[func]
+    pub fn debug_set_lane(&mut self, slot: i64) {
+        let target = slot.clamp(0, 2) as u8;
+        for _ in 0..3 {
+            self.lane.nudge(false);
+        }
+        for _ in 0..target {
+            self.lane.nudge(true);
+        }
+        self.lane_moved = true;
+        for _ in 0..12 {
+            self.lane.step(0.05);
+        }
+    }
+
+    /// Show the named rider preset.
+    #[func]
+    pub fn debug_set_rider(&mut self, id: GString) {
+        let mut settings = self.session().settings().clone();
+        settings.rider = id.to_string();
+        self.session_mut().apply_settings(settings);
+        self.sync_rider_preset();
     }
 
     /// Milliseconds spent in `ready`, matching `PENGUIN_PASS_READY_MS`.
@@ -982,7 +1114,8 @@ impl Game {
         self.last = *telemetry;
         let status = self.status_sentence(telemetry);
         let tv = self.tv_sentence();
-        let show = self.shell.shows_hud();
+        let hide_hud = self.launch.as_ref().is_some_and(|launch| launch.no_hud);
+        let show = self.shell.shows_hud() && !hide_hud;
         let hud_node = self.hud.clone();
         if let Some(mut hud_node) = hud_node {
             hud_node.set_visible(show);
@@ -991,13 +1124,22 @@ impl Game {
             hud.set_status(&status);
             hud.set_tv_url(&tv);
             hud.present(self.session(), dt);
+            if let Some((name, detail)) = self.trainer_preview.clone() {
+                hud.debug_trainer_text(&name, &detail);
+            }
+            // Up for the opening of the ride, and until the first lane change.
+            hud.set_lane_hint(!self.lane_moved);
+            hud.set_pad_badge(self.pad_badge);
         }
         let distance = telemetry.lap_distance_m;
         let course = self.session().course().clone();
         let (position, tangent) = pose(&course, distance);
         let ahead = course.tangent_at(distance + 8.0);
         let turn = tangent.x * ahead[2] - tangent.z * ahead[0];
-        let lean = (turn * telemetry.speed_mps * 0.18).clamp(-0.3, 0.3);
+        let lane = self.lane.step(dt as f32);
+        let side = crate::road::flat_right(tangent);
+        let position = position + side * lane.offset_m;
+        let lean = (turn * telemetry.speed_mps * 0.18 + lane.lean_rad).clamp(-0.35, 0.35);
         let ftp_w = f32::from(self.session().settings().ftp_w);
         if let Some(rider) = self.rider.as_mut() {
             let mut rider = rider.bind_mut();
@@ -1043,8 +1185,8 @@ impl Game {
         }
         let path = self.settings_path().clone();
         let mut menu = self.menu.take().expect("menu");
-        menu.open(self.session());
-        for _ in 0..11 {
+        menu.open(self.session_mut());
+        for _ in 0..13 {
             menu.handle(Command::Down, self.session_mut(), &path);
         }
         menu.handle(Command::Accept, self.session_mut(), &path);
@@ -1131,14 +1273,22 @@ impl Game {
                 self.keys.set_target_power(0.0);
             }
             ShellEffect::PickCourse(index) => self.pick_course(index),
+            ShellEffect::Reroll(index) => {
+                self.session_mut().reroll(index);
+            }
+            ShellEffect::OpenRides => self.open_rides_folder(),
             ShellEffect::Menu(action) => {
                 let path = self.settings_path().clone();
                 let mut menu = self.menu.take().expect("menu");
-                if matches!(action, pp_view::menu::Action::Scan) {
-                    menu.open(self.session());
-                    let _ = menu.handle(Command::Accept, self.session_mut(), &path);
-                } else {
-                    menu.open(self.session());
+                match action {
+                    pp_view::menu::Action::Scan => {
+                        menu.open(self.session_mut());
+                        let _ = menu.handle(Command::Accept, self.session_mut(), &path);
+                    }
+                    pp_view::menu::Action::OpenHeart => {
+                        menu.show_heart(self.session_mut());
+                    }
+                    _ => menu.open(self.session_mut()),
                 }
                 self.menu = Some(menu);
             }
@@ -1147,7 +1297,7 @@ impl Game {
             && self.menu.as_ref().is_some_and(|menu| !menu.is_open())
         {
             let mut menu = self.menu.take().expect("menu");
-            menu.open(self.session());
+            menu.open(self.session_mut());
             self.menu = Some(menu);
         }
         self.sync_music();
@@ -1176,11 +1326,29 @@ impl Game {
             totals.ascent_m,
             totals.average_power_w
         );
-        let view = self
-            .shell
-            .view(&facts.name, &trainer, &detail, &cards, &summary_line);
+        let view = self.shell.view(
+            &facts.name,
+            &trainer,
+            &detail,
+            &cards,
+            &summary_line,
+            self.session()
+                .heart_rate_name()
+                .as_deref()
+                .unwrap_or("Not paired"),
+        );
+        let profiles: Vec<Vec<(f32, f32)>> =
+            cards.iter().map(|card| card.profile.clone()).collect();
+        let figures = if self.shell.screen() == Screen::Summary {
+            summary_figures(&totals)
+        } else {
+            Vec::new()
+        };
+        let ride_file = self.ride_file.clone();
         if let Some(screens) = self.screens.as_mut() {
-            screens.show(&view);
+            screens.show(&view, &profiles, &figures);
+            let note = (self.shell.screen() == Screen::Summary).then_some(ride_file.as_ref());
+            screens.set_ride_file(note.flatten());
         }
     }
 
@@ -1196,6 +1364,7 @@ impl Game {
                 length_m: option.length_m,
                 ascent_m: option.ascent_m as f32,
                 max_grade_pct: option.max_grade_pct,
+                profile: option.profile.clone(),
             })
             .collect()
     }
@@ -1249,6 +1418,154 @@ impl Game {
         }
     }
 
+    fn sync_rider_preset(&mut self) {
+        let id = self.session().settings().rider.clone();
+        if let Some(rider) = self.rider.as_mut() {
+            let mut rider = rider.bind_mut();
+            if rider.preset_id() != id {
+                rider.set_preset(&id);
+            }
+        }
+    }
+
+    fn sync_zwift(&mut self) {
+        if self.pad_preview {
+            let state = self.controllers.as_ref().map(|link| link.state());
+            self.pad_badge = pad_badge(true, state.as_ref());
+            let status = state.as_ref().map(zwift_word).unwrap_or_default();
+            if let Some(menu) = self.menu.as_mut() {
+                menu.set_controller_status(&status);
+            }
+            return;
+        }
+        let enabled = self.session().settings().zwift_controllers;
+        let real = self
+            .launch
+            .as_ref()
+            .is_some_and(|launch| launch.mode == crate::launch::TrainerMode::Real);
+        let status = if !enabled {
+            String::new()
+        } else if !real {
+            "unavailable".to_owned()
+        } else if self.controllers.is_none() {
+            match pp_controllers::spawn_ble_controllers() {
+                Ok(mut link) => {
+                    link.connect_all();
+                    let word = zwift_word(&link.state());
+                    self.controllers = Some(link);
+                    word
+                }
+                Err(_) => "unavailable".to_owned(),
+            }
+        } else {
+            self.controllers
+                .as_ref()
+                .map(|link| zwift_word(&link.state()))
+                .unwrap_or_default()
+        };
+        if !enabled || !real {
+            if let Some(mut link) = self.controllers.take() {
+                link.disconnect();
+            }
+            self.pad_up = false;
+            self.pad_down = false;
+        }
+        let state = self.controllers.as_ref().map(|link| link.state());
+        self.pad_badge = if !enabled {
+            crate::hud::PadBadge::Off
+        } else if !real {
+            crate::hud::PadBadge::Unavailable
+        } else {
+            pad_badge(true, state.as_ref())
+        };
+        if let Some(menu) = self.menu.as_mut() {
+            menu.set_controller_status(&status);
+        }
+    }
+
+    fn poll_zwift(&mut self) {
+        let Some(link) = self.controllers.as_mut() else {
+            return;
+        };
+        let events = link.drain_events();
+        let riding = self.shell.screen() == Screen::Riding;
+        let skip_shift = pp_view::controllers::batch_has_paddle(&events);
+        let actions: Vec<_> = events
+            .iter()
+            .filter_map(|event| {
+                if let pp_controllers::ControllerEvent::Connected { name, .. } = event {
+                    return Some(format!("{name} connected"));
+                }
+                if let pp_controllers::ControllerEvent::Disconnected { name, .. } = event {
+                    return Some(format!("{name} disconnected"));
+                }
+                None
+            })
+            .collect();
+        for event in &events {
+            let Some(action) = pp_view::controllers::map_event(event, riding, skip_shift) else {
+                continue;
+            };
+            match event {
+                pp_controllers::ControllerEvent::Released { button, .. } => {
+                    if matches!(
+                        button,
+                        pp_controllers::Button::Up
+                            | pp_controllers::Button::Plus
+                            | pp_controllers::Button::ShiftUp
+                            | pp_controllers::Button::ShiftUpRight
+                            | pp_controllers::Button::ShiftDownRight
+                            | pp_controllers::Button::PowerUpRight
+                    ) {
+                        self.pad_up = false;
+                    }
+                    if matches!(
+                        button,
+                        pp_controllers::Button::Down
+                            | pp_controllers::Button::Minus
+                            | pp_controllers::Button::ShiftDown
+                            | pp_controllers::Button::ShiftDownLeft
+                            | pp_controllers::Button::ShiftUpLeft
+                            | pp_controllers::Button::PowerUpLeft
+                    ) {
+                        self.pad_down = false;
+                    }
+                }
+                _ => self.apply_pad(action),
+            }
+        }
+        for text in actions {
+            if let Some(screens) = self.screens.as_mut() {
+                screens.toast(&text, 3.0);
+            }
+        }
+    }
+
+    fn apply_pad(&mut self, action: pp_view::controllers::PadAction) {
+        use pp_view::controllers::PadAction;
+        match action {
+            PadAction::LaneLeft => {
+                self.lane.nudge(false);
+                self.lane_moved = true;
+            }
+            PadAction::LaneRight => {
+                self.lane.nudge(true);
+                self.lane_moved = true;
+            }
+            PadAction::PowerUp => self.pad_up = true,
+            PadAction::PowerDown => self.pad_down = true,
+            PadAction::Camera => self.first_person = !self.first_person,
+            PadAction::NextTrack => self.skip_track(),
+            PadAction::Pause => self.on_menu_key(),
+            PadAction::MenuUp => self.shell_command(Command::Up, true),
+            PadAction::MenuDown => self.shell_command(Command::Down, true),
+            PadAction::MenuLeft => self.shell_command(Command::Left, true),
+            PadAction::MenuRight => self.shell_command(Command::Right, true),
+            PadAction::Accept => self.shell_command(Command::Accept, true),
+            PadAction::Back => self.on_menu_key(),
+        }
+    }
+
     fn show_events(&mut self) {
         let events = self.session_mut().drain_events();
         for event in events {
@@ -1276,6 +1593,31 @@ impl Game {
                 }
                 pp_session::RideEvent::CourseSelected { name } => (format!("Course: {name}"), 3.0),
                 pp_session::RideEvent::CourseUnavailable { detail } => (detail, 6.0),
+                pp_session::RideEvent::HeartRateConnected { name } => {
+                    (format!("{name} heart rate connected"), 3.0)
+                }
+                pp_session::RideEvent::HeartRateLost { name } => {
+                    (format!("{name} heart rate lost"), 6.0)
+                }
+                pp_session::RideEvent::RideSaved { path } => {
+                    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+                    self.ride_file = Some(pp_view::rides::saved_note(
+                        &path,
+                        home.as_deref(),
+                        pp_view::rides::FOLDER_CHARS,
+                    ));
+                    if self.shell.screen() == Screen::Summary {
+                        continue;
+                    }
+                    ("Ride saved".to_owned(), 4.0)
+                }
+                pp_session::RideEvent::RideNotSaved { reason } => {
+                    self.ride_file = Some(pp_view::rides::unsaved_note(&reason));
+                    if self.shell.screen() == Screen::Summary {
+                        continue;
+                    }
+                    (reason, 6.0)
+                }
             };
             if let Some(screens) = self.screens.as_mut() {
                 screens.toast(&text, seconds);
@@ -1299,6 +1641,7 @@ impl Game {
                 self.shell_command(Command::Down, true);
                 self.shell_command(Command::Down, true);
                 self.shell_command(Command::Down, true);
+                self.shell_command(Command::Down, true);
                 self.shell_command(Command::Accept, true);
                 self.shell_command(Command::Right, true);
                 self.shell_command(Command::Accept, true);
@@ -1308,7 +1651,7 @@ impl Game {
                 self.shell_command(Command::Accept, true);
             }
             90 => {
-                for _ in 0..4 {
+                for _ in 0..5 {
                     self.shell_command(Command::Down, true);
                 }
                 self.shell_command(Command::Accept, true);
@@ -1482,11 +1825,11 @@ impl Game {
     /// The audio server drops a playback on a later mix, not inside `free`.
     /// Quitting in the same call leaks the stream and the playback.
     fn request_quit(&mut self) {
-        if self.quit_frames > 0 {
+        if self.quit_at_ms > 0 {
             return;
         }
         self.release_music();
-        self.quit_frames = 8;
+        self.quit_at_ms = Time::singleton().get_ticks_msec().saturating_add(400);
     }
 
     fn release_music(&mut self) {
@@ -1520,7 +1863,23 @@ impl Game {
         if effect == Effect::ChooseMusicFolder {
             self.open_music_dialog();
         }
+        if effect == Effect::OpenRides {
+            self.open_rides_folder();
+        }
         self.apply_music_settings();
+    }
+
+    fn open_rides_folder(&mut self) {
+        let dir = self.session().rides_dir();
+        if let Err(err) = std::fs::create_dir_all(&dir) {
+            godot_error!("Penguin Pass: could not create the rides folder: {err}");
+            return;
+        }
+        let path = dir.display().to_string();
+        let error = godot::classes::Os::singleton().shell_open(&GString::from(path.as_str()));
+        if error != godot::global::Error::OK {
+            godot_error!("Penguin Pass: could not open the rides folder");
+        }
     }
 
     fn save_settings(&mut self) {
@@ -1554,10 +1913,90 @@ fn menu_snapshot(session: &Session) -> pp_view::menu::Snapshot {
                 name: device.name,
                 rssi_dbm: device.rssi_dbm,
                 power_only: !device.ftms && !device.fec,
+                bars: 0,
+                ftms: device.ftms,
+                cycling_power: device.cycling_power,
+                fec: device.fec,
+                remembered: false,
             })
             .collect(),
         music_report: String::new(),
+        phase: pp_session::LinkPhase::Idle,
+        failure_reason: String::new(),
+        connected_name: String::new(),
+        controller_status: String::new(),
+        straps: Vec::new(),
+        heart_line: String::new(),
+        riders: Vec::new(),
     }
+}
+
+fn summary_figures(totals: &pp_session::RideSummary) -> Vec<(String, String)> {
+    let speed = if totals.elapsed_s > 0.5 {
+        format!("{:.1}", totals.distance_m / totals.elapsed_s * 3.6)
+    } else {
+        "—".to_owned()
+    };
+    let laps = if totals.laps.is_empty() {
+        "—".to_owned()
+    } else {
+        totals
+            .laps
+            .iter()
+            .map(|lap| format!("{} {}", lap.lap, clock(lap.time_s)))
+            .collect::<Vec<_>>()
+            .join("  ")
+    };
+    vec![
+        ("Time".to_owned(), clock(totals.elapsed_s)),
+        (
+            "Distance".to_owned(),
+            format!("{:.2} km", totals.distance_m / 1000.0),
+        ),
+        ("Climbing".to_owned(), format!("{:.0} m", totals.ascent_m)),
+        (
+            "Average power".to_owned(),
+            format!("{:.0} W", totals.average_power_w),
+        ),
+        (
+            "Best power".to_owned(),
+            format!("{:.0} W", totals.max_power_w),
+        ),
+        ("Average speed".to_owned(), format!("{speed} km/h")),
+        ("Laps".to_owned(), laps),
+    ]
+}
+
+fn pad_badge(on: bool, state: Option<&pp_controllers::LinkState>) -> crate::hud::PadBadge {
+    use pp_controllers::LinkState;
+    if !on {
+        return crate::hud::PadBadge::Off;
+    }
+    match state {
+        Some(LinkState::Connected(count)) if *count > 0 => {
+            crate::hud::PadBadge::Count(u8::try_from(*count).unwrap_or(2).min(2))
+        }
+        Some(LinkState::Unavailable | LinkState::Failed(_)) | None => {
+            crate::hud::PadBadge::Unavailable
+        }
+        _ => crate::hud::PadBadge::Scanning,
+    }
+}
+
+fn zwift_word(state: &pp_controllers::LinkState) -> String {
+    match state {
+        pp_controllers::LinkState::Connected(1) => "1 connected".to_owned(),
+        pp_controllers::LinkState::Connected(count) => format!("{count} connected"),
+        pp_controllers::LinkState::Unavailable | pp_controllers::LinkState::Failed(_) => {
+            "unavailable".to_owned()
+        }
+        _ => "scanning".to_owned(),
+    }
+}
+
+fn clock(seconds: f64) -> String {
+    let whole = seconds.max(0.0).round() as u64;
+    format!("{}:{:02}", whole / 60, whole % 60)
 }
 
 fn pose(course: &Course, lap_distance_m: f64) -> (Vector3, Vector3) {

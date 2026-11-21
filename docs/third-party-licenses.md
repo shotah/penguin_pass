@@ -32,6 +32,8 @@ copies to `licenses/assets.md`.
 | dbus | 0.9.12 | Apache-2.0/MIT | https://github.com/diwic/dbus-rs |
 | dbus-tokio | 0.7.6 | Apache-2.0/MIT | https://github.com/diwic/dbus-rs |
 | either | 1.19.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/either |
+| embedded-io | 0.7.1 | MIT OR Apache-2.0 | https://github.com/rust-embedded/embedded-hal |
+| embedded-io-adapters | 0.7.0 | MIT OR Apache-2.0 | https://github.com/rust-embedded/embedded-hal |
 | equivalent | 1.0.3 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/equivalent |
 | futures | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-channel | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
@@ -42,6 +44,7 @@ copies to `licenses/assets.md`.
 | futures-sink | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-task | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-util | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
+| getrandom | 0.2.17 | MIT OR Apache-2.0 | https://github.com/rust-random/getrandom |
 | glam | 0.30.10 | MIT OR Apache-2.0 | https://github.com/bitshifter/glam-rs |
 | glam | 0.32.1 | MIT OR Apache-2.0 | https://github.com/bitshifter/glam-rs |
 | godot | 0.5.5 | MPL-2.0 | https://github.com/godot-rust/gdext |
@@ -76,15 +79,24 @@ copies to `licenses/assets.md`.
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
 | pin-project-lite | 0.2.18 | Apache-2.0 OR MIT | https://github.com/taiki-e/pin-project-lite |
 | pp-cast | 0.1.0 | missing |  |
+| pp-controllers | 0.1.0 | missing |  |
 | pp-core | 0.1.0 | missing |  |
 | pp-course | 0.1.0 | missing |  |
 | pp-ftms | 0.1.0 | missing |  |
+| pp-record | 0.1.0 | missing |  |
 | pp-rider | 0.1.0 | missing |  |
+| pp-routegen | 0.1.0 | missing |  |
 | pp-session | 0.1.0 | missing |  |
 | pp-trainer | 0.1.0 | missing |  |
 | pp-view | 0.1.0 | missing |  |
+| pp-world | 0.1.0 | missing |  |
+| ppv-lite86 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/cryptocorrosion/cryptocorrosion |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
+| rand | 0.8.5 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
+| rand_chacha | 0.3.1 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
+| rand_core | 0.6.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
+| rustyfit | 0.11.2 | BSD-3-Clause | https://github.com/muktihari/rustyfit |
 | scopeguard | 1.2.0 | MIT OR Apache-2.0 | https://github.com/bluss/scopeguard |
 | serde | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde-xml-rs | 0.8.2 | MIT | https://github.com/RReverser/serde-xml-rs |
@@ -121,6 +133,7 @@ copies to `licenses/assets.md`.
 | want | 0.3.2 | MIT | https://github.com/seanmonstar/want |
 | winnow | 0.7.15 | MIT | https://github.com/winnow-rs/winnow |
 | xml | 1.4.0 | MIT | https://github.com/kornelski/xml-rs |
+| zerocopy | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT | https://github.com/google/zerocopy |
 | zmij | 1.0.23 | MIT | https://github.com/dtolnay/zmij |
 
 ## Needs a decision
@@ -128,11 +141,15 @@ copies to `licenses/assets.md`.
 Missing a `license` field:
 
 - pp-cast 0.1.0
+- pp-controllers 0.1.0
 - pp-core 0.1.0
 - pp-course 0.1.0
 - pp-ftms 0.1.0
+- pp-record 0.1.0
 - pp-rider 0.1.0
+- pp-routegen 0.1.0
 - pp-session 0.1.0
 - pp-trainer 0.1.0
 - pp-view 0.1.0
+- pp-world 0.1.0
 

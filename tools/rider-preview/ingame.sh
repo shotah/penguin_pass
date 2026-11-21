@@ -4,6 +4,7 @@
 #   tools/rider-preview/ingame.sh                 all pictures into docs/img/rider/
 #   ONLY=sequence,stand tools/rider-preview/ingame.sh
 #   OUT=/some/dir tools/rider-preview/ingame.sh   write somewhere else
+#   PRESET=sigrid PREFIX=rider2- tools/rider-preview/ingame.sh
 #   tools/rider-preview/ingame.sh bench           timings at the switchback
 #   tools/rider-preview/ingame.sh world           course build stats and world pictures
 #   tools/rider-preview/ingame.sh shot ARGS...    godot/tests/shot.gd with ARGS
@@ -57,6 +58,8 @@ case "${1:-pictures}" in
     pictures)
         args=(--out-dir "$OUT" --repo "$ROOT")
         [[ -n "$ONLY" ]] && args+=(--only "$ONLY")
+        [[ -n "${PRESET:-}" ]] && args+=(--preset "$PRESET")
+        [[ -n "${PREFIX:-}" ]] && args+=(--prefix "$PREFIX")
         run "$HERE/ingame.gd" "${args[@]}"
         ;;
     bench)

@@ -24,6 +24,7 @@
 mod connection;
 mod course_sel;
 mod events;
+mod heart;
 mod link;
 mod readout;
 mod session;
@@ -36,6 +37,7 @@ mod zones;
 pub use connection::{ConnectionStatus, LinkPhase, ResistanceMode, plain_failure};
 pub use course_sel::{CourseChoice, CourseOption, RidePhase};
 pub use events::{EVENT_QUEUE_CAP, RideEvent};
+pub use heart::{BleHeartRateFactory, HeartRateFactory, SensorEntry};
 pub use link::{BleTrainerFactory, TrainerFactory, TrainerLink};
 pub use pp_core::{RiderProfile, Telemetry};
 pub use pp_course::Course;

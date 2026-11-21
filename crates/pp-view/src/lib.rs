@@ -6,16 +6,19 @@
 //! `Gd` handle.
 
 pub mod console;
+pub mod controllers;
 pub mod elevation;
 pub mod format;
 pub mod hold;
 pub mod hud;
+pub mod lane;
 pub mod launch;
 pub mod menu;
 pub mod music;
 pub mod power;
 pub mod profile;
 pub mod relief;
+pub mod rides;
 pub mod roadbed;
 pub mod scatter;
 pub mod shell;

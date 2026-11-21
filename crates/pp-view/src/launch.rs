@@ -32,6 +32,8 @@ pub struct LaunchFlags {
     pub play_through: bool,
     /// Start silent. A settings change can still raise the volume.
     pub no_music: bool,
+    /// Hide the console, chips, and toasts. World screenshots use this.
+    pub no_hud: bool,
 }
 
 /// Environment values the game already read. Empty strings count as unset.
@@ -49,6 +51,8 @@ pub struct LaunchEnv {
     pub dashboard_loopback: Option<String>,
     /// `PENGUIN_PASS_NO_MUSIC`.
     pub no_music: Option<String>,
+    /// `PENGUIN_PASS_NO_HUD`.
+    pub no_hud: Option<String>,
 }
 
 /// User arguments win over the environment. Later flags win over earlier ones.
@@ -61,6 +65,7 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
     let mut skip_title = false;
     let mut play_through = false;
     let mut no_music = is_flag(env.no_music.as_deref());
+    let mut no_hud = is_flag(env.no_hud.as_deref());
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -71,6 +76,7 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
             "--skip-title" => skip_title = true,
             "--play-through" => play_through = true,
             "--no-music" => no_music = true,
+            "--no-hud" => no_hud = true,
             "--settings" => {
                 if let Some(value) = args.get(index + 1) {
                     settings_path = Some(PathBuf::from(value));
@@ -98,6 +104,7 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
         skip_title,
         play_through,
         no_music,
+        no_hud,
     }
 }
 
@@ -146,6 +153,7 @@ mod tests {
             "--skip-title".to_owned(),
             "--play-through".to_owned(),
             "--no-music".to_owned(),
+            "--no-hud".to_owned(),
         ];
         let flags = parse_launch(&args, &env);
         assert_eq!(flags.mode, TrainerMode::Fake);
@@ -159,6 +167,7 @@ mod tests {
         assert!(flags.skip_title);
         assert!(flags.play_through);
         assert!(flags.no_music);
+        assert!(flags.no_hud);
     }
 
     #[test]
@@ -169,6 +178,7 @@ mod tests {
         assert!(!flags.skip_title);
         assert!(!flags.play_through);
         assert!(!flags.no_music);
+        assert!(!flags.no_hud);
         assert!(flags.settings_path.is_none());
         assert!(flags.dashboard_port.is_none());
         assert!(!flags.dashboard_loopback);

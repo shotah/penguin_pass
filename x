@@ -36,7 +36,7 @@ run_cargo() {
 }
 
 usage() {
-    echo "usage: ./x {toolbox|build|test|fmt|clippy|lint|typecheck|smoke|run|scan|fetch|play|export|package|licenses}" >&2
+    echo "usage: ./x {toolbox|build|test|fmt|clippy|lint|typecheck|smoke|run|scan|controllers|fetch|play|export|package|licenses}" >&2
     echo "play:  ./x play [--windowed|--fullscreen] [--resolution WxH] [--quit-after N] [--scratch-data] [--] [game args]" >&2
     exit 1
 }
@@ -154,6 +154,12 @@ cmd_run() {
 cmd_scan() {
     run_cargo build -p pp-trainer --bin pp-scan
     "$ROOT/target/debug/pp-scan" "$@"
+}
+
+# Lists Zwift controllers that are awake. Read-only: it never connects.
+cmd_controllers() {
+    run_cargo build -p pp-controllers --bin pp-controller-scan
+    "$ROOT/target/debug/pp-controller-scan" "$@"
 }
 
 GODOT_VERSION=4.7.2
@@ -283,10 +289,12 @@ cmd_play() {
     ensure_godot_editor
     if library_is_stale "$ROOT/godot/bin/libpp_godot.debug.so"; then
         echo "play: debug library missing or older than the Rust sources, building" >&2
-        local saved_profile="$PROFILE"
-        PROFILE=debug
-        cmd_build
-        PROFILE="$saved_profile"
+        # A separate process, so a failed build stops there and leaves the
+        # last library that worked in place.
+        if ! PROFILE=debug "$ROOT/x" build; then
+            [[ -f "$ROOT/godot/bin/libpp_godot.debug.so" ]] || exit 1
+            echo "play: the build failed (errors above). Starting the last build that worked." >&2
+        fi
     fi
     # --trace records this ride to target/traces/<stamp>/ for diagnosis.
     local args=() arg
@@ -360,6 +368,12 @@ cmd_package() {
 if [[ "${1:-}" == "scan" ]]; then
     shift
     cmd_scan "$@"
+    exit $?
+fi
+
+if [[ "${1:-}" == "controllers" ]]; then
+    shift
+    cmd_controllers "$@"
     exit $?
 fi
 

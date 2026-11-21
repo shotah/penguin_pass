@@ -27,6 +27,19 @@ use crate::ui_style::{
 };
 
 /// Full-screen HUD layer.
+/// Zwift-controller chip beside the trainer name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PadBadge {
+    /// The setting is off. Draw nothing.
+    Off,
+    /// Scanning or connecting.
+    Scanning,
+    /// How many controllers finished the handshake.
+    Count(u8),
+    /// Bluetooth is off, or the link failed.
+    Unavailable,
+}
+
 #[derive(GodotClass)]
 #[class(base = CanvasLayer)]
 pub struct Hud {
@@ -51,6 +64,8 @@ pub struct Hud {
     spin: f32,
     hint_base: Option<f32>,
     hint_hidden: bool,
+    show_lane: bool,
+    pad: PadBadge,
     /// Compared in [`Self::present`] when the course picker swaps the route.
     course_name: String,
     points: Vec<(f64, f32)>,
@@ -88,6 +103,8 @@ impl ICanvasLayer for Hud {
             spin: 0.0,
             hint_base: None,
             hint_hidden: false,
+            show_lane: true,
+            pad: PadBadge::Off,
             course_name: String::new(),
             points: Vec::new(),
             ahead: Vec::new(),
@@ -326,6 +343,31 @@ impl Hud {
 
     /// Show the simulated-rider power hint again. Call this when the pause menu closes.
     #[allow(dead_code)]
+    /// Controller chip. `Off` draws nothing. `--no-hud` hides the whole layer.
+    pub fn set_pad_badge(&mut self, badge: PadBadge) {
+        if self.pad != badge {
+            self.pad = badge;
+            self.sync_board();
+        }
+    }
+
+    /// Lane hint beside the power hint. Stays up until the first lane change.
+    pub fn set_lane_hint(&mut self, show: bool) {
+        if self.show_lane != show {
+            self.show_lane = show;
+            self.sync_board();
+        }
+    }
+
+    /// Replace the trainer chip text for a screenshot. The next `present` overwrites it.
+    pub fn debug_trainer_text(&mut self, name: &str, detail: &str) {
+        self.chip.name.clear();
+        self.chip.name.push_str(name);
+        self.chip.detail.clear();
+        self.chip.detail.push_str(detail);
+        self.recompute();
+    }
+
     pub fn restore_power_hint(&mut self) {
         self.hint_hidden = false;
         self.hint_base = None;
@@ -425,6 +467,14 @@ impl Hud {
         }
         if board.show_hint != show_hint {
             board.show_hint = show_hint;
+            redraw = true;
+        }
+        if board.show_lane != self.show_lane {
+            board.show_lane = self.show_lane;
+            redraw = true;
+        }
+        if board.pad != self.pad {
+            board.pad = self.pad;
             redraw = true;
         }
         if board.spin != spin {
@@ -527,6 +577,8 @@ struct ConsoleBoard {
     laid_out: bool,
     tv_visible: bool,
     show_hint: bool,
+    show_lane: bool,
+    pad: PadBadge,
     tv_address: String,
     spin: f32,
     hint: String,
@@ -555,6 +607,8 @@ impl IControl for ConsoleBoard {
             laid_out: false,
             tv_visible: false,
             show_hint: true,
+            show_lane: true,
+            pad: PadBadge::Off,
             tv_address: String::new(),
             spin: 0.0,
             hint: power_hint(),
@@ -1044,7 +1098,7 @@ fn paint_chips(board: &mut ConsoleBoard, frame: DesignFrame) {
     let name = board.model.chip.name.clone();
     let detail = board.model.chip.detail.clone();
     let y = frame.y(32.0);
-    paint_trainer(board, frame, frame.x(32.0), y, kind, &name, &detail);
+    let trainer_w = paint_trainer(board, frame, frame.x(32.0), y, kind, &name, &detail);
     let menu_w = paint_menu(
         board,
         frame,
@@ -1062,8 +1116,24 @@ fn paint_chips(board: &mut ConsoleBoard, frame: DesignFrame) {
             &address,
         );
     }
+    let gap = frame.len(ui_style::space::GAP as f32);
+    if board.pad != PadBadge::Off {
+        let pad_w = pad_width(frame, board.pad);
+        let menu_left = frame.x(1248.0) - menu_w;
+        let mut pad_x = frame.x(32.0) + trainer_w + gap;
+        let mut pad_y = y;
+        if pad_x + pad_w > menu_left - gap {
+            pad_x = frame.x(32.0);
+            pad_y = y + frame.len(36.0) + gap;
+        }
+        paint_pad(board, frame, pad_x, pad_y, board.pad);
+    }
+    let mut hint_x = frame.x(32.0);
     if board.show_hint {
-        paint_hint(board, frame);
+        hint_x += paint_hint(board, frame, hint_x) + gap;
+    }
+    if board.show_lane {
+        paint_lane_hint(board, frame, hint_x);
     }
 }
 
@@ -1075,7 +1145,7 @@ fn paint_trainer(
     kind: ChipKind,
     name: &str,
     detail: &str,
-) {
+) -> f32 {
     let name_font = ui_style::font_text(Weight::SemiBold);
     let detail_font = ui_style::font_text(Weight::Medium);
     let name_size = frame.px(20.0);
@@ -1115,6 +1185,7 @@ fn paint_trainer(
             color,
         );
     }
+    width
 }
 
 fn paint_menu(
@@ -1180,7 +1251,7 @@ fn paint_tv(board: &mut ConsoleBoard, frame: DesignFrame, right: f32, y: f32, ad
     );
 }
 
-fn paint_hint(board: &mut ConsoleBoard, frame: DesignFrame) {
+fn paint_hint(board: &mut ConsoleBoard, frame: DesignFrame, x: f32) -> f32 {
     let font = ui_style::font_text(Weight::SemiBold);
     let minor = ui_style::font_text(Weight::Medium);
     let hint = board.hint.clone();
@@ -1193,7 +1264,6 @@ fn paint_hint(board: &mut ConsoleBoard, frame: DesignFrame) {
         + frame.len(8.0)
         + step_w
         + frame.len(14.0);
-    let x = frame.x(32.0);
     let y = frame.y(562.0);
     paint_pill(board, frame, x, y, width, frame.len(40.0));
     let mid = y + frame.len(20.0);
@@ -1217,6 +1287,136 @@ fn paint_hint(board: &mut ConsoleBoard, frame: DesignFrame) {
         frame.px(18.0),
         MIST,
     );
+    width
+}
+
+fn paint_lane_hint(board: &mut ConsoleBoard, frame: DesignFrame, x: f32) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let word = measure(&font, "Lane", frame.px(20.0));
+    let width = frame.len(14.0) + frame.len(56.0) + frame.len(8.0) + word + frame.len(14.0);
+    let y = frame.y(562.0);
+    paint_pill(board, frame, x, y, width, frame.len(40.0));
+    let mid = y + frame.len(20.0);
+    paint_side_arrow(board, frame, Vector2::new(x + frame.len(22.0), mid), false);
+    paint_side_arrow(board, frame, Vector2::new(x + frame.len(48.0), mid), true);
+    draw_text(
+        board,
+        &font,
+        Vector2::new(
+            x + frame.len(14.0) + frame.len(56.0) + frame.len(8.0),
+            mid + frame.len(20.0) * 0.35,
+        ),
+        "Lane",
+        frame.px(20.0),
+        SNOW,
+    );
+}
+
+fn pad_width(frame: DesignFrame, badge: PadBadge) -> f32 {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let label = pad_label(badge);
+    frame.len(14.0)
+        + frame.len(22.0)
+        + frame.len(8.0)
+        + measure(&font, label, frame.px(18.0))
+        + frame.len(14.0)
+}
+
+fn pad_label(badge: PadBadge) -> &'static str {
+    match badge {
+        PadBadge::Off => "",
+        PadBadge::Scanning => "…",
+        PadBadge::Count(1) => "1",
+        PadBadge::Count(_) => "2",
+        PadBadge::Unavailable => "!",
+    }
+}
+
+fn paint_pad(board: &mut ConsoleBoard, frame: DesignFrame, x: f32, y: f32, badge: PadBadge) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let label = pad_label(badge);
+    let color = match badge {
+        PadBadge::Count(_) => ui_style::GOOD,
+        PadBadge::Unavailable => ui_style::WARN,
+        _ => ui_style::DUSK,
+    };
+    let width = pad_width(frame, badge);
+    paint_pill(board, frame, x, y, width, frame.len(36.0));
+    let mid = Vector2::new(x + frame.len(14.0) + frame.len(11.0), y + frame.len(18.0));
+    paint_gamepad(board, frame, mid, color);
+    draw_text(
+        board,
+        &font,
+        Vector2::new(
+            x + frame.len(14.0) + frame.len(22.0) + frame.len(8.0),
+            mid.y + frame.len(18.0) * 0.35,
+        ),
+        label,
+        frame.px(18.0),
+        color,
+    );
+}
+
+fn paint_gamepad(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2, color: Color) {
+    let body = Rect2::new(
+        center - Vector2::new(frame.len(9.0), frame.len(6.0)),
+        Vector2::new(frame.len(18.0), frame.len(12.0)),
+    );
+    board
+        .base_mut()
+        .draw_rect_ex(body, color)
+        .filled(false)
+        .width(frame.len(1.5).max(1.0))
+        .done();
+    let arm = frame.len(3.0);
+    board.base_mut().draw_line(
+        center + Vector2::new(-frame.len(4.0), 0.0),
+        center + Vector2::new(-frame.len(4.0) + arm, 0.0),
+        color,
+    );
+    board.base_mut().draw_line(
+        center + Vector2::new(-frame.len(2.5), -frame.len(1.5)),
+        center + Vector2::new(-frame.len(2.5), frame.len(1.5)),
+        color,
+    );
+    board.base_mut().draw_circle(
+        center + Vector2::new(frame.len(3.5), -frame.len(1.5)),
+        frame.len(1.2),
+        color,
+    );
+    board.base_mut().draw_circle(
+        center + Vector2::new(frame.len(5.5), frame.len(1.2)),
+        frame.len(1.2),
+        color,
+    );
+}
+
+fn paint_side_arrow(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2, right: bool) {
+    let rect = Rect2::new(
+        center - Vector2::new(frame.len(9.0), frame.len(9.0)),
+        Vector2::new(frame.len(18.0), frame.len(18.0)),
+    );
+    board
+        .base_mut()
+        .draw_rect_ex(rect, SNOW)
+        .filled(false)
+        .width(frame.len(1.5).max(1.0))
+        .done();
+    let mut poly = PackedVector2Array::new();
+    let tip = if right {
+        frame.len(4.0)
+    } else {
+        -frame.len(4.0)
+    };
+    let base = if right {
+        -frame.len(3.0)
+    } else {
+        frame.len(3.0)
+    };
+    poly.push(center + Vector2::new(tip, 0.0));
+    poly.push(center + Vector2::new(base, -frame.len(4.0)));
+    poly.push(center + Vector2::new(base, frame.len(4.0)));
+    board.base_mut().draw_colored_polygon(&poly, SNOW);
 }
 
 fn paint_pill(

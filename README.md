@@ -252,10 +252,12 @@ Three tiers, in the order they arrive:
   of mp3, ogg, or wav, and a volume setting
 - [ ] M10: first ride through Steam: Game Mode, Steam Link, and Bluetooth
   from inside the Steam runtime
-- [ ] M11: a second rider (female) and a rider choice in settings
-- [ ] M11: heart-rate straps over Bluetooth (Garmin HRM and others)
-- [ ] M11: Zwift controllers for steering and menus
-- [ ] M11: ride in the right-hand lane, and move left and right within it
+- [x] M11: a second rider (Sigrid) and a rider choice in settings
+- [ ] M11: heart-rate straps over Bluetooth (Garmin HRM and others). Built; not yet tried with a real strap
+- [ ] M11: Zwift controllers for lanes, power, and menus. Built; not yet tried with real controllers
+- [x] M11: ride in the right-hand lane, and move left and right within it (five positions)
+- [ ] M12: save each ride as an activity file for Strava and other sites
+- [ ] M12: push rides to Strava with the rider's own API keys (no server)
 - [ ] Later: Chromecast video, ANT+, riding a course in reverse
 
 ## Steam

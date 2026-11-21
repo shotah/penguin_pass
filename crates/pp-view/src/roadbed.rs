@@ -57,12 +57,31 @@ impl RoadIndex {
                 best_d = d2;
                 best_y = sample[1];
             }
-            let wn = (-d2 * inv_near).exp();
-            let wf = (-d2 * inv_far).exp();
-            near_w += wn;
-            near_y += wn * sample[1];
-            far_w += wf;
-            far_y += wf * sample[1];
+        }
+        // A sample this much farther than the closest one weighs under 1e-7
+        // of it in the wide blend, and less in the tight one. Skipping it
+        // saves two `exp` calls and moves no height.
+        let reach = best_d + 96_800.0;
+        let tight_reach = best_d + 3_200.0;
+        for (index, sample) in self.samples.iter().enumerate() {
+            let dx = sample[0] - x;
+            let dz = sample[2] - z;
+            let d2 = dx * dx + dz * dz;
+            if d2 > reach {
+                continue;
+            }
+            if d2 <= tight_reach {
+                let wn = (-d2 * inv_near).exp();
+                near_w += wn;
+                near_y += wn * sample[1];
+            }
+            // Samples are 1 to 2 m apart and the wide blend is 55 m across,
+            // so every fourth sample carries it.
+            if index % 4 == 0 {
+                let wf = (-d2 * inv_far).exp();
+                far_w += wf;
+                far_y += wf * sample[1];
+            }
         }
         let wide = if far_w > 1.0e-20 {
             far_y / far_w

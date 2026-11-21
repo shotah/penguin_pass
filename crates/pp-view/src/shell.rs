@@ -47,6 +47,10 @@ pub enum ShellEffect {
     Menu(Action),
     /// Select this course row.
     PickCourse(usize),
+    /// Make a new generated route for this row.
+    Reroll(usize),
+    /// Open the rides folder. The summary row asked.
+    OpenRides,
 }
 
 /// One line on the title, pause, summary, or course list.
@@ -84,6 +88,8 @@ pub struct CourseCard {
     pub ascent_m: f32,
     /// Steepest uphill grade, percent.
     pub max_grade_pct: f32,
+    /// Thumbnail samples, `(distance_m, elevation_m)`.
+    pub profile: Vec<(f32, f32)>,
 }
 
 /// The screen stack.
@@ -133,6 +139,20 @@ impl Shell {
     /// The ride HUD is visible only while riding with no menu over it.
     pub fn shows_hud(&self) -> bool {
         self.screen == Screen::Riding
+    }
+
+    /// Move the highlight when the pointer is over a row.
+    pub fn hover(&mut self, index: usize) {
+        match self.screen {
+            Screen::Title => self.title_index = index.min(5),
+            Screen::Pause => self.pause_index = index.min(4),
+            Screen::Summary => self.summary_index = index.min(2),
+            Screen::ConfirmEnd | Screen::ConfirmQuit => {
+                self.confirm_index = index.min(1);
+            }
+            Screen::Course => self.course_index = index,
+            _ => {}
+        }
     }
 
     /// The rider is waiting, so power keys must not move the bike.
@@ -210,19 +230,20 @@ impl Shell {
         course_detail: &str,
         courses: &[CourseCard],
         summary_line: &str,
+        heart: &str,
     ) -> ShellView {
         match self.screen {
             Screen::Title => list_view(
                 Screen::Title,
                 "",
-                &title_rows(course_name, trainer),
+                &title_rows(course_name, trainer, heart),
                 self.title_index,
                 course_detail,
             ),
             Screen::Pause => list_view(
                 Screen::Pause,
                 "Paused",
-                &pause_rows(),
+                &pause_rows(heart),
                 self.pause_index,
                 "The ride keeps going underneath.",
             ),
@@ -243,7 +264,11 @@ impl Shell {
             Screen::Summary => list_view(
                 Screen::Summary,
                 "Ride complete",
-                &[row("Ride again", ""), row("Back to title", "")],
+                &[
+                    row("Ride again", ""),
+                    row("Back to title", ""),
+                    row("Open rides folder", ""),
+                ],
                 self.summary_index,
                 summary_line,
             ),
@@ -264,6 +289,8 @@ impl Shell {
                     .collect();
                 let detail = if rows.is_empty() {
                     "Building course…".to_owned()
+                } else if self.course_index > 0 {
+                    "Left or right makes a new route. Accept starts it.".to_owned()
                 } else {
                     "Choose a course. The rider waits at its start.".to_owned()
                 };
@@ -280,7 +307,7 @@ impl Shell {
     }
 
     fn title_command(&mut self, command: Command, fresh: bool, _courses: usize) -> ShellEffect {
-        const N: usize = 5;
+        const N: usize = 6;
         match command {
             Command::Up => move_focus(&mut self.title_index, N, false, fresh),
             Command::Down => move_focus(&mut self.title_index, N, true, fresh),
@@ -302,6 +329,12 @@ impl Shell {
                 3 => {
                     self.settings_from_title = true;
                     self.screen = Screen::Settings;
+                    self.menu.open_heart();
+                    return ShellEffect::Menu(Action::OpenHeart);
+                }
+                4 => {
+                    self.settings_from_title = true;
+                    self.screen = Screen::Settings;
                     self.menu.open_main();
                 }
                 _ => {
@@ -315,7 +348,7 @@ impl Shell {
     }
 
     fn pause_command(&mut self, command: Command, fresh: bool) -> ShellEffect {
-        const N: usize = 4;
+        const N: usize = 5;
         match command {
             Command::Up => move_focus(&mut self.pause_index, N, false, fresh),
             Command::Down => move_focus(&mut self.pause_index, N, true, fresh),
@@ -335,6 +368,12 @@ impl Shell {
                     return ShellEffect::Menu(Action::Scan);
                 }
                 2 => {
+                    self.settings_from_title = false;
+                    self.screen = Screen::Settings;
+                    self.menu.open_heart();
+                    return ShellEffect::Menu(Action::OpenHeart);
+                }
+                3 => {
                     self.settings_from_title = false;
                     self.screen = Screen::Settings;
                     self.menu.open_main();
@@ -403,21 +442,23 @@ impl Shell {
     }
 
     fn summary_command(&mut self, command: Command, fresh: bool) -> ShellEffect {
+        const N: usize = 3;
         match command {
-            Command::Up | Command::Down | Command::Left | Command::Right => {
-                if fresh {
-                    self.summary_index = if self.summary_index == 0 { 1 } else { 0 };
-                }
-            }
-            Command::Accept => {
-                if self.summary_index == 0 {
+            Command::Up => move_focus(&mut self.summary_index, N, false, fresh),
+            Command::Down => move_focus(&mut self.summary_index, N, true, fresh),
+            Command::Left | Command::Right => {}
+            Command::Accept => match self.summary_index {
+                0 => {
                     self.screen = Screen::Riding;
                     return ShellEffect::RideAgain;
                 }
-                self.screen = Screen::Title;
-                self.title_index = 0;
-                return ShellEffect::BackToTitle;
-            }
+                1 => {
+                    self.screen = Screen::Title;
+                    self.title_index = 0;
+                    return ShellEffect::BackToTitle;
+                }
+                _ => return ShellEffect::OpenRides,
+            },
             Command::Back => {}
         }
         ShellEffect::None
@@ -436,26 +477,33 @@ impl Shell {
                 self.screen = Screen::Title;
                 return ShellEffect::PickCourse(index);
             }
-            Command::Left | Command::Right => {}
+            Command::Left | Command::Right => {
+                let index = self.course_index.min(count - 1);
+                if index > 0 {
+                    return ShellEffect::Reroll(index);
+                }
+            }
         }
         ShellEffect::None
     }
 }
 
-fn title_rows(course: &str, trainer: &str) -> Vec<ShellRow> {
+fn title_rows(course: &str, trainer: &str, heart: &str) -> Vec<ShellRow> {
     vec![
         row("Start ride", ""),
         row("Course", course),
         row("Trainer", trainer),
+        row("Heart rate", heart),
         row("Settings", ""),
         row("Quit", ""),
     ]
 }
 
-fn pause_rows() -> Vec<ShellRow> {
+fn pause_rows(heart: &str) -> Vec<ShellRow> {
     vec![
         row("Resume", ""),
         row("Trainer", ""),
+        row("Heart rate", heart),
         row("Settings", ""),
         row("End ride", ""),
     ]
@@ -520,6 +568,13 @@ mod tests {
             dashboard_error: None,
             devices: Vec::new(),
             music_report: String::new(),
+            phase: pp_session::LinkPhase::Idle,
+            failure_reason: String::new(),
+            connected_name: String::new(),
+            controller_status: String::new(),
+            straps: Vec::new(),
+            heart_line: String::new(),
+            riders: Vec::new(),
         }
     }
 
@@ -535,9 +590,10 @@ mod tests {
         assert!(shell.shows_hud());
         shell.handle(Command::Back, true, &snap(), 1);
         assert_eq!(shell.screen(), Screen::Pause);
-        let view = shell.view("Penguin Pass", "Not paired", "", &[], "");
+        let view = shell.view("Penguin Pass", "Not paired", "", &[], "", "");
         assert_eq!(view.rows[0].label, "Resume");
-        assert_eq!(view.rows[3].label, "End ride");
+        assert_eq!(view.rows[4].label, "End ride");
+        shell.handle(Command::Down, true, &snap(), 1);
         shell.handle(Command::Down, true, &snap(), 1);
         shell.handle(Command::Down, true, &snap(), 1);
         shell.handle(Command::Down, true, &snap(), 1);
@@ -564,12 +620,12 @@ mod tests {
     #[test]
     fn a_fresh_press_wraps_and_a_hold_stops() {
         let mut shell = Shell::new(false);
-        shell.title_index = 4;
+        shell.title_index = 5;
         shell.handle(Command::Down, true, &snap(), 1);
         assert_eq!(shell.title_index, 0);
-        shell.title_index = 4;
+        shell.title_index = 5;
         shell.handle(Command::Down, false, &snap(), 1);
-        assert_eq!(shell.title_index, 4);
+        assert_eq!(shell.title_index, 5);
     }
 
     #[test]
@@ -582,7 +638,7 @@ mod tests {
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Title);
-        let view = shell.view("Penguin Pass", "Searching", "5.0 km", &[], "");
+        let view = shell.view("Penguin Pass", "Searching", "5.0 km", &[], "", "");
         assert_eq!(view.rows[1].detail, "Penguin Pass");
         assert_eq!(view.rows[2].detail, "Searching");
     }

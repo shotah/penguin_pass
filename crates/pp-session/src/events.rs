@@ -1,6 +1,7 @@
 //! Bounded toast queue.
 
 use std::collections::VecDeque;
+use std::path::PathBuf;
 
 /// How many events are kept when the game does not drain them.
 pub const EVENT_QUEUE_CAP: usize = 32;
@@ -40,6 +41,16 @@ pub enum RideEvent {
         /// Short reason from the dashboard.
         reason: String,
     },
+    /// A remembered or chosen heart-rate strap reached `Connected`.
+    HeartRateConnected {
+        /// Strap name.
+        name: String,
+    },
+    /// The strap link dropped after [`Self::HeartRateConnected`].
+    HeartRateLost {
+        /// Strap name.
+        name: String,
+    },
     /// The rider crossed the start line and finished this lap.
     LapCompleted {
         /// Lap number, starting at 1.
@@ -56,6 +67,16 @@ pub enum RideEvent {
     CourseUnavailable {
         /// Plain-language reason from the route generator.
         detail: String,
+    },
+    /// [`crate::Session::end_ride`] wrote a FIT file.
+    RideSaved {
+        /// Absolute or relative path of the file.
+        path: PathBuf,
+    },
+    /// The ride was too short to save, or the file could not be written.
+    RideNotSaved {
+        /// One sentence for a toast.
+        reason: String,
     },
 }
 

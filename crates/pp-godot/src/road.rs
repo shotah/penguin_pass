@@ -16,6 +16,15 @@ pub struct CenterSample {
 /// Full ribbon width in meters: 6 m of asphalt plus shoulders.
 pub const RIBBON_WIDTH_M: f32 = 9.0;
 
+/// Paved width. The shader keeps the asphalt inside the middle 6 m.
+pub const ASPHALT_WIDTH_M: f32 = 6.0;
+
+/// Half-width of the dashed centre line, in metres (`from_center < 0.008`).
+pub const CENTER_LINE_HALF_M: f32 = 0.008 * RIBBON_WIDTH_M;
+
+/// Solid edge line, metres from the centre (`from_center` 0.30).
+pub const EDGE_LINE_M: f32 = 0.30 * RIBBON_WIDTH_M;
+
 const ROAD_SHADER: &str = r#"shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx;
 
@@ -149,7 +158,7 @@ fn unit_or(vector: Vector3, fallback: Vector3) -> Vector3 {
 }
 
 /// Horizontal perpendicular to `tangent`, pointing to the rider's right.
-fn flat_right(tangent: Vector3) -> Vector3 {
+pub fn flat_right(tangent: Vector3) -> Vector3 {
     let flat = Vector3::new(tangent.x, 0.0, tangent.z);
     let forward = unit_or(flat, Vector3::FORWARD);
     // forward × up, with up = +Y.

@@ -8,6 +8,11 @@ edition = "2024"
 version = "0.1.0"
 publish = false
 
+# The terrain maths lives in pp-view and runs a few hundred thousand times
+# while a course loads. Unoptimised, that is most of a debug start-up.
+[profile.dev.package.pp-view]
+opt-level = 3
+
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 unused_must_use = "deny"

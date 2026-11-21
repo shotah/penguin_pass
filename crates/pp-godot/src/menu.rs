@@ -8,7 +8,10 @@ use std::path::Path;
 
 use godot::builtin::Side;
 use godot::classes::control::{LayoutPreset, MouseFilter, SizeFlags};
-use godot::classes::{CanvasLayer, Label, Node3D, PanelContainer, StyleBoxEmpty, VBoxContainer};
+use godot::classes::{
+    CanvasLayer, ColorRect, HBoxContainer, Label, Node3D, PanelContainer, ScrollContainer,
+    StyleBoxEmpty, VBoxContainer,
+};
 
 use crate::ui_style::{self, Role, Surface};
 use godot::obj::Gd;
@@ -16,7 +19,7 @@ use godot::prelude::*;
 use pp_session::{Session, Settings};
 use pp_view::menu::{Action, Device, MenuState, MenuView, Snapshot};
 
-const ROW_COUNT: usize = 12;
+const ROW_COUNT: usize = 15;
 
 /// What the player just pressed.
 pub use pp_view::menu::Command;
@@ -32,6 +35,8 @@ pub enum Effect {
     Restarted,
     /// The music-folder row asked for a directory picker.
     ChooseMusicFolder,
+    /// Show the rides folder.
+    OpenRides,
 }
 
 /// The overlay and the row that is selected.
@@ -40,10 +45,13 @@ pub struct RideMenu {
     title: Gd<Label>,
     rows: Vec<Gd<Label>>,
     row_panels: Vec<Gd<PanelContainer>>,
+    bars: Vec<[Gd<ColorRect>; 4]>,
+    scroll: Gd<ScrollContainer>,
     detail: Gd<Label>,
     selected: usize,
     state: MenuState,
     music_report: String,
+    controller_status: String,
 }
 
 impl RideMenu {
@@ -57,35 +65,71 @@ impl RideMenu {
         let mut panel = PanelContainer::new_alloc();
         panel.set_name("Panel");
         panel.set_anchors_preset(LayoutPreset::FULL_RECT);
-        panel.set_offset(Side::LEFT, 80.0);
-        panel.set_offset(Side::TOP, 70.0);
-        panel.set_offset(Side::RIGHT, -80.0);
-        panel.set_offset(Side::BOTTOM, -70.0);
+        panel.set_offset(Side::LEFT, 36.0);
+        panel.set_offset(Side::TOP, 28.0);
+        panel.set_offset(Side::RIGHT, -36.0);
+        panel.set_offset(Side::BOTTOM, -28.0);
         panel.set_mouse_filter(MouseFilter::STOP);
-        panel.add_theme_stylebox_override("panel", &ui_style::surface(Surface::Menu));
+        let mut panel_style = ui_style::surface(Surface::Menu);
+        ui_style::pad_box(
+            &mut panel_style,
+            ui_style::space::PANEL as f32,
+            ui_style::space::PANEL as f32,
+        );
+        panel.add_theme_stylebox_override("panel", &panel_style);
 
         let mut box_ = VBoxContainer::new_alloc();
         box_.set_name("Rows");
-        box_.add_theme_constant_override("separation", 2);
+        box_.add_theme_constant_override("separation", ui_style::space::GAP);
         box_.set_h_size_flags(SizeFlags::EXPAND_FILL);
 
         let title = ui_style::label("Settings", Role::Title);
         box_.add_child(&title);
 
+        let mut scroll = ScrollContainer::new_alloc();
+        scroll.set_name("RowScroll");
+        scroll.set_h_size_flags(SizeFlags::EXPAND_FILL);
+        scroll.set_v_size_flags(SizeFlags::EXPAND_FILL);
+        scroll.set_horizontal_scroll_mode(godot::classes::scroll_container::ScrollMode::SHOW_NEVER);
+        let mut list = VBoxContainer::new_alloc();
+        list.set_name("RowList");
+        list.add_theme_constant_override("separation", 2);
+        list.set_h_size_flags(SizeFlags::EXPAND_FILL);
+
         let mut rows = Vec::with_capacity(ROW_COUNT);
         let mut row_panels = Vec::with_capacity(ROW_COUNT);
+        let mut bars = Vec::with_capacity(ROW_COUNT);
         for index in 0..ROW_COUNT {
             let mut row_panel = PanelContainer::new_alloc();
             row_panel.set_name(&format!("RowPanel{index}"));
-            row_panel.set_custom_minimum_size(Vector2::new(0.0, 48.0));
+            row_panel.set_custom_minimum_size(Vector2::new(0.0, 36.0));
             row_panel.add_theme_stylebox_override("panel", &StyleBoxEmpty::new_gd());
+            let mut row_box = HBoxContainer::new_alloc();
+            row_box.add_theme_constant_override("separation", 4);
             let mut label = ui_style::label("", Role::Row);
             label.set_name(&format!("Row{index}"));
-            row_panel.add_child(&label);
-            box_.add_child(&row_panel);
+            label.set_h_size_flags(SizeFlags::EXPAND_FILL);
+            row_box.add_child(&label);
+            let signal: [Gd<ColorRect>; 4] = std::array::from_fn(|bar| {
+                let mut mark = ColorRect::new_alloc();
+                let height = 8.0 + (bar as f32) * 4.0;
+                mark.set_custom_minimum_size(Vector2::new(5.0, height));
+                mark.set_color(ui_style::with_alpha(ui_style::SNOW, 0.25));
+                mark.set_visible(false);
+                mark
+            });
+            for mark in &signal {
+                row_box.add_child(mark);
+            }
+            row_panel.add_child(&row_box);
+            list.add_child(&row_panel);
+            bars.push(signal);
             rows.push(label);
             row_panels.push(row_panel);
         }
+
+        scroll.add_child(&list);
+        box_.add_child(&scroll);
 
         let mut detail = ui_style::label("", Role::Body);
         detail.set_name("Detail");
@@ -104,10 +148,13 @@ impl RideMenu {
             title,
             rows,
             row_panels,
+            bars,
+            scroll,
             detail,
             selected: 0,
             state: MenuState::default(),
             music_report: String::new(),
+            controller_status: String::new(),
         }
     }
 
@@ -119,6 +166,26 @@ impl RideMenu {
     /// Whether the settings panel is actually on screen.
     pub fn is_visible(&self) -> bool {
         self.layer.is_visible()
+    }
+
+    /// Move the highlight to the row under the pointer.
+    pub fn hover(&mut self, index: usize) {
+        self.state.hover(index);
+    }
+
+    /// Tell each row to report hover.
+    pub fn bind_pointer(&mut self, game: &Gd<crate::game::Game>) {
+        for (index, panel) in self.row_panels.iter().enumerate() {
+            let mut panel = panel.clone();
+            let callable = Callable::from_object_method(game, "on_menu_hover")
+                .bind(&[Variant::from(index as i64)]);
+            let _ = panel.connect(&StringName::from("mouse_entered"), &callable);
+        }
+    }
+
+    /// Status word on the Zwift controllers row.
+    pub fn set_controller_status(&mut self, status: &str) {
+        self.controller_status = status.to_owned();
     }
 
     /// Folder scan line shown under the music folder row.
@@ -144,8 +211,15 @@ impl RideMenu {
             .unwrap_or_default()
     }
 
+    /// Show the heart-rate list.
+    pub fn show_heart(&mut self, session: &mut Session) {
+        self.state.open_heart();
+        self.layer.set_visible(true);
+        self.refresh(session);
+    }
+
     /// Show the main page.
-    pub fn open(&mut self, session: &Session) {
+    pub fn open(&mut self, session: &mut Session) {
         self.state.open_main();
         self.layer.set_visible(true);
         self.refresh(session);
@@ -159,7 +233,9 @@ impl RideMenu {
 
     /// Apply one command. Saves when a value changes.
     pub fn handle(&mut self, command: Command, session: &mut Session, path: &Path) -> Effect {
-        let snap = snapshot(session, &self.music_report);
+        let status = self.controller_status.clone();
+        let report = self.music_report.clone();
+        let snap = snapshot(session, &report, &status);
         let action = self.state.handle(command, &snap);
         let effect = self.perform(action, session, path);
         self.refresh(session);
@@ -172,12 +248,14 @@ impl RideMenu {
     }
 
     /// Redraw from the live session. Call this every frame the menu is open.
-    pub fn refresh(&mut self, session: &Session) {
+    pub fn refresh(&mut self, session: &mut Session) {
         if !self.state.open {
             self.layer.set_visible(false);
             return;
         }
-        let snap = snapshot(session, &self.music_report);
+        let status = self.controller_status.clone();
+        let report = self.music_report.clone();
+        let snap = snapshot(session, &report, &status);
         let view = self.state.view(&snap);
         self.paint(&view);
     }
@@ -204,6 +282,18 @@ impl RideMenu {
                 Effect::None
             }
             Action::ChooseMusicFolder => Effect::ChooseMusicFolder,
+            Action::OpenRides => Effect::OpenRides,
+            Action::OpenHeart => Effect::None,
+            Action::ConnectHeart(id) => {
+                session.connect_heart_rate(&id);
+                self.save(session, path);
+                Effect::None
+            }
+            Action::ForgetHeart => {
+                session.forget_heart_rate();
+                self.save(session, path);
+                Effect::None
+            }
             Action::Apply(settings) => {
                 let fullscreen = settings.fullscreen;
                 let changed = fullscreen != session.settings().fullscreen;
@@ -249,10 +339,35 @@ impl RideMenu {
                     panel.add_theme_stylebox_override("panel", &StyleBoxEmpty::new_gd());
                 }
             }
+            let level = view.bars.get(index).copied().flatten();
+            if let Some(group) = self.bars.get_mut(index) {
+                for (bar, mark) in group.iter_mut().enumerate() {
+                    let Some(level) = level else {
+                        mark.set_visible(false);
+                        continue;
+                    };
+                    mark.set_visible(true);
+                    let lit = bar < usize::from(level);
+                    mark.set_color(if lit {
+                        ui_style::GOOD
+                    } else {
+                        ui_style::with_alpha(ui_style::SNOW, 0.25)
+                    });
+                }
+            }
         }
         self.detail.set_text(&view.detail);
-        self.detail
-            .add_theme_color_override("font_color", ui_style::MIST);
+        self.detail.add_theme_color_override(
+            "font_color",
+            if view.warn {
+                ui_style::WARN
+            } else {
+                ui_style::MIST
+            },
+        );
+        if let Some(panel) = self.row_panels.get(view.selected) {
+            self.scroll.ensure_control_visible(panel);
+        }
     }
 
     fn save(&mut self, session: &Session, path: &Path) {
@@ -263,8 +378,21 @@ impl RideMenu {
     }
 }
 
-fn snapshot(session: &Session, music_report: &str) -> Snapshot {
+fn heart_line(session: &Session) -> String {
+    match session.heart_rate_state() {
+        pp_session::ConnectionState::Scanning => "Scanning".to_owned(),
+        pp_session::ConnectionState::Connecting => "Connecting".to_owned(),
+        pp_session::ConnectionState::Connected => session
+            .heart_rate_name()
+            .unwrap_or_else(|| "Connected".to_owned()),
+        pp_session::ConnectionState::Failed(reason) => reason,
+        pp_session::ConnectionState::Disconnected => "Not paired".to_owned(),
+    }
+}
+
+fn snapshot(session: &mut Session, music_report: &str, controller_status: &str) -> Snapshot {
     let status = session.status();
+    let connection = session.connection();
     let settings: Settings = session.settings().clone();
     Snapshot {
         settings,
@@ -273,14 +401,46 @@ fn snapshot(session: &Session, music_report: &str) -> Snapshot {
         dashboard_urls: status.dashboard_urls,
         dashboard_error: status.dashboard_error,
         music_report: music_report.to_owned(),
+        phase: connection.phase,
+        failure_reason: connection.failure_reason.unwrap_or_default(),
+        connected_name: connection.trainer_name.unwrap_or_default(),
+        controller_status: controller_status.to_owned(),
+        straps: session
+            .heart_rate_entries()
+            .into_iter()
+            .map(|sensor| Device {
+                id: sensor.id,
+                name: sensor.name,
+                rssi_dbm: sensor.rssi_dbm,
+                power_only: false,
+                bars: sensor.bars,
+                ftms: false,
+                cycling_power: false,
+                fec: false,
+                remembered: sensor.remembered,
+            })
+            .collect(),
+        heart_line: heart_line(session),
+        riders: pp_rider::RiderPreset::all()
+            .into_iter()
+            .map(|preset| pp_view::menu::RiderOption {
+                id: preset.id.to_owned(),
+                name: preset.name.to_owned(),
+            })
+            .collect(),
         devices: session
-            .discovered()
+            .pairing()
             .into_iter()
             .map(|device| Device {
                 id: device.id,
                 name: device.name,
                 rssi_dbm: device.rssi_dbm,
                 power_only: !device.ftms && !device.fec,
+                bars: device.bars,
+                ftms: device.ftms,
+                cycling_power: device.cycling_power,
+                fec: device.fec,
+                remembered: device.remembered,
             })
             .collect(),
     }

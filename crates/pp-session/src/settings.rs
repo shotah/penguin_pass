@@ -71,6 +71,11 @@ const HEADER: &str = "\
 # A saved course that cannot be built falls back to Penguin Pass.
 # music_volume is 0 to 100. music_folder is the player's own folder of music files.
 # Delete music_folder to choose no folder. A folder that is not on disk is kept.
+# rider is the on-screen rider name, such as nils or sigrid. Unknown names are kept.
+# zwift_controllers: when true, the game looks for Zwift controllers.
+# heart_rate_id and heart_rate_name remember a heart-rate strap. Delete them to forget it.
+# rides_folder is where FIT ride files are written. Delete it to use a rides folder
+# next to the settings file.
 ";
 
 /// Rider, trainer, and display preferences.
@@ -159,6 +164,34 @@ pub struct Settings {
     /// kept. [`Settings::missing_music_folder`] reports that case.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub music_folder: Option<PathBuf>,
+    /// On-screen rider name.
+    ///
+    /// The usual names are `nils` and `sigrid`. Any other text is kept.
+    /// Missing from older files, which load as `nils`.
+    #[serde(default = "default_rider_name")]
+    pub rider: String,
+    /// Whether the game should look for Zwift controllers.
+    ///
+    /// Missing from older files, which load as `false`.
+    #[serde(default)]
+    pub zwift_controllers: bool,
+    /// Bluetooth address of the remembered heart-rate strap.
+    ///
+    /// `None` when the rider has not connected a strap, or has forgotten it.
+    /// Blank text is stored as `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heart_rate_id: Option<String>,
+    /// Advertised name of the remembered heart-rate strap.
+    ///
+    /// `None` when no strap is remembered. Blank text is stored as `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heart_rate_name: Option<String>,
+    /// Directory for saved FIT rides.
+    ///
+    /// `None` uses a `rides` folder next to the settings file. A missing
+    /// directory is created on the first save. Blank text is stored as `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rides_folder: Option<PathBuf>,
 }
 
 impl Default for Settings {
@@ -176,6 +209,11 @@ impl Default for Settings {
             course: CourseChoice::PenguinPass,
             music_volume: default_music_volume(),
             music_folder: None,
+            rider: default_rider_name(),
+            zwift_controllers: false,
+            heart_rate_id: None,
+            heart_rate_name: None,
+            rides_folder: None,
         }
     }
 }
@@ -206,6 +244,10 @@ const fn default_true() -> bool {
 
 const fn default_music_volume() -> u8 {
     DEFAULT_MUSIC_VOLUME
+}
+
+fn default_rider_name() -> String {
+    "nils".to_owned()
 }
 
 impl Settings {
@@ -265,6 +307,28 @@ impl Settings {
             path.as_os_str().is_empty() || path.to_string_lossy().trim().is_empty()
         }) {
             settings.music_folder = None;
+        }
+        if settings.rider.trim().is_empty() {
+            settings.rider = default_rider_name();
+        }
+        if settings
+            .heart_rate_id
+            .as_ref()
+            .is_some_and(|id| id.trim().is_empty())
+        {
+            settings.heart_rate_id = None;
+        }
+        if settings
+            .heart_rate_name
+            .as_ref()
+            .is_some_and(|name| name.trim().is_empty())
+        {
+            settings.heart_rate_name = None;
+        }
+        if settings.rides_folder.as_ref().is_some_and(|path| {
+            path.as_os_str().is_empty() || path.to_string_lossy().trim().is_empty()
+        }) {
+            settings.rides_folder = None;
         }
         settings
     }
@@ -474,6 +538,10 @@ fn notes_from(value: &toml::Value) -> Result<Vec<String>, String> {
                 u16::from(MAX_MUSIC_VOLUME),
             )?,
             "music_folder" => expect_string(key, item)?,
+            "rider" | "heart_rate_id" | "heart_rate_name" | "rides_folder" => {
+                expect_string(key, item)?;
+            }
+            "zwift_controllers" => expect_bool(key, item)?,
             _ => {}
         }
     }
@@ -919,6 +987,11 @@ mod tests {
         assert!(settings.control_trainer);
         assert_eq!(settings.music_volume, 60);
         assert_eq!(settings.music_folder, None);
+        assert_eq!(settings.rider, "nils");
+        assert!(!settings.zwift_controllers);
+        assert_eq!(settings.heart_rate_id, None);
+        assert_eq!(settings.heart_rate_name, None);
+        assert_eq!(settings.rides_folder, None);
 
         let profile = settings.rider_profile();
         let defaults = RiderProfile::default();
@@ -950,6 +1023,11 @@ mod tests {
             },
             music_volume: 40,
             music_folder: Some(PathBuf::from("/music/rides")),
+            rider: "sigrid".to_owned(),
+            zwift_controllers: true,
+            heart_rate_id: Some("AA:BB:CC:DD:EE:FF".to_owned()),
+            heart_rate_name: Some("HRM-Dual".to_owned()),
+            rides_folder: Some(PathBuf::from("/tmp/penguin-rides")),
         };
 
         settings.save(&path).expect("save");
@@ -961,6 +1039,9 @@ mod tests {
         assert!(text.contains("penguin_pass"), "{text}");
         assert!(text.contains("music_volume"), "{text}");
         assert!(text.contains("music_folder"), "{text}");
+        assert!(text.contains("sigrid"), "{text}");
+        assert!(text.contains("zwift_controllers"), "{text}");
+        assert!(text.contains("heart_rate_id"), "{text}");
         assert!(tmp_files(path.parent().expect("parent")).is_empty());
 
         let loaded = Settings::load(&path);
@@ -1031,6 +1112,11 @@ mod tests {
         assert_eq!(loaded.settings.course, CourseChoice::PenguinPass);
         assert_eq!(loaded.settings.music_volume, DEFAULT_MUSIC_VOLUME);
         assert_eq!(loaded.settings.music_folder, None);
+        assert_eq!(loaded.settings.rider, "nils");
+        assert!(!loaded.settings.zwift_controllers);
+        assert_eq!(loaded.settings.heart_rate_id, None);
+        assert_eq!(loaded.settings.heart_rate_name, None);
+        assert_eq!(loaded.settings.rides_folder, None);
         assert!(loaded.settings.missing_music_folder().is_none());
     }
 

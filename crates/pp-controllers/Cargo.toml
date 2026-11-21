@@ -1,0 +1,15 @@
+[package]
+name = "pp-controllers"
+description = "Zwift controller discovery and button events for Penguin Pass"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+btleplug = "0.13"
+futures-util = "0.3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+uuid = "1"
+
+[lints]
+workspace = true

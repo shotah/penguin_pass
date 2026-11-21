@@ -14,6 +14,8 @@ extends SceneTree
 ##                   Default: all
 ##   --bench         print timings at the switchback instead of pictures
 ##   --frames N      frames per benchmark phase (default 400)
+##   --preset ID     which rider to show (default nils)
+##   --prefix TEXT   prepended to each PNG name
 ##
 ## This script never opens Bluetooth. `ingame.sh` passes `--no-bluetooth`, a
 ## scratch settings file, and `--dashboard-port 0`; when a flag is missing
@@ -35,6 +37,8 @@ var _repo := ""
 var _only: PackedStringArray = []
 var _bench := false
 var _frames := 400
+var _preset := ""
+var _prefix := ""
 
 var _viewport: SubViewport
 var _game: Node
@@ -70,6 +74,8 @@ func _init() -> void:
 		_only = only.split(",", false)
 	_bench = args.has("--bench")
 	_frames = int(_arg(args, "--frames", str(_frames)))
+	_preset = _arg(args, "--preset", "")
+	_prefix = _arg(args, "--prefix", "")
 	if _out_dir.is_empty() and not _bench:
 		push_error("--out-dir is required")
 		quit(2)
@@ -152,6 +158,17 @@ func _start() -> bool:
 	if _rider == null or _game_camera == null:
 		push_error("the game has no Rider or no CameraRig/Camera")
 		return false
+	if not _preset.is_empty():
+		if not _rider.has_method("set_preset"):
+			push_error("Rider has no set_preset")
+			return false
+		if not bool(_rider.call("set_preset", _preset)):
+			push_error("unknown rider preset %s" % _preset)
+			return false
+	# The game opens on the title and holds the rider at the start line.
+	# Pictures are of the ride.
+	if _game.has_method("debug_start_ride"):
+		_game.debug_start_ride()
 	_free_camera = Camera3D.new()
 	_free_camera.name = "RiderPreviewCamera"
 	_free_camera.near = 0.05
@@ -533,7 +550,7 @@ func _save_sheet(job: Dictionary) -> bool:
 			(index / cols) * (tile_size.y + gap))
 		sheet.blit_rect(_images[index], Rect2i(Vector2i.ZERO, tile_size), at)
 	DirAccess.make_dir_recursive_absolute(_out_dir)
-	var path := _out_dir.path_join(str(job["name"]) + ".png")
+	var path := _out_dir.path_join(_prefix + str(job["name"]) + ".png")
 	var err := sheet.save_png(path)
 	if err != OK:
 		push_error("save_png failed: %s" % err)

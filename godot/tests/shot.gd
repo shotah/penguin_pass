@@ -18,6 +18,10 @@ var _elapsed := 754.0
 var _first_person := false
 var _bench := false
 var _set := false
+var _menus := false
+var _lanes := false
+var _polish := false
+var _saved := false
 var _dir := ""
 var _view := 0
 var _settle := 0
@@ -62,7 +66,8 @@ func _init() -> void:
 	_game = packed.instantiate()
 	_viewport.add_child(_game)
 	_last_usec = Time.get_ticks_usec()
-	RenderingServer.frame_post_draw.connect(_on_drawn)
+	# Headless does not always emit frame_post_draw. process_frame still runs.
+	process_frame.connect(_on_drawn)
 
 
 func _release() -> void:
@@ -86,6 +91,10 @@ func _read_args() -> void:
 	_first_person = _arg(args, "--camera", "chase") == "first"
 	_bench = args.has("--bench")
 	_set = args.has("--set")
+	_menus = args.has("--menus")
+	_lanes = args.has("--lanes")
+	_polish = args.has("--polish")
+	_saved = args.has("--saved")
 	_dir = _arg(args, "--dir", "")
 	if _bench:
 		_frames = max(_frames, 240)
@@ -121,6 +130,52 @@ func _on_drawn() -> void:
 
 
 func _views() -> Array:
+	if _saved:
+		return [
+			["summary-saved", 8.0, false, 1280, 800, "saved"],
+			["summary-not-saved", 8.0, false, 1280, 800, "unsaved"],
+		]
+	if _polish:
+		return [
+			["settings-1280", 8.0, false, 1280, 800, "rider-row"],
+			["settings-1920", 8.0, false, 1920, 1080, "settings"],
+			["pause-1280", 8.0, false, 1280, 800, "pause"],
+			["course-1280", 8.0, false, 1280, 800, "course"],
+			["pairing-1280", 8.0, false, 1280, 800, "pairing"],
+			["heart-1280", 8.0, false, 1280, 800, "heart"],
+			["summary-1280", 8.0, false, 1280, 800, "summary"],
+			["confirm-1280", 8.0, false, 1280, 800, "confirm"],
+			["controllers-badge", 40.0, false, 1280, 800, "badge"],
+			["lane-hint", 40.0, false, 1280, 800, "hint"],
+			["fp-nils-inner-1280", 40.0, true, 1280, 800, "fp-nils-0"],
+			["fp-nils-middle-1280", 40.0, true, 1280, 800, "fp-nils-1"],
+			["fp-nils-outer-1280", 40.0, true, 1280, 800, "fp-nils-2"],
+			["fp-sigrid-middle-1280", 40.0, true, 1280, 800, "fp-sigrid-1"],
+			["fp-nils-inner-1920", 40.0, true, 1920, 1080, "fp-nils-0"],
+			["fp-nils-middle-1920", 40.0, true, 1920, 1080, "fp-nils-1"],
+			["fp-nils-outer-1920", 40.0, true, 1920, 1080, "fp-nils-2"],
+			["fp-sigrid-middle-1920", 40.0, true, 1920, 1080, "fp-sigrid-1"],
+		]
+	if _lanes:
+		return [
+			["lanes-inner-chase", 40.0, false, 1280, 800, "lane0"],
+			["lanes-middle-chase", 40.0, false, 1280, 800, "lane1"],
+			["lanes-outer-chase", 40.0, false, 1280, 800, "lane2"],
+			["lanes-inner-fp", 40.0, true, 1280, 800, "lane0"],
+			["lanes-middle-fp", 40.0, true, 1280, 800, "lane1"],
+			["lanes-outer-fp", 40.0, true, 1280, 800, "lane2"],
+			["rider-sigrid", 40.0, false, 1280, 800, "sigrid"],
+			["settings-rider", 8.0, false, 1280, 800, "rider-row"],
+		]
+	if _menus:
+		return [
+			["title", 8.0, false, 1280, 800, "title"],
+			["pause", 8.0, false, 1280, 800, "pause"],
+			["settings", 8.0, false, 1280, 800, "settings"],
+			["pairing", 8.0, false, 1280, 800, "pairing"],
+			["course", 8.0, false, 1280, 800, "course"],
+			["summary", 8.0, false, 1280, 800, "summary"],
+		]
 	return [
 		["start-chase", 8.0, false, 1280, 800, "ride"],
 		["start-fp", 8.0, true, 1280, 800, "ride"],
@@ -158,14 +213,64 @@ func _pose(kind: String) -> void:
 		_game.debug_menu_open()
 	elif kind == "pause":
 		_game.debug_menu_action("back")
+	elif kind == "saved" or kind == "unsaved":
+		_game.debug_show_title()
+		_game.debug_start_ride()
+		_game.debug_set_target_power(300.0)
+		if kind == "saved":
+			_game.debug_advance(80.0)
+		_game.debug_press_back()
+		for _step in 4:
+			_game.debug_menu_action("down")
+		_game.debug_menu_action("accept")
+		_game.debug_menu_action("right")
+		_game.debug_menu_action("accept")
 	elif kind == "summary":
 		_game.debug_menu_action("back")
+		_game.debug_menu_action("down")
 		_game.debug_menu_action("down")
 		_game.debug_menu_action("down")
 		_game.debug_menu_action("down")
 		_game.debug_menu_action("accept")
 		_game.debug_menu_action("right")
 		_game.debug_menu_action("accept")
+	elif kind.begins_with("lane"):
+		_game.debug_start_ride()
+		_game.debug_set_lane(int(kind.substr(4)))
+	elif kind == "sigrid":
+		_game.debug_start_ride()
+		_game.debug_set_rider("sigrid")
+	elif kind == "heart":
+		_game.debug_show_title()
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("accept")
+	elif kind == "confirm":
+		_game.debug_show_title()
+		_game.debug_start_ride()
+		_game.debug_press_back()
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("accept")
+	elif kind == "badge":
+		_game.debug_start_ride()
+		_game.debug_trainer_label("Tacx Neo 2T 56327", "Resistance on")
+		_game.debug_show_controllers("2")
+	elif kind == "lanehint":
+		_game.debug_start_ride()
+	elif kind.begins_with("fp-"):
+		var rider := "sigrid" if kind.begins_with("fp-sigrid") else "nils"
+		var slot := int(kind.substr(kind.length() - 1))
+		_game.debug_start_ride()
+		_game.debug_set_rider(rider)
+		_game.debug_set_lane(slot)
+	elif kind == "rider-row":
+		_game.debug_menu_open()
+		for _step in 6:
+			_game.debug_menu_action("down")
 	elif kind == "pairing":
 		_game.debug_menu_open()
 		_game.debug_menu_action("accept")

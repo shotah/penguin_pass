@@ -45,6 +45,7 @@ corner. Vsync is on. The ride does not pause while the menu is open.
 | --- | --- | --- |
 | Raise simulated power | Up, W | D-pad up, right trigger |
 | Lower simulated power | Down, S | D-pad down, left trigger |
+| Move one lane slot | Left, A / Right, D | D-pad left / right, left stick |
 | Chase / handlebar camera | C | Y |
 | Full screen | F11 | |
 | Open or close the menu | Esc | Start |
@@ -86,6 +87,7 @@ saved setting.
 | `--quit-from-menu` | On the first frame, confirm Quit in the menu. For the export exit check |
 | `--skip-title` | Start already riding. Shots and scripted checks use this |
 | `--play-through` | Title, Start, ride, End ride, then Quit. The release exit check |
+| `--no-hud` | Hide the console, the chips, and toasts. World screenshots use this |
 
 Tests and `./godot/tests/shoot_set.sh` always pass `--fake-trainer` or
 `--no-bluetooth`, a temporary settings file, and `--dashboard-port 0`.
@@ -96,6 +98,13 @@ The menu is Esc / Start. It changes rider weight, bike weight, FTP, trainer
 difficulty, whether resistance follows the road, the TV page, and full
 screen. Changes apply immediately and are saved. Restart and Quit each ask
 for a yes. A failed save shows a message and leaves the ride running.
+
+A finished ride of at least 60 seconds and 100 metres is written as a FIT
+file in a `rides` folder next to the settings file. A normal launch uses
+`user://rides`. The summary screen names the file, and **Open rides folder**
+there and at the bottom of settings opens that folder. To upload one to
+Strava by hand, open strava.com, press the + button, choose Upload activity,
+and pick the file. The file format is described in `docs/recording.md`.
 
 ## World
 

@@ -78,6 +78,16 @@ const FONT_FILES: [&str; 3] = [
     "res://assets/fonts/barlow-semi-condensed/BarlowSemiCondensed-Bold.ttf",
 ];
 
+/// Spacing, in design pixels, shared by every panel.
+pub mod space {
+    /// Inner padding on all four sides of a menu or dialog.
+    pub const PANEL: i32 = 24;
+    /// Text inset inside a focused row.
+    pub const ROW: i32 = 12;
+    /// Gap between a chip and the next chip.
+    pub const GAP: i32 = 8;
+}
+
 /// Design-frame sizes, in pixels, before the window scale.
 pub mod size {
     /// Hero power.
@@ -276,7 +286,17 @@ pub fn surface(kind: Surface) -> Gd<StyleBoxFlat> {
 /// Focused row: opaque [`SUN`], radius 10.
 #[must_use]
 pub fn focus_style() -> Gd<StyleBoxFlat> {
-    flat(SUN, None, 0, 10)
+    let mut style = flat(SUN, None, 0, 10);
+    pad_box(&mut style, space::ROW as f32, 4.0);
+    style
+}
+
+/// Inset the contents of a style box. Vertical padding can be smaller than the sides.
+pub fn pad_box(style: &mut Gd<StyleBoxFlat>, horizontal: f32, vertical: f32) {
+    style.set_content_margin(godot::builtin::Side::LEFT, horizontal);
+    style.set_content_margin(godot::builtin::Side::RIGHT, horizontal);
+    style.set_content_margin(godot::builtin::Side::TOP, vertical);
+    style.set_content_margin(godot::builtin::Side::BOTTOM, vertical);
 }
 
 /// A label in `role`, mouse-ignored. Captions are upper-cased.

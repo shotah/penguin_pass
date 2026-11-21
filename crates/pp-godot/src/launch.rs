@@ -9,7 +9,8 @@ use std::path::PathBuf;
 
 use godot::classes::{Os, ProjectSettings};
 use godot::prelude::*;
-use pp_session::{Session, SessionOptions, Settings, TrainerFactory};
+use pp_session::{HeartRateFactory, Session, SessionOptions, Settings, TrainerFactory};
+use pp_trainer::{DiscoveredSensor, HeartRateLink, SimHeartRate};
 use pp_view::launch::{LaunchEnv, LaunchFlags, TrainerMode as ViewMode, parse_launch};
 
 use crate::fake_trainer::{FakeFactory, FakeHub, UnavailableFactory};
@@ -44,6 +45,8 @@ pub struct Launch {
     pub play_through: bool,
     /// Start with the music bus muted.
     pub no_music: bool,
+    /// Hide the console, chips, and toasts.
+    pub no_hud: bool,
 }
 
 impl Launch {
@@ -78,6 +81,7 @@ impl Launch {
             skip_title: flags.skip_title,
             play_through: flags.play_through,
             no_music: flags.no_music,
+            no_hud: flags.no_hud,
         }
     }
 }
@@ -90,6 +94,7 @@ fn read_env() -> LaunchEnv {
         dashboard_port: env_string("PENGUIN_PASS_DASHBOARD_PORT"),
         dashboard_loopback: env_string("PENGUIN_PASS_DASHBOARD_LOOPBACK"),
         no_music: env_string("PENGUIN_PASS_NO_MUSIC"),
+        no_hud: env_string("PENGUIN_PASS_NO_HUD"),
     }
 }
 
@@ -105,7 +110,7 @@ pub fn open_session(
     };
     match launch.mode {
         TrainerMode::Real => {
-            let session = Session::with_options(
+            let mut session = Session::with_options(
                 settings,
                 SessionOptions {
                     trainer_factory: Box::new(pp_session::BleTrainerFactory),
@@ -113,22 +118,42 @@ pub fn open_session(
                     dashboard_port: launch.dashboard_port,
                 },
             );
+            session.set_heart_rate_factory(Some(Box::new(pp_session::BleHeartRateFactory)));
+            session.set_settings_path(&launch.settings_path);
             (session, None)
         }
         TrainerMode::Fake => {
             let (factory, hub) = FakeFactory::pair();
-            let session = session_with(settings, Box::new(factory), host, launch.dashboard_port);
+            let mut session =
+                session_with(settings, Box::new(factory), host, launch.dashboard_port);
+            session.set_heart_rate_factory(Some(Box::new(FakeStrap)));
+            session.set_settings_path(&launch.settings_path);
             (session, Some(hub))
         }
         TrainerMode::Off => {
-            let session = session_with(
+            let mut session = session_with(
                 settings,
                 Box::new(UnavailableFactory),
                 host,
                 launch.dashboard_port,
             );
+            session.set_settings_path(&launch.settings_path);
             (session, None)
         }
+    }
+}
+
+struct FakeStrap;
+
+impl HeartRateFactory for FakeStrap {
+    fn spawn(&mut self) -> Result<Box<dyn HeartRateLink>, String> {
+        let mut strap = SimHeartRate::new();
+        strap.set_discovered(vec![DiscoveredSensor {
+            id: "FAKE:HR".to_owned(),
+            name: "Fake strap".to_owned(),
+            rssi_dbm: Some(-60),
+        }]);
+        Ok(Box::new(strap))
     }
 }
 

@@ -28,12 +28,16 @@
 
 mod error;
 mod grid;
+mod ground;
+mod heightfield;
 mod planner;
 mod route;
 mod seed;
 
 pub use error::WorldError;
 pub use grid::{ChunkBounds, ChunkCoord, ChunkGrid};
+pub use ground::{GroundPlan, GroundVertex, PlannedChunk, PlannedFar, SKIRT_M, Skirt, plan};
+pub use heightfield::Field;
 pub use planner::{ChunkDelta, ChunkPlanner, PlannerConfig};
 pub use route::{Route, StraightRoute};
 pub use seed::chunk_seed;

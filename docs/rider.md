@@ -9,9 +9,10 @@ Everything is procedural: there is no modelling tool and no asset file.
 It is in the game. `crates/pp-godot/src/rider.rs` builds the 22 parts as
 `ArrayMesh` nodes in `ready` and poses them in `Rider::place`, through
 `RideAnimator`, which turns the ride's distance, cadence, lean, and grade
-into a pose input. [In the game](#in-the-game) has the pictures and what
-they showed. [Godot integration](#godot-integration) has how `rider.rs`
-uses the crate and the lines three other files still need.
+into a pose input. There are two riders. Nils is the one this file was
+written around. [Sigrid](#two-riders) is the second. [In the game](#in-the-game)
+has the pictures of Nils and what they showed. [Godot integration](#godot-integration)
+has how `rider.rs` uses the crate and the lines the settings still need.
 
 ## In the game
 
@@ -229,6 +230,47 @@ Earlier rounds are kept in `docs/img/rider/history/`: `round1-bike` (frame
 and wheels only), `round1`, `round2`, `round3`, and `round4` (the set as it
 stood before the kit and the shoulders changed for the game).
 
+## Two riders
+
+`RiderPreset` is a build and a kit. `RiderPreset::all` returns Nils, then
+Sigrid. `RiderModel::build` is Nils's proportions in whatever colours it is
+given. `RiderModel::build_preset` uses both. Nils's meshes are the same
+bytes as before: the same export of the reference pose matches the previous
+file.
+
+| | Nils | Sigrid |
+| --- | --- | --- |
+| Id | `nils` | `sigrid` |
+| Kit | near-black, white, orange, glacier-blue frame | mid blue, snow, sun yellow, deep green frame |
+| Eyes, at rest | 1.518 m | 1.412 m |
+| Saddle, along the seat tube | 0.742 m | 0.684 m |
+| Reach / stack | 0.390 / 0.565 m | 0.356 / 0.530 m |
+| Triangles | 18,966 | 19,162 |
+
+Sigrid is an athletic road cyclist in the same stylisation: narrower
+shoulders, a waist, hips wider relative to the shoulders, a shorter torso
+for the length of the legs, smaller hands and feet, and a braid out from
+under the back of the helmet. The braid is part of the head, so it does not
+swing on its own. The frame is the same shape, a little smaller, so the
+legs and the arms reach without the shoulders being pulled. On the left
+below, Nils. On the right, Sigrid. Same pose, one camera.
+
+![Nils and Sigrid, chase and rear](img/rider/riders-compare.png)
+
+The game's chase camera on the 8.6 % climb, about 4 m behind her. The
+title is still drawn over the ride in this build; the rider is the picture.
+
+![Sigrid on the climb](img/rider/rider2-ingame-climb-chase.png)
+
+The rest of her set is `rider2-turnaround.png`, `rider2-chase.png`,
+`rider2-pedal-stroke.png`, `rider2-stand.png`, `rider2-tuck.png`,
+`rider2-first-person.png`, and `rider2-ingame-*.png`. Earlier rounds are
+in `docs/img/rider/history/rider2-round1` to `rider2-round4`.
+
+In a tuck the braid lies in the flat back instead of hanging clear of it.
+The head stays upright while the torso folds, and the braid is one rigid
+piece with the head.
+
 ## Conventions
 
 - Meters and radians. Colours are sRGB, 0..=1.
@@ -278,13 +320,29 @@ pub const CRANK_LENGTH_M: f32 = 0.1725;
 pub const MAX_STEER_RAD: f32 = 0.45;
 
 impl RiderModel {
-    pub fn build(style: &RiderStyle) -> Self;
+    pub fn build(style: &RiderStyle) -> Self; // reference proportions
+    pub fn build_preset(preset: &RiderPreset) -> Self;
+    pub fn build_with(style: &RiderStyle, build: &RiderBuild) -> Self;
     pub fn parts(&self) -> &[Part];
     pub fn part(&self, id: PartId) -> &Part;
     pub fn triangle_count(&self) -> usize;
     pub fn pose(&self, input: &PoseInput) -> Pose;
 }
-impl Default for RiderModel; // the default kit
+impl Default for RiderModel; // Nils's kit and build
+
+pub struct RiderBuild { /* proportions and bike fit; Default is Nils */ }
+pub struct RiderPreset {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub build: RiderBuild,
+    pub style: RiderStyle,
+}
+impl RiderPreset {
+    pub fn all() -> [RiderPreset; 2]; // Nils, then Sigrid
+    pub fn get(id: &str) -> Option<RiderPreset>;
+    pub fn nils() -> Self;
+    pub fn sigrid() -> Self;
+}
 
 pub struct RideSample {
     pub distance_m: f64,
@@ -371,7 +429,8 @@ impl PartId {
 
 `build` is deterministic: equal styles give equal models, vertex for vertex.
 A different style changes material colours only. Geometry and the surface
-layout stay the same.
+layout stay the same. `build_with` and `build_preset` can change the
+proportions. Equal builds and equal styles still match vertex for vertex.
 
 ## Pose input
 
@@ -495,14 +554,15 @@ Measured in this checkout.
   wheels 0.340 m to the outside of a 30 mm tyre, stack 0.565 m, reach
   0.390 m, head angle 73 degrees, seat angle 73.5 degrees, saddle 0.742 m
   from the bottom bracket, hoods 0.400 m apart and 64 mm below the saddle.
-- **`pose`:** about 0.4 microseconds per call in a release build on this
-  machine (`examples/bench_pose.rs`, two million calls). It returns a `Copy`
-  value and does not allocate.
+- **`pose`:** about 0.42 microseconds per call in a release build on this
+  machine (`examples/bench_pose.rs`, two million calls). Nils 419 / 415 /
+  425 ns (seated, standing, tucked). Sigrid 415 / 415 / 416 ns. It returns
+  a `Copy` value and does not allocate.
 - **`build`:** 2 to 5 ms in a release build.
 
 ## Tests
 
-`CRATE=pp-rider ./x test` runs 54 unit tests, 3 integration tests, and two
+`CRATE=pp-rider ./x test` runs 59 unit tests, 3 integration tests, and two
 doc tests. They check, among other things:
 
 - every mesh: indices in range, no degenerate triangle, unit normals,
@@ -639,6 +699,8 @@ drawn as shadows only.
 | `eye_position()`, `eye_forward()` | The rider's eyes and facing in world space, for a camera. |
 | `stand_blend()`, `tuck_blend()`, `steer_angle()`, `effort()` | What the pose is using this frame, for tests and pictures. |
 | `debug_override_cadence(rpm)` | Replaces the cadence `place` is given; negative clears it. The simulated rider always spins at 85 rpm, so this is how a picture shows a slow grind. |
+| `set_preset(id) -> bool` | Rebuild the meshes for that preset id. Unknown ids do nothing and return false. The same id does not rebuild. Godot and Rust share the name; Rust takes `&str`. |
+| `preset_id() -> str` | The id currently shown. `nils` until something else is chosen. |
 
 ### Lines other files need
 
@@ -662,7 +724,87 @@ left[next],  right[next], right[index]
 so the top of the ribbon is the front face. `cull_disabled` is gone.
 
 **`crates/pp-godot/src/game.rs`, in `present`.** `set_ride_state` is called
-before `place`. `ingame.sh` checks it through the running game.
+before `place`. `ingame.sh` checks it through the running game. The rider
+preset is applied in the same block, before `set_ride_state`:
+
+```rust
+let rider_id = self.session().settings().rider.clone();
+// inside `if let Some(rider) = self.rider.as_mut()`
+let _ = rider.set_preset(&rider_id);
+```
+
+`set_preset` does nothing when the id is already showing, so this is cheap
+every frame and the settings row takes effect at once.
+
+**`crates/pp-session/src/settings.rs`.** A field on `Settings`, missing
+files load as Nils:
+
+```rust
+/// Preset id of the rider. `nils` or `sigrid`. Unknown text is kept.
+#[serde(default = "default_rider")]
+pub rider: String,
+```
+
+```rust
+fn default_rider() -> String {
+    "nils".to_owned()
+}
+```
+
+Add `rider: default_rider(),` to `Default`. The full struct literal in
+`round_trip_through_a_temp_file` needs the field too. `..Settings::default()`
+literals do not.
+
+**`crates/pp-view/src/menu.rs`.** `MAIN_ROWS` becomes 13. The new row is
+index 6, after FTP, and the rows after it move down by one. Music volume
+is 9, the music folder is 10, Restart is 11, Quit is 12. `toggled` matches
+`1 | 7 | 8`. The quit test that sets `menu.index = 11` sets `12`.
+
+```rust
+const RIDER_IDS: [&str; 2] = ["nils", "sigrid"];
+
+fn rider_name(id: &str) -> &'static str {
+    match id {
+        "sigrid" => "Sigrid",
+        _ => "Nils",
+    }
+}
+
+fn cycle_rider(id: &str, increase: bool) -> &'static str {
+    let index = RIDER_IDS.iter().position(|known| *known == id).unwrap_or(0);
+    let next = if increase {
+        (index + 1) % RIDER_IDS.len()
+    } else {
+        (index + RIDER_IDS.len() - 1) % RIDER_IDS.len()
+    };
+    RIDER_IDS[next]
+}
+```
+
+In `main_view`, after the FTP line:
+
+```rust
+format!("Rider    {}", rider_name(&settings.rider)),
+```
+
+Detail when `self.index == 6`:
+
+```rust
+"Who is on the bike. Left and right change rider immediately.".to_owned()
+```
+
+FTP stays at index 5. In `stepped`, add index 6 and move the music
+volume arm from 8 to 9:
+
+```rust
+6 => {
+    settings.rider = cycle_rider(&settings.rider, increase).to_owned();
+    Some(settings)
+}
+```
+
+**`crates/pp-godot/src/menu.rs`.** `ROW_COUNT` becomes 13 so the new line
+has a label. The row text still comes from `pp-view`.
 
 **`crates/pp-godot/src/mesh_util.rs`.** `add_cylinder`, `add_sphere`, and
 `add_tube` are gone, and so is the `const _` block in `rider.rs`.

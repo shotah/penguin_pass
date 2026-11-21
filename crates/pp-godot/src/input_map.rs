@@ -89,6 +89,28 @@ pub fn install() {
     bind_keys(&mut map, "menu_back", &[Key::ESCAPE], &[JoyButton::B], None);
     bind_keys(
         &mut map,
+        "lane_left",
+        &[Key::LEFT, Key::A],
+        &[JoyButton::DPAD_LEFT],
+        None,
+    );
+    let mut lane_stick_left = InputEventJoypadMotion::new_gd();
+    lane_stick_left.set_axis(JoyAxis::LEFT_X);
+    lane_stick_left.set_axis_value(-1.0);
+    map.action_add_event("lane_left", &lane_stick_left);
+    bind_keys(
+        &mut map,
+        "lane_right",
+        &[Key::RIGHT, Key::D],
+        &[JoyButton::DPAD_RIGHT],
+        None,
+    );
+    let mut lane_stick_right = InputEventJoypadMotion::new_gd();
+    lane_stick_right.set_axis(JoyAxis::LEFT_X);
+    lane_stick_right.set_axis_value(1.0);
+    map.action_add_event("lane_right", &lane_stick_right);
+    bind_keys(
+        &mut map,
         "music_next",
         &[Key::N],
         &[JoyButton::RIGHT_SHOULDER],

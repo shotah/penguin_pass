@@ -890,12 +890,10 @@ fn head(style: &RiderStyle, build: &RiderBuild) -> Part {
         // disappears into the collar.
         let tie = part.slot(styled(style, StyleColor::JerseyAccent, 0.45, 0.0));
         let path = [
-            Vec3::new(0.000, 0.020, 0.145),
-            Vec3::new(0.018, -0.015, 0.230),
-            Vec3::new(0.030, -0.090, 0.340),
-            Vec3::new(0.022, -0.185, 0.420),
-            Vec3::new(0.006, -0.280, 0.445),
-            Vec3::new(-0.012, -0.360, 0.410),
+            Vec3::new(0.000, 0.015, 0.150),
+            Vec3::new(0.014, -0.015, 0.225),
+            Vec3::new(0.020, -0.075, 0.295),
+            Vec3::new(0.008, -0.145, 0.325),
         ];
         let last = (path.len() - 1) as f32;
         part.add(
