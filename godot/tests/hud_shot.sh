@@ -12,7 +12,8 @@ fullscreen = false
 tv_dashboard_enabled = false
 EOF
 GODOT_BIN=${GODOT:-flatpak run org.godotengine.Godot}
-$GODOT_BIN --path "$ROOT/godot" --script res://tests/hud_shot.gd -- \
+$GODOT_BIN --audio-driver Dummy --path "$ROOT/godot" --script res://tests/hud_shot.gd -- \
+    --no-sound \
     --fake-trainer \
     --settings "$SETTINGS" \
     --dashboard-port 0 \

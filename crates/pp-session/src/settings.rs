@@ -69,7 +69,9 @@ const HEADER: &str = "\
 # course: \"penguin_pass\", or { terrain = \"desert\", distance_km = 10, seed = 7 }.
 # terrain is flat, rolling, mountain, or desert. A missing course is Penguin Pass.
 # A saved course that cannot be built falls back to Penguin Pass.
-# music_volume is 0 to 100. music_folder is the player's own folder of music files.
+# music_volume, ambient_volume, and effects_volume are 0 to 100.
+# music_folder is the player's own folder of music files.
+# rider_breathing: when true, a quiet breath follows the effort. Off when missing.
 # Delete music_folder to choose no folder. A folder that is not on disk is kept.
 # rider is the on-screen rider name, such as nils or sigrid. Unknown names are kept.
 # zwift_controllers: when true, the game looks for Zwift controllers.
@@ -79,6 +81,10 @@ const HEADER: &str = "\
 # arcade: when true (the default), the ride has fish and powerups.
 # ghost: when true (the default), the ride shows the stored ghost. Recording continues either way.
 # kit is default, or a kit id such as kit-sunrise. Missing or blank loads as default.
+# time_of_day is day, auto, dawn, sunset, or night. Missing loads as day.
+# weather is clear, auto, cloudy, rain, snow, or fog. Missing loads as clear.
+# bots_count is how many computer riders to put on the road, from 0 to 24. 0 turns them off.
+# strava_auto_upload: when true (the default), a saved ride is sent to Strava if the rider is connected.
 ";
 
 /// Rider, trainer, and display preferences.
@@ -161,6 +167,21 @@ pub struct Settings {
     /// player. The session only stores it.
     #[serde(default = "default_music_volume", deserialize_with = "de_music_volume")]
     pub music_volume: u8,
+    /// Ambience bus, from 0 to 100. Same curve as [`Self::music_volume`].
+    ///
+    /// Missing from older files, which load as [`DEFAULT_MUSIC_VOLUME`].
+    #[serde(default = "default_music_volume", deserialize_with = "de_music_volume")]
+    pub ambient_volume: u8,
+    /// Effects bus, from 0 to 100. Same curve as [`Self::music_volume`].
+    ///
+    /// Missing from older files, which load as [`DEFAULT_MUSIC_VOLUME`].
+    #[serde(default = "default_music_volume", deserialize_with = "de_music_volume")]
+    pub effects_volume: u8,
+    /// Quiet breathing that follows effort. Off unless the rider turns it on.
+    ///
+    /// Missing from older files, which load as `false`.
+    #[serde(default)]
+    pub rider_breathing: bool,
     /// Folder of music files the rider picked.
     ///
     /// `None` when no folder has been chosen. A path that is not on disk is
@@ -211,6 +232,26 @@ pub struct Settings {
     /// Missing from older files, which load as `default`.
     #[serde(default = "default_kit")]
     pub kit: String,
+    /// Sky preset. `day`, `auto`, `dawn`, `sunset`, or `night`.
+    ///
+    /// Missing from older files, which load as `day`.
+    #[serde(default = "default_time_of_day")]
+    pub time_of_day: String,
+    /// Weather preset. `clear`, `auto`, `cloudy`, `rain`, `snow`, or `fog`.
+    ///
+    /// Missing from older files, which load as `clear`.
+    #[serde(default = "default_weather")]
+    pub weather: String,
+    /// Computer riders on the road. `0` turns them off. Clamped to `0..=24`.
+    ///
+    /// Missing from older files, which load as 8.
+    #[serde(default = "default_bots_count")]
+    pub bots_count: u8,
+    /// Upload a saved FIT ride when Strava is connected.
+    ///
+    /// Missing from older files, which load as `true`.
+    #[serde(default = "default_true")]
+    pub strava_auto_upload: bool,
 }
 
 impl Default for Settings {
@@ -227,6 +268,9 @@ impl Default for Settings {
             control_trainer: default_true(),
             course: CourseChoice::PenguinPass,
             music_volume: default_music_volume(),
+            ambient_volume: default_music_volume(),
+            effects_volume: default_music_volume(),
+            rider_breathing: false,
             music_folder: None,
             rider: default_rider_name(),
             zwift_controllers: false,
@@ -236,6 +280,10 @@ impl Default for Settings {
             arcade: default_true(),
             ghost: default_true(),
             kit: default_kit(),
+            time_of_day: default_time_of_day(),
+            weather: default_weather(),
+            bots_count: default_bots_count(),
+            strava_auto_upload: default_true(),
         }
     }
 }
@@ -268,8 +316,30 @@ const fn default_music_volume() -> u8 {
     DEFAULT_MUSIC_VOLUME
 }
 
+fn clamp_volume(volume: u8) -> u8 {
+    u8::try_from(round_u16(
+        f64::from(volume),
+        u16::from(DEFAULT_MUSIC_VOLUME),
+        u16::from(MIN_MUSIC_VOLUME),
+        u16::from(MAX_MUSIC_VOLUME),
+    ))
+    .unwrap_or(DEFAULT_MUSIC_VOLUME)
+}
+
 fn default_kit() -> String {
     "default".to_owned()
+}
+
+fn default_time_of_day() -> String {
+    "day".to_owned()
+}
+
+fn default_weather() -> String {
+    "clear".to_owned()
+}
+
+const fn default_bots_count() -> u8 {
+    8
 }
 
 fn default_rider_name() -> String {
@@ -322,13 +392,9 @@ impl Settings {
         {
             settings.last_trainer_id = None;
         }
-        settings.music_volume = u8::try_from(round_u16(
-            f64::from(settings.music_volume),
-            u16::from(DEFAULT_MUSIC_VOLUME),
-            u16::from(MIN_MUSIC_VOLUME),
-            u16::from(MAX_MUSIC_VOLUME),
-        ))
-        .unwrap_or(DEFAULT_MUSIC_VOLUME);
+        settings.music_volume = clamp_volume(settings.music_volume);
+        settings.ambient_volume = clamp_volume(settings.ambient_volume);
+        settings.effects_volume = clamp_volume(settings.effects_volume);
         if settings.music_folder.as_ref().is_some_and(|path| {
             path.as_os_str().is_empty() || path.to_string_lossy().trim().is_empty()
         }) {
@@ -340,6 +406,17 @@ impl Settings {
         if settings.kit.trim().is_empty() {
             settings.kit = default_kit();
         }
+        if settings.time_of_day.trim().is_empty() {
+            settings.time_of_day = default_time_of_day();
+        } else {
+            settings.time_of_day = settings.time_of_day.trim().to_owned();
+        }
+        if settings.weather.trim().is_empty() {
+            settings.weather = default_weather();
+        } else {
+            settings.weather = settings.weather.trim().to_owned();
+        }
+        settings.bots_count = settings.bots_count.min(24);
         if settings
             .heart_rate_id
             .as_ref()
@@ -553,14 +630,20 @@ fn notes_from(value: &toml::Value) -> Result<Vec<String>, String> {
                 MIN_DASHBOARD_PORT,
                 MAX_DASHBOARD_PORT,
             )?,
-            "tv_dashboard_enabled" | "fullscreen" | "control_trainer" | "arcade" | "ghost" => {
+            "tv_dashboard_enabled"
+            | "fullscreen"
+            | "control_trainer"
+            | "arcade"
+            | "ghost"
+            | "rider_breathing"
+            | "strava_auto_upload" => {
                 expect_bool(key, item)?;
             }
             "last_trainer_id" => expect_string(key, item)?,
             "course" if CourseChoice::from_toml(item).is_none() => {
                 notes.push("course could not be read; using Penguin Pass".to_owned());
             }
-            "music_volume" => note_u16(
+            "music_volume" | "ambient_volume" | "effects_volume" => note_u16(
                 &mut notes,
                 key,
                 item,
@@ -569,9 +652,11 @@ fn notes_from(value: &toml::Value) -> Result<Vec<String>, String> {
                 u16::from(MAX_MUSIC_VOLUME),
             )?,
             "music_folder" => expect_string(key, item)?,
-            "rider" | "heart_rate_id" | "heart_rate_name" | "rides_folder" => {
+            "rider" | "heart_rate_id" | "heart_rate_name" | "rides_folder" | "time_of_day"
+            | "weather" => {
                 expect_string(key, item)?;
             }
+            "bots_count" => note_u16(&mut notes, key, item, 8, 0, 24)?,
             "zwift_controllers" => expect_bool(key, item)?,
             _ => {}
         }
@@ -1025,6 +1110,10 @@ mod tests {
         assert_eq!(settings.rides_folder, None);
         assert!(settings.arcade);
         assert!(settings.ghost);
+        assert_eq!(settings.time_of_day, "day");
+        assert_eq!(settings.weather, "clear");
+        assert_eq!(settings.bots_count, 8);
+        assert!(settings.strava_auto_upload);
 
         let profile = settings.rider_profile();
         let defaults = RiderProfile::default();
@@ -1055,6 +1144,9 @@ mod tests {
                 seed: 7,
             },
             music_volume: 40,
+            ambient_volume: 25,
+            effects_volume: 80,
+            rider_breathing: true,
             music_folder: Some(PathBuf::from("/music/rides")),
             rider: "sigrid".to_owned(),
             zwift_controllers: true,
@@ -1064,6 +1156,10 @@ mod tests {
             arcade: false,
             ghost: false,
             kit: "kit-sunrise".to_owned(),
+            time_of_day: "sunset".to_owned(),
+            weather: "rain".to_owned(),
+            bots_count: 3,
+            strava_auto_upload: false,
         };
 
         settings.save(&path).expect("save");
@@ -1081,6 +1177,10 @@ mod tests {
         assert!(text.contains("arcade"), "{text}");
         assert!(text.contains("ghost"), "{text}");
         assert!(text.contains("kit-sunrise"), "{text}");
+        assert!(text.contains("sunset"), "{text}");
+        assert!(text.contains("rain"), "{text}");
+        assert!(text.contains("bots_count"), "{text}");
+        assert!(text.contains("strava_auto_upload"), "{text}");
         assert!(tmp_files(path.parent().expect("parent")).is_empty());
 
         let loaded = Settings::load(&path);
@@ -1182,7 +1282,27 @@ mod tests {
         assert_eq!(loaded.settings.rides_folder, None);
         assert!(loaded.settings.arcade);
         assert!(loaded.settings.ghost);
+        assert_eq!(loaded.settings.time_of_day, "day");
+        assert_eq!(loaded.settings.weather, "clear");
+        assert_eq!(loaded.settings.bots_count, 8);
+        assert!(loaded.settings.strava_auto_upload);
         assert!(loaded.settings.missing_music_folder().is_none());
+    }
+
+    #[test]
+    fn bots_count_clamps_at_24() {
+        let dir = TempDir::new();
+        let path = write(&dir, "bots.toml", "bots_count = 40\n");
+        let loaded = Settings::load(&path);
+        assert_eq!(loaded.settings.bots_count, 24);
+        assert!(
+            loaded
+                .warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains("bots_count")),
+            "{:?}",
+            loaded.warning
+        );
     }
 
     #[test]
@@ -1288,6 +1408,43 @@ fullscreen = false
         assert!(path.is_file());
         assert!(tmp_files(path.parent().expect("parent")).is_empty());
         assert!(tmp_files(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn audio_settings_round_trip_and_a_missing_key_uses_the_default() {
+        let dir = TempDir::new();
+        let path = dir.path().join("audio.toml");
+        let settings = Settings {
+            ambient_volume: 25,
+            effects_volume: 80,
+            rider_breathing: true,
+            ..Settings::default()
+        };
+        settings.save(&path).expect("save");
+        let loaded = Settings::load(&path);
+        assert_eq!(loaded.warning, None);
+        assert_eq!(loaded.settings.ambient_volume, 25);
+        assert_eq!(loaded.settings.effects_volume, 80);
+        assert!(loaded.settings.rider_breathing);
+
+        let older = write(&dir, "older-audio.toml", "music_volume = 10\n");
+        let loaded = Settings::load(&older);
+        assert_eq!(loaded.settings.music_volume, 10);
+        assert_eq!(loaded.settings.ambient_volume, DEFAULT_MUSIC_VOLUME);
+        assert_eq!(loaded.settings.effects_volume, DEFAULT_MUSIC_VOLUME);
+        assert!(!loaded.settings.rider_breathing);
+
+        let hot = write(
+            &dir,
+            "hot-audio.toml",
+            "ambient_volume = 250\neffects_volume = 250\n",
+        );
+        let loaded = Settings::load(&hot);
+        assert_eq!(loaded.settings.ambient_volume, 100);
+        assert_eq!(loaded.settings.effects_volume, 100);
+        let warning = loaded.warning.expect("out of range");
+        assert!(warning.contains("ambient_volume"), "{warning}");
+        assert!(warning.contains("effects_volume"), "{warning}");
     }
 
     #[test]

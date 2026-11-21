@@ -62,7 +62,22 @@ Anything after a literal `--` is passed to the game:
 | `--skip-title` | Start on the road instead of the title screen |
 | `--play-through` | Title, Start, a short ride, End ride, then Quit |
 | `--no-music` | Start with the music bus muted |
+| `--no-sound` | Start with ambience and effects silent |
+| `--sound` | Keep ambience and effects on for a smoke, picture, bench, or `--quit-after` run |
+| `--sound-capture <file.wav>` | Record a short scripted ride to that wav and quit. Implies `--sound` |
 | `--no-hud` | Hide the console, the chips, and toasts |
+
+The settings list has three rows under Music volume: Ambient sound, Sound
+effects, and Rider breathing. The first two are 0–100 sliders, the same
+curve as the music volume. Rider breathing is On or Off, and it starts Off.
+Ambience keeps playing quietly on the title screen. Effects cover the bike,
+the wind in your ears, and the short cues.
+
+Smoke, picture scripts, bench runs, and `--quit-after` start with ambience
+and effects off, so a check does not come out of the speakers. Pass
+`--sound` when that run should play them. `--quit-after` also selects
+Godot's dummy audio driver unless `--sound` or `--sound-capture` is present.
+`./x smoke` and the picture scripts always use that dummy driver.
 
 `./x play --trace` records the ride for diagnosis. It makes
 `target/traces/<date-time>/` and sets `PENGUIN_PASS_TRACE_DIR` to it. The

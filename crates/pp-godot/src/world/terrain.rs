@@ -408,6 +408,132 @@ fn emit_horizon(
     node.set_mesh(&mesh);
     node.set_surface_override_material(0, &material);
     parent.add_child(&node);
+    if desert {
+        emit_volcano(parent, course, field, &material);
+    }
+}
+
+fn emit_volcano(
+    parent: &mut Gd<Node3D>,
+    course: &Course,
+    field: &Field,
+    shared: &Gd<ShaderMaterial>,
+) {
+    let at = course.position_at(40.0);
+    let tangent = course.tangent_at(40.0);
+    let tlen = tangent[0].hypot(tangent[2]).max(0.001);
+    let tx = tangent[0] / tlen;
+    let tz = tangent[2] / tlen;
+    let rx = -tz;
+    let rz = tx;
+    let range = 4_600.0;
+    let x0 = at[0] + tx * range + rx * 700.0;
+    let z0 = at[2] + tz * range + rz * 700.0;
+    let peak_h = 980.0;
+    let base_r = 780.0;
+    let rings = 22_i32;
+    let sectors = 32_i32;
+    let mut tool = SurfaceTool::new_gd();
+    tool.begin(PrimitiveType::TRIANGLES);
+    let mut grid = Vec::new();
+    for ir in 0..=rings {
+        let radial = ir as f32 / rings as f32;
+        for ia in 0..=sectors {
+            let angle = ia as f32 / sectors as f32 * std::f32::consts::TAU;
+            let crater = if radial < 0.14 {
+                (1.0 - radial / 0.14) * 0.16
+            } else {
+                0.0
+            };
+            let cone = (1.0 - radial).powf(1.15);
+            let r = base_r * radial.powf(0.9);
+            let h = peak_h * (cone - crater).max(0.0);
+            let x = x0 + angle.cos() * r;
+            let z = z0 + angle.sin() * r;
+            let ground = field.height(x, z);
+            let skirt = smoothstep(0.84, 1.0, radial);
+            grid.push(Vector3::new(x, ground + h * (1.0 - skirt), z));
+        }
+    }
+    let cols = sectors + 1;
+    for ir in 0..rings {
+        for ia in 0..sectors {
+            let i00 = (ir * cols + ia) as usize;
+            let i10 = i00 + 1;
+            let i01 = i00 + cols as usize;
+            let i11 = i01 + 1;
+            let height = grid[i00].y - field.height(grid[i00].x, grid[i00].z);
+            let hot = smoothstep(peak_h * 0.72, peak_h * 0.84, height);
+            let rock = Color::from_rgb(0.22, 0.16, 0.13);
+            let rim = Color::from_rgb(0.45, 0.22, 0.12);
+            let color = rock.lerp(rim, f64::from(hot));
+            for index in [i00, i11, i10, i00, i01, i11] {
+                tool.set_color(color);
+                tool.add_vertex(grid[index]);
+            }
+        }
+    }
+    tool.generate_normals();
+    let mesh = tool.commit().unwrap_or_else(ArrayMesh::new_gd);
+    let mut material = ShaderMaterial::new_gd();
+    let mut shader = Shader::new_gd();
+    shader.set_code(&TERRAIN_SHADER.replacen(
+        "render_mode diffuse_burley, specular_disabled;",
+        "render_mode diffuse_burley, specular_disabled, cull_disabled;",
+        1,
+    ));
+    material.set_shader(&shader);
+    copy_haze(&mut material, shared);
+    material.set_shader_parameter("textured", &0.0_f32.to_variant());
+    let mut node = MeshInstance3D::new_alloc();
+    node.set_name("Volcano");
+    node.set_mesh(&mesh);
+    node.set_surface_override_material(0, &material);
+    parent.add_child(&node);
+    let ground = field.height(x0, z0);
+    let mut plume = MeshInstance3D::new_alloc();
+    plume.set_name("Plume");
+    plume.set_position(Vector3::new(x0, ground + peak_h * 0.82, z0));
+    let mut tool = SurfaceTool::new_gd();
+    tool.begin(PrimitiveType::TRIANGLES);
+    let width = 80.0;
+    let tall = 420.0;
+    for (a, b, c) in [
+        (
+            Vector3::new(-width, 0.0, 0.0),
+            Vector3::new(width, tall, 40.0),
+            Vector3::new(width, 0.0, 0.0),
+        ),
+        (
+            Vector3::new(-width, 0.0, 0.0),
+            Vector3::new(-width, tall, 40.0),
+            Vector3::new(width, tall, 40.0),
+        ),
+    ] {
+        tool.set_uv(Vector2::new(0.0, 1.0));
+        tool.add_vertex(a);
+        tool.set_uv(Vector2::new(1.0, 0.0));
+        tool.add_vertex(b);
+        tool.set_uv(Vector2::new(1.0, 1.0));
+        tool.add_vertex(c);
+    }
+    let sheet = tool.commit().unwrap_or_else(ArrayMesh::new_gd);
+    plume.set_mesh(&sheet);
+    let mut smoke = ShaderMaterial::new_gd();
+    let mut smoke_shader = Shader::new_gd();
+    smoke_shader.set_code(
+        r#"shader_type spatial;
+render_mode cull_disabled, blend_mix, depth_draw_opaque, unshaded;
+void fragment() {
+    float band = fract(UV.y - TIME * 0.08);
+    float puff = smoothstep(0.15, 0.7, band);
+    ALBEDO = mix(vec3(0.18, 0.16, 0.15), vec3(0.45, 0.40, 0.36), puff);
+    ALPHA = (1.0 - UV.y) * 0.45;
+}"#,
+    );
+    smoke.set_shader(&smoke_shader);
+    plume.set_surface_override_material(0, &smoke);
+    parent.add_child(&plume);
 }
 
 fn copy_haze(into: &mut Gd<ShaderMaterial>, from: &Gd<ShaderMaterial>) {

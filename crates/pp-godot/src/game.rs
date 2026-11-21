@@ -68,6 +68,8 @@ pub struct Game {
     fish_count: u32,
     fish_combo: u32,
     banners: Option<crate::banners::Banners>,
+    atmosphere: Option<Gd<crate::world::Atmosphere>>,
+    bots: Option<crate::bots::BotField>,
     ghost_rider: Option<Gd<Rider>>,
     ghost_distance_m: f64,
     last: Telemetry,
@@ -88,6 +90,7 @@ pub struct Game {
     /// Millisecond clock when the process may quit. The audio server needs
     /// real time, not a handful of uncapped frames, to drop playbacks.
     quit_at_ms: u64,
+    sound: Option<Gd<crate::sound::SoundPlayer>>,
 }
 
 #[godot_api]
@@ -131,6 +134,8 @@ impl INode3D for Game {
             fish_count: 0,
             fish_combo: 0,
             banners: None,
+            atmosphere: None,
+            bots: None,
             ghost_rider: None,
             ghost_distance_m: 0.0,
             last: Telemetry::default(),
@@ -147,6 +152,7 @@ impl INode3D for Game {
             started: false,
             ready_ms: 0,
             quit_at_ms: 0,
+            sound: None,
         }
     }
 
@@ -212,6 +218,7 @@ impl INode3D for Game {
         self.scatter_count = report.count;
         self.scatter_checksum = report.checksum;
         self.scatter_violations = report.violations;
+        self.atmosphere = world_root.try_get_node_as::<crate::world::Atmosphere>("Atmosphere");
         self.base_mut().add_child(&world_root);
         self.asset_models = catalog.loaded_models();
         self.asset_textures = catalog.loaded_textures();
@@ -239,6 +246,11 @@ impl INode3D for Game {
             crate::banners::Banners::new(&mut root)
         };
         self.banners = Some(banners);
+        let bots = {
+            let mut root = self.base_mut();
+            crate::bots::BotField::new(&mut root)
+        };
+        self.bots = Some(bots);
         let mut ghost = Rider::new_alloc();
         ghost.set_name("Ghost");
         ghost.bind_mut().mark_ghost();
@@ -293,6 +305,7 @@ impl INode3D for Game {
 
         let music_mark = Time::singleton().get_ticks_msec();
         self.start_music(skip_title);
+        self.start_sound();
         let music_ms = stamp(music_mark);
 
         let tail_mark = Time::singleton().get_ticks_msec();
@@ -342,6 +355,14 @@ impl INode3D for Game {
             if Input::singleton().is_action_just_pressed("activate_powerup") {
                 self.activate_powerup();
             }
+            if self.session().play().workout.is_some() {
+                if Input::singleton().is_action_just_pressed("workout_easier") {
+                    self.nudge_workout(-5);
+                }
+                if Input::singleton().is_action_just_pressed("workout_harder") {
+                    self.nudge_workout(5);
+                }
+            }
             let watts = self.keys.target_power_w().round() as u16;
             self.session_mut().set_sim_power(watts);
         } else {
@@ -358,6 +379,7 @@ impl INode3D for Game {
         self.present(&telemetry, dt);
         self.refresh_screens();
         self.sync_music();
+        self.sync_sound(dt);
         self.announce_track();
         if let Some(screens) = self.screens.as_mut() {
             screens.tick_toast(dt);
@@ -625,6 +647,17 @@ impl Game {
         )
     }
 
+    /// The `PENGUIN_PASS_SOUND` line, so the smoke test can read it back.
+    #[func]
+    pub fn sound_line(&self) -> GString {
+        let line = self
+            .sound
+            .as_ref()
+            .map(|sound| sound.bind().report_line())
+            .unwrap_or_else(|| "PENGUIN_PASS_SOUND files=0 missing=1".to_owned());
+        GString::from(line.as_str())
+    }
+
     /// An unknown scatter kind names no library mesh, so the placeholder is used.
     #[func]
     pub fn unknown_kind_is_empty(&self) -> bool {
@@ -735,6 +768,7 @@ impl Game {
             Screen::Summary => "summary",
             Screen::Course => "course",
             Screen::Progress => "progress",
+            Screen::Workout => "workout",
         };
         GString::from(name)
     }
@@ -749,6 +783,20 @@ impl Game {
             menu.close();
         }
         self.sync_music();
+    }
+
+    /// Select a built-in workout by list index. Negative clears it.
+    #[func]
+    pub fn debug_select_workout(&mut self, index: i64) {
+        if index < 0 {
+            self.session_mut().select_workout(None);
+            return;
+        }
+        let plans = self.session().workouts();
+        if let Some(plan) = plans.get(index as usize) {
+            let id = plan.id.clone();
+            self.session_mut().select_workout(Some(&id));
+        }
     }
 
     /// Wear this kit on the current rider. The id is saved with the settings.
@@ -818,7 +866,7 @@ impl Game {
             _ => return,
         };
         if self.menu.as_ref().is_some_and(RideMenu::is_open) {
-            self.menu_command(command);
+            self.menu_command(command, true);
             if self.menu.as_ref().is_some_and(|menu| !menu.is_open()) {
                 self.shell.leave_settings();
             }
@@ -1284,6 +1332,10 @@ impl Game {
                 lean,
             );
         }
+        if let Some(bots) = self.bots.as_mut() {
+            bots.sync(&play.bots, &course, lane_spec, telemetry.distance_m, dt);
+        }
+        self.apply_sky(position, tangent, telemetry.elapsed_s as f32, dt as f32);
         let rider_xf = self
             .rider
             .as_ref()
@@ -1295,6 +1347,34 @@ impl Game {
                 .bind_mut()
                 .follow(transform, dt, first_person, title_frame);
         }
+    }
+
+    fn apply_sky(&mut self, position: Vector3, forward: Vector3, ride_s: f32, dt: f32) {
+        let Some(mut atmosphere) = self.atmosphere.clone() else {
+            return;
+        };
+        let settings = self.session().settings();
+        let state = pp_world::ride_atmosphere(
+            &self.theme_name,
+            parse_time(&settings.time_of_day),
+            parse_weather(&settings.weather),
+            ride_s,
+            1,
+        );
+        atmosphere
+            .bind_mut()
+            .apply_atmosphere(&state, position, forward, dt);
+    }
+
+    fn nudge_workout(&mut self, delta: i8) {
+        let current = self
+            .session()
+            .play()
+            .workout
+            .map(|workout| workout.bias_percent)
+            .unwrap_or(0);
+        let next = (i16::from(current) + i16::from(delta)).clamp(-25, 25) as i8;
+        self.session_mut().set_workout_bias(next);
     }
 
     fn toggle_fullscreen(&mut self) {
@@ -1312,7 +1392,7 @@ impl Game {
         let path = self.settings_path().clone();
         let mut menu = self.menu.take().expect("menu");
         menu.open(self.session_mut());
-        for _ in 0..13 {
+        for _ in 0..17 {
             menu.handle(Command::Down, self.session_mut(), &path);
         }
         menu.handle(Command::Accept, self.session_mut(), &path);
@@ -1325,7 +1405,7 @@ impl Game {
 
     fn on_menu_key(&mut self) {
         if self.shell.screen() == Screen::Settings {
-            self.menu_command(Command::Back);
+            self.menu_command(Command::Back, true);
             if self.menu.as_ref().is_some_and(|menu| !menu.is_open()) {
                 self.shell.leave_settings();
             }
@@ -1374,6 +1454,7 @@ impl Game {
             1
         };
         let snap = menu_snapshot(self.session());
+        self.note_ui(command, fresh);
         let effect = self.shell.handle(command, fresh, &snap, count);
         self.apply_shell(effect);
     }
@@ -1403,6 +1484,13 @@ impl Game {
                 self.session_mut().reroll(index);
             }
             ShellEffect::OpenRides => self.open_rides_folder(),
+            ShellEffect::PickWorkout(id) => {
+                self.session_mut().select_workout(id.as_deref());
+            }
+            ShellEffect::WorkoutBias(delta) => self.nudge_workout(delta),
+            ShellEffect::SkipWorkout => self.session_mut().skip_workout_step(),
+            ShellEffect::UploadStrava => self.session_mut().upload_last_ride_to_strava(),
+            ShellEffect::AcceptFtp(watts) => self.session_mut().accept_ramp_ftp(watts),
             ShellEffect::Menu(action) => {
                 let path = self.settings_path().clone();
                 let mut menu = self.menu.take().expect("menu");
@@ -1458,8 +1546,46 @@ impl Game {
                 screens.set_progress_page(page);
             }
         }
+        let workouts = self.session().workouts();
+        let chosen = self.session().selected_workout_id().map(str::to_owned);
+        let workout_name = chosen
+            .as_ref()
+            .and_then(|id| workouts.iter().find(|plan| &plan.id == id))
+            .map(|plan| plan.name.clone())
+            .unwrap_or_else(|| "Free ride".to_owned());
+        let mut workout_rows = vec![pp_view::shell::ShellRow {
+            label: "Free ride".to_owned(),
+            detail: String::new(),
+        }];
+        let mut workout_ids = vec![None];
+        let mut samples = vec![Vec::new()];
+        for plan in &workouts {
+            workout_rows.push(pp_view::shell::ShellRow {
+                label: plan.name.clone(),
+                detail: pp_view::extras::workout_length(plan.duration_s),
+            });
+            workout_ids.push(Some(plan.id.clone()));
+            samples.push(sample_bars(&plan.profile));
+        }
+        if let Some(screens) = self.screens.as_mut() {
+            screens.set_workout_samples(samples);
+        }
+        self.shell
+            .set_workouts(&workout_name, workout_rows, workout_ids);
         let cards = self.course_cards();
         let totals = self.session().summary();
+        let upload = matches!(
+            self.session().strava_state(),
+            pp_session::StravaState::Connected { .. }
+        ) && self.ride_file.as_ref().is_some_and(|note| note.saved)
+            && !totals.strava_uploaded;
+        let ftp = totals
+            .workout_result
+            .as_ref()
+            .and_then(|result| result.ramp_test_ftp_w)
+            .filter(|watts| watts.is_finite() && *watts > 0.0)
+            .map(|watts| watts.round() as u16);
+        self.shell.set_summary_extra(upload, ftp);
         let summary_line = format!(
             "{:.0} s · {:.2} km · {:.0} m up · {:.0} W avg",
             totals.elapsed_s,
@@ -1548,6 +1674,7 @@ impl Game {
         self.scatter_count = report.count;
         self.scatter_checksum = report.checksum;
         self.scatter_violations = report.violations;
+        self.atmosphere = world_root.try_get_node_as::<crate::world::Atmosphere>("Atmosphere");
         self.base_mut().add_child(&world_root);
         let profile: Vec<(f64, f32)> = course
             .profile(20.0)
@@ -1713,6 +1840,7 @@ impl Game {
     fn show_events(&mut self) {
         let events = self.session_mut().drain_events();
         for event in events {
+            self.note_sound_event(&event);
             let (text, seconds) = match event {
                 pp_session::RideEvent::SettingsSaved => ("Settings saved".to_owned(), 3.0),
                 pp_session::RideEvent::SettingsFileDamaged { .. } => (
@@ -1788,13 +1916,7 @@ impl Game {
                     }
                     continue;
                 }
-                pp_session::RideEvent::FishCollected { combo, .. } => {
-                    let volume = f32::from(self.session().settings().music_volume) / 100.0;
-                    if let Some(fish) = self.fish.as_mut() {
-                        fish.blip(combo, volume);
-                    }
-                    continue;
-                }
+                pp_session::RideEvent::FishCollected { .. } => continue,
                 pp_session::RideEvent::FishMissed => continue,
                 pp_session::RideEvent::PowerupAwarded { kind } => (
                     format!(
@@ -1817,6 +1939,38 @@ impl Game {
                 pp_session::RideEvent::BadgeEarned { name, .. } => (format!("Badge: {name}"), 4.0),
                 pp_session::RideEvent::GhostBeaten { .. } => {
                     ("You beat your ghost".to_owned(), 4.0)
+                }
+                pp_session::RideEvent::WorkoutStepStarted { label, target_w } => {
+                    let target = pp_view::extras::workout_target(target_w);
+                    (format!("{label}  {target}"), 2.5)
+                }
+                pp_session::RideEvent::WorkoutStepEndingSoon { seconds } => {
+                    (format!("{seconds} s left in this step"), 2.0)
+                }
+                pp_session::RideEvent::WorkoutCue { text } => (text, 3.0),
+                pp_session::RideEvent::WorkoutFinished { ramp_test_ftp_w } => {
+                    if let Some(watts) = ramp_test_ftp_w {
+                        (format!("Estimated FTP  {watts} W"), 6.0)
+                    } else {
+                        ("Workout complete".to_owned(), 4.0)
+                    }
+                }
+                pp_session::RideEvent::StravaConnected { athlete } => {
+                    (format!("Strava  {athlete}"), 4.0)
+                }
+                pp_session::RideEvent::StravaConnectFailed { reason } => (reason, 6.0),
+                pp_session::RideEvent::StravaUploadStarted => {
+                    ("Uploading to Strava".to_owned(), 3.0)
+                }
+                pp_session::RideEvent::StravaUploaded { .. } => {
+                    ("Uploaded to Strava".to_owned(), 4.0)
+                }
+                pp_session::RideEvent::StravaUploadFailed { reason, duplicate } => {
+                    if duplicate {
+                        ("Already on Strava".to_owned(), 4.0)
+                    } else {
+                        (reason, 6.0)
+                    }
                 }
             };
             if let Some(screens) = self.screens.as_mut() {
@@ -1864,7 +2018,7 @@ impl Game {
 
     fn poll_menu(&mut self, dt: f64) {
         let input = Input::singleton();
-        let command = if input.is_action_just_pressed("menu_accept") {
+        let pressed = if input.is_action_just_pressed("menu_accept") {
             Some(Command::Accept)
         } else if input.is_action_just_pressed("menu_up") {
             Some(Command::Up)
@@ -1875,10 +2029,12 @@ impl Game {
         } else if input.is_action_just_pressed("menu_right") {
             Some(Command::Right)
         } else {
-            self.held_menu_step(dt)
+            None
         };
-        if let Some(command) = command {
-            self.menu_command(command);
+        if let Some(command) = pressed {
+            self.menu_command(command, true);
+        } else if let Some(command) = self.held_menu_step(dt) {
+            self.menu_command(command, false);
         }
     }
 
@@ -1937,6 +2093,7 @@ impl Game {
             self.music_report = report.summary();
         }
         self.push_music_report();
+        self.apply_sound_settings();
     }
 
     fn push_music_report(&mut self) {
@@ -2046,7 +2203,137 @@ impl Game {
         }
     }
 
-    fn menu_command(&mut self, command: Command) {
+    fn start_sound(&mut self) {
+        let mut sound = crate::sound::SoundPlayer::new_alloc();
+        sound.set_name("Sound");
+        self.base_mut().add_child(&sound);
+        let settings = self.session().settings().clone();
+        let capture = self
+            .launch
+            .as_ref()
+            .and_then(|launch| launch.sound_capture.clone());
+        let mute = capture.is_none() && self.launch.as_ref().is_some_and(|launch| launch.no_sound);
+        {
+            let mut player = sound.bind_mut();
+            player.set_volumes(
+                if mute { 0 } else { settings.ambient_volume },
+                if mute { 0 } else { settings.effects_volume },
+            );
+            if let Some(path) = capture.as_ref() {
+                player.arm_capture(&path.to_string_lossy());
+            }
+        }
+        self.sound = Some(sound);
+    }
+
+    fn apply_sound_settings(&mut self) {
+        if self
+            .launch
+            .as_ref()
+            .is_some_and(|launch| launch.sound_capture.is_some())
+        {
+            return;
+        }
+        let settings = self.session().settings().clone();
+        if let Some(sound) = self.sound.as_mut() {
+            sound
+                .bind_mut()
+                .set_volumes(settings.ambient_volume, settings.effects_volume);
+        }
+    }
+
+    fn sync_sound(&mut self, dt: f64) {
+        let input = self.ride_sound_input();
+        let quit = self
+            .sound
+            .as_mut()
+            .is_some_and(|sound| sound.bind_mut().sync(input, dt as f32, None));
+        if let Some(watts) = self
+            .sound
+            .as_ref()
+            .and_then(|sound| sound.bind().demo_power_w())
+        {
+            let watts = watts.clamp(0.0, 1500.0).round() as u16;
+            self.session_mut().set_sim_power(watts);
+            self.keys.set_target_power(f32::from(watts));
+        }
+        if quit {
+            self.request_quit();
+        }
+    }
+
+    fn ride_sound_input(&self) -> pp_view::sound::RideInput {
+        let telemetry = self.session().telemetry();
+        let settings = self.session().settings();
+        let screen = self.shell.screen();
+        pp_view::sound::RideInput {
+            speed_mps: telemetry.speed_mps,
+            cadence_rpm: telemetry.cadence_rpm,
+            power_w: telemetry.power_w,
+            zone: pp_session::power_zone(telemetry.power_w, settings.ftp_w).index,
+            heart_bpm: telemetry.heart_rate_bpm,
+            grade_pct: telemetry.grade_pct,
+            elevation_m: telemetry.elevation_m,
+            theme: if self.theme_name == "desert" {
+                pp_view::sound::Ambience::Desert
+            } else {
+                pp_view::sound::Ambience::Alpine
+            },
+            riding: matches!(screen, Screen::Riding | Screen::Pause | Screen::ConfirmEnd),
+            paused: matches!(
+                screen,
+                Screen::Pause | Screen::ConfirmEnd | Screen::Settings
+            ),
+            breathing: settings.rider_breathing,
+        }
+    }
+
+    fn note_sound_event(&mut self, event: &pp_session::RideEvent) {
+        use pp_session::RideEvent;
+        use pp_view::sound::SoundEvent;
+        let sound = match event {
+            RideEvent::FishCollected { golden, combo } => SoundEvent::Fish {
+                golden: *golden,
+                combo: *combo,
+            },
+            RideEvent::FishMissed => SoundEvent::ComboBroken,
+            RideEvent::PowerupAwarded { .. } => SoundEvent::PowerupAwarded,
+            RideEvent::PowerupActivated { .. } => SoundEvent::PowerupActivated,
+            RideEvent::PowerupExpired { .. } => SoundEvent::PowerupExpired,
+            RideEvent::SegmentEntered { .. } => SoundEvent::SegmentEntered,
+            RideEvent::SegmentFinished { record, .. } => {
+                SoundEvent::SegmentFinished { record: *record }
+            }
+            RideEvent::GhostBeaten { .. } => SoundEvent::GhostBeaten,
+            RideEvent::BadgeEarned { .. } => SoundEvent::BadgeEarned,
+            RideEvent::LapCompleted { .. } => SoundEvent::LapCompleted,
+            RideEvent::RideSaved { .. } => SoundEvent::RideSaved,
+            _ => return,
+        };
+        self.push_sound(sound);
+    }
+
+    fn note_ui(&mut self, command: Command, fresh: bool) {
+        use pp_view::sound::SoundEvent;
+        let event = match command {
+            Command::Up | Command::Down | Command::Left | Command::Right if fresh => {
+                SoundEvent::MenuMove
+            }
+            Command::Accept => SoundEvent::MenuSelect,
+            Command::Back => SoundEvent::MenuBack,
+            _ => return,
+        };
+        self.push_sound(event);
+    }
+
+    fn push_sound(&mut self, event: pp_view::sound::SoundEvent) {
+        if let Some(sound) = self.sound.as_mut() {
+            sound.bind_mut().push_event(event);
+        }
+    }
+
+    fn menu_command(&mut self, command: Command, fresh: bool) {
+        self.note_ui(command, fresh);
         let path = self.settings_path().clone();
         let Some(mut menu) = self.menu.take() else {
             return;
@@ -2136,6 +2423,7 @@ fn menu_snapshot(session: &Session) -> pp_view::menu::Snapshot {
         heart_line: String::new(),
         riders: Vec::new(),
         kits: Vec::new(),
+        strava: crate::menu::strava_row(&session.strava_state()),
     }
 }
 
@@ -2176,6 +2464,18 @@ fn summary_figures(totals: &pp_session::RideSummary) -> Vec<(String, String)> {
         ("Fish".to_owned(), totals.fish.to_string()),
         ("Best combo".to_owned(), totals.best_combo.to_string()),
     ];
+    if let Some(result) = &totals.workout_result {
+        figures.push((
+            "Workout".to_owned(),
+            pp_view::extras::workout_result_line(result.in_range_fraction, result.average_power_w),
+        ));
+        if let Some(watts) = result.ramp_test_ftp_w.filter(|watts| watts.is_finite()) {
+            figures.push((
+                "Estimated FTP".to_owned(),
+                format!("{:.0} W", watts.round()),
+            ));
+        }
+    }
     for segment in &totals.segments {
         let mark = if segment.record { "record" } else { "" };
         figures.push((
@@ -2184,6 +2484,37 @@ fn summary_figures(totals: &pp_session::RideSummary) -> Vec<(String, String)> {
         ));
     }
     figures
+}
+
+fn sample_bars(profile: &[pp_session::WorkoutBar]) -> Vec<f32> {
+    if profile.is_empty() {
+        return Vec::new();
+    }
+    let total = profile
+        .iter()
+        .map(|bar| bar.duration_s.max(0.0))
+        .sum::<f32>()
+        .max(0.001);
+    (0..12)
+        .map(|index| {
+            let at = total * (index as f32 + 0.5) / 12.0;
+            let mut cursor = 0.0;
+            let mut value = if profile[0].open {
+                -1.0
+            } else {
+                profile[0].start_ftp
+            };
+            for bar in profile {
+                let next = cursor + bar.duration_s.max(0.0);
+                value = if bar.open { -1.0 } else { bar.start_ftp };
+                if at <= next {
+                    break;
+                }
+                cursor = next;
+            }
+            value
+        })
+        .collect()
 }
 
 fn progress_page(profile: &pp_session::ProfileView) -> crate::screens::ProgressPage {
@@ -2258,6 +2589,36 @@ fn ride_chrome(play: &pp_session::PlayView) -> crate::hud::RideChrome {
         chrome.power_name = pp_view::arcade::powerup_name(&format!("{held:?}")).to_owned();
         chrome.power_kind = power_code(held);
     }
+    if let Some(text) = pp_view::extras::draft_chip(play.draft_saving_pct) {
+        chrome.draft = text;
+    }
+    if let Some(workout) = &play.workout {
+        chrome.workout_title =
+            pp_view::extras::workout_title(&workout.label, workout.step_index, workout.step_count);
+        chrome.workout_target = pp_view::extras::workout_target(workout.target_w);
+        chrome.workout_range = match workout.in_range {
+            Some(true) => 1,
+            Some(false) => 2,
+            None => 3,
+        };
+        chrome.workout_clock = pp_view::extras::workout_clock(workout.step_remaining_s);
+        chrome.workout_next =
+            pp_view::extras::next_interval(workout.next_label.as_deref(), workout.next_target_w);
+        chrome.workout_bias = pp_view::extras::bias_label(workout.bias_percent);
+        chrome.workout_erg = play.workout_erg_w.is_some();
+        chrome.workout_cue = workout.cue.clone().unwrap_or_default();
+        chrome.workout_bars = play
+            .workout_profile
+            .iter()
+            .map(|bar| if bar.open { -1.0 } else { bar.start_ftp })
+            .collect();
+        let span = workout.total_elapsed_s + workout.total_remaining_s;
+        chrome.workout_cursor = if span > 0.05 {
+            (workout.total_elapsed_s / span).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+    }
     chrome
 }
 
@@ -2310,6 +2671,27 @@ fn place_ghost(
             dt,
             0.0,
         );
+    }
+}
+
+fn parse_time(id: &str) -> pp_world::TimeOfDay {
+    match id {
+        "auto" => pp_world::TimeOfDay::Auto,
+        "dawn" => pp_world::TimeOfDay::Dawn,
+        "sunset" => pp_world::TimeOfDay::Sunset,
+        "night" => pp_world::TimeOfDay::Night,
+        _ => pp_world::TimeOfDay::Day,
+    }
+}
+
+fn parse_weather(id: &str) -> pp_world::Weather {
+    match id {
+        "auto" => pp_world::Weather::Auto,
+        "cloudy" => pp_world::Weather::Cloudy,
+        "rain" => pp_world::Weather::Rain,
+        "snow" => pp_world::Weather::Snow,
+        "fog" => pp_world::Weather::Fog,
+        _ => pp_world::Weather::Clear,
     }
 }
 

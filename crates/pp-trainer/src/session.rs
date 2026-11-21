@@ -16,7 +16,7 @@ use pp_ftms::{
     FITNESS_MACHINE_STATUS_UUID, FecChecksum, FecData, FecMessage, HEART_RATE_MEASUREMENT_UUID,
     HeartRateMeasurement, INDOOR_BIKE_DATA_UUID, IndoorBikeData, IndoorBikeSimulation,
     OPCODE_REQUEST_CONTROL, OPCODE_SET_INDOOR_BIKE_SIMULATION, OPCODE_SET_TARGET_POWER,
-    OPCODE_START_OR_RESUME, TrackResistance, UserConfiguration, crank_cadence_rpm,
+    OPCODE_START_OR_RESUME, TargetPower, TrackResistance, UserConfiguration, crank_cadence_rpm,
 };
 use uuid::Uuid;
 
@@ -783,11 +783,29 @@ impl Engine {
     }
 
     fn flush_power(&mut self, now_ms: u64, watts: u16) -> Vec<OutAction> {
+        if self.wire == ControlWire::Fec {
+            if self.rejected_power == Some(watts) || self.last_sent_power == Some(watts) {
+                self.pending = None;
+                return Vec::new();
+            }
+            let Ok(bytes) = (TargetPower {
+                watts: f32::from(watts),
+            })
+            .encode(self.outgoing_checksum()) else {
+                self.pending = None;
+                return Vec::new();
+            };
+            self.pending = None;
+            self.rejected_power = None;
+            self.last_sent_power = Some(watts);
+            self.last_command_ms = Some(now_ms);
+            if self.trace.is_recording() {
+                self.trace_fec_tx(&bytes, &format!("target-power={watts}"));
+            }
+            return vec![OutAction::WriteFec(bytes)];
+        }
         if self.wire != ControlWire::Ftms {
             self.pending = None;
-            if self.wire == ControlWire::Fec {
-                self.note("target power is not available");
-            }
             return Vec::new();
         }
         if self.rejected_power == Some(watts) || self.last_sent_power == Some(watts) {
@@ -1735,6 +1753,25 @@ mod tests {
         .encode(FecChecksum::Xor)
         .unwrap();
         assert_eq!(harness.fake.fec.last().unwrap(), &grade);
+    }
+
+    #[test]
+    fn fec_target_power_is_page_49_and_is_traced() {
+        let mut harness = Harness::control();
+        harness.connect(fec_profile(false));
+        harness.notify(
+            FEC_NOTIFY_UUID,
+            vec![
+                0xA4, 0x09, 0x4E, 0x05, 0x19, 0x07, 0x5A, 0xE8, 0x03, 0xFA, 0x00, 0x30, 0xEB,
+            ],
+        );
+        harness.fake.fec.clear();
+        harness.command(TrainerCommand::SetTargetPower { watts: 200 });
+        let expected = TargetPower { watts: 200.0 }
+            .encode(FecChecksum::Sum)
+            .unwrap();
+        assert_eq!(harness.fake.fec.last().unwrap(), &expected);
+        assert_eq!(expected[4], 0x31);
     }
 
     #[test]

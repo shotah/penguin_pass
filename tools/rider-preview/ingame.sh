@@ -30,7 +30,7 @@ fi
 mkdir -p "$HERE/.cache" "$ROOT/godot/.godot"
 SETTINGS="$HERE/.cache/ingame-settings.toml"
 printf 'fullscreen = false\ntv_dashboard_enabled = true\n' >"$SETTINGS"
-SAFE=(--no-bluetooth --no-music --settings "$SETTINGS" --dashboard-port 0 --dashboard-loopback)
+SAFE=(--no-bluetooth --no-music --no-sound --settings "$SETTINGS" --dashboard-port 0 --dashboard-loopback)
 
 # Script mode loads only the extensions named in this list (see ./x smoke).
 if [[ ! -s "$ROOT/godot/.godot/extension_list.cfg" ]]; then
@@ -43,7 +43,7 @@ run() {
     local log code
     log="$HERE/.cache/ingame.log"
     set +e
-    "${godot_cmd[@]}" --path "$ROOT/godot" --script "$script" -- "${SAFE[@]}" "$@" >"$log" 2>&1
+    "${godot_cmd[@]}" --audio-driver Dummy --path "$ROOT/godot" --script "$script" -- "${SAFE[@]}" "$@" >"$log" 2>&1
     code=$?
     set -e
     grep -E '^(RIDER_|WORLD_|PENGUIN_PASS_(SHOT|FRAME_MS|READY_MS|VIEW|WORLD))|leaked|ObjectDB' "$log" || true

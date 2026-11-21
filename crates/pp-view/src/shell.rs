@@ -26,9 +26,15 @@ pub enum Screen {
     Course,
     /// Lifetime totals and badges.
     Progress,
+    /// Pick a workout, or a free ride.
+    Workout,
 }
 
 /// What the game should do.
+///
+/// `Menu` carries the whole settings value. That is larger than the other
+/// variants, and the clippy limit is the reason for the allow.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum ShellEffect {
     /// Nothing structural.
@@ -49,6 +55,16 @@ pub enum ShellEffect {
     Menu(Action),
     /// Select this course row.
     PickCourse(usize),
+    /// Choose a workout. `None` is a free ride.
+    PickWorkout(Option<String>),
+    /// Nudge workout targets by this many percent.
+    WorkoutBias(i8),
+    /// Skip the current workout step.
+    SkipWorkout,
+    /// Upload the saved ride.
+    UploadStrava,
+    /// Store this ramp-test FTP.
+    AcceptFtp(u16),
     /// Make a new generated route for this row.
     Reroll(usize),
     /// Open the rides folder. The summary row asked.
@@ -106,6 +122,12 @@ pub struct Shell {
     progress_index: usize,
     progress_rows: Vec<ShellRow>,
     progress_blurbs: Vec<String>,
+    workout_name: String,
+    workout_ids: Vec<Option<String>>,
+    workout_rows: Vec<ShellRow>,
+    summary_extra: Vec<ShellRow>,
+    summary_ftp: Option<u16>,
+    summary_upload: bool,
     /// Settings was opened from the title, so Back returns there.
     settings_from_title: bool,
     menu: MenuState,
@@ -123,6 +145,12 @@ impl Default for Shell {
             progress_index: 0,
             progress_rows: Vec::new(),
             progress_blurbs: Vec::new(),
+            workout_name: "Free ride".to_owned(),
+            workout_ids: Vec::new(),
+            workout_rows: Vec::new(),
+            summary_extra: Vec::new(),
+            summary_ftp: None,
+            summary_upload: false,
             settings_from_title: false,
             menu: MenuState::default(),
         }
@@ -152,8 +180,9 @@ impl Shell {
     /// Move the highlight when the pointer is over a row.
     pub fn hover(&mut self, index: usize) {
         match self.screen {
-            Screen::Title => self.title_index = index.min(6),
-            Screen::Pause => self.pause_index = index.min(5),
+            Screen::Title => self.title_index = index.min(7),
+            Screen::Pause => self.pause_index = index.min(8),
+            Screen::Workout => self.course_index = index,
             Screen::Progress => self.progress_index = index,
             Screen::Summary => self.summary_index = index.min(2),
             Screen::ConfirmEnd | Screen::ConfirmQuit => {
@@ -169,10 +198,31 @@ impl Shell {
         matches!(
             self.screen,
             Screen::Title | Screen::Summary | Screen::Course | Screen::ConfirmQuit
-        ) || (self.screen == Screen::Progress && self.settings_from_title)
+        ) || (matches!(self.screen, Screen::Progress | Screen::Workout) && self.settings_from_title)
     }
 
     /// Badge lines for the Progress screen. `blurbs` is the focused row's sentence.
+    /// Name shown on the title's Workout row, and the picker list.
+    pub fn set_workouts(&mut self, selected: &str, rows: Vec<ShellRow>, ids: Vec<Option<String>>) {
+        self.workout_name = selected.to_owned();
+        self.workout_rows = rows;
+        self.workout_ids = ids;
+    }
+
+    /// Extra summary rows: an upload, then an FTP offer.
+    pub fn set_summary_extra(&mut self, upload: bool, ftp_w: Option<u16>) {
+        self.summary_upload = upload;
+        self.summary_ftp = ftp_w;
+        self.summary_extra.clear();
+        if upload {
+            self.summary_extra.push(row("Upload to Strava", ""));
+        }
+        if let Some(watts) = ftp_w {
+            self.summary_extra
+                .push(row(&format!("Use {watts} W as FTP"), ""));
+        }
+    }
+
     pub fn set_progress(&mut self, rows: Vec<ShellRow>, blurbs: Vec<String>) {
         self.progress_rows = rows;
         self.progress_blurbs = blurbs;
@@ -203,7 +253,7 @@ impl Shell {
     /// Close every menu and ride.
     pub fn close_menus(&mut self) {
         self.menu.close();
-        if self.screen == Screen::Progress {
+        if matches!(self.screen, Screen::Progress | Screen::Workout) {
             self.screen = if self.settings_from_title {
                 Screen::Title
             } else {
@@ -243,6 +293,7 @@ impl Shell {
             Screen::Summary => self.summary_command(command, fresh),
             Screen::Course => self.course_command(command, fresh, courses),
             Screen::Progress => self.progress_command(command, fresh),
+            Screen::Workout => self.workout_command(command, fresh),
         }
     }
 
@@ -260,7 +311,7 @@ impl Shell {
             Screen::Title => list_view(
                 Screen::Title,
                 "",
-                &title_rows(course_name, trainer, heart),
+                &title_rows(course_name, trainer, heart, &self.workout_name),
                 self.title_index,
                 course_detail,
             ),
@@ -285,17 +336,21 @@ impl Shell {
                 self.confirm_index,
                 "The game closes.",
             ),
-            Screen::Summary => list_view(
-                Screen::Summary,
-                "Ride complete",
-                &[
+            Screen::Summary => {
+                let mut rows = vec![
                     row("Ride again", ""),
                     row("Back to title", ""),
                     row("Open rides folder", ""),
-                ],
-                self.summary_index,
-                summary_line,
-            ),
+                ];
+                rows.extend(self.summary_extra.clone());
+                list_view(
+                    Screen::Summary,
+                    "Ride complete",
+                    &rows,
+                    self.summary_index,
+                    summary_line,
+                )
+            }
             Screen::Course => {
                 let rows: Vec<ShellRow> = courses
                     .iter()
@@ -332,6 +387,13 @@ impl Shell {
                     &blurb,
                 )
             }
+            Screen::Workout => list_view(
+                Screen::Workout,
+                "Workout",
+                &self.workout_rows,
+                self.course_index,
+                "Free ride, or a plan. Accept starts it from the title.",
+            ),
             Screen::Riding | Screen::Settings => ShellView {
                 screen: self.screen,
                 title: String::new(),
@@ -343,7 +405,7 @@ impl Shell {
     }
 
     fn title_command(&mut self, command: Command, fresh: bool, _courses: usize) -> ShellEffect {
-        const N: usize = 7;
+        const N: usize = 8;
         match command {
             Command::Up => move_focus(&mut self.title_index, N, false, fresh),
             Command::Down => move_focus(&mut self.title_index, N, true, fresh),
@@ -374,6 +436,11 @@ impl Shell {
                     self.menu.open_main();
                 }
                 5 => {
+                    self.settings_from_title = true;
+                    self.course_index = 0;
+                    self.screen = Screen::Workout;
+                }
+                6 => {
                     self.screen = Screen::ConfirmQuit;
                     self.confirm_index = 0;
                 }
@@ -389,7 +456,7 @@ impl Shell {
     }
 
     fn pause_command(&mut self, command: Command, fresh: bool) -> ShellEffect {
-        const N: usize = 6;
+        const N: usize = 9;
         match command {
             Command::Up => move_focus(&mut self.pause_index, N, false, fresh),
             Command::Down => move_focus(&mut self.pause_index, N, true, fresh),
@@ -423,11 +490,14 @@ impl Shell {
                     self.screen = Screen::ConfirmEnd;
                     self.confirm_index = 0;
                 }
-                _ => {
+                5 => {
                     self.settings_from_title = false;
                     self.progress_index = 0;
                     self.screen = Screen::Progress;
                 }
+                6 => return ShellEffect::WorkoutBias(-5),
+                7 => return ShellEffect::WorkoutBias(5),
+                _ => return ShellEffect::SkipWorkout,
             },
             Command::Left | Command::Right => {}
         }
@@ -504,11 +574,35 @@ impl Shell {
         ShellEffect::None
     }
 
-    fn summary_command(&mut self, command: Command, fresh: bool) -> ShellEffect {
-        const N: usize = 3;
+    fn workout_command(&mut self, command: Command, fresh: bool) -> ShellEffect {
+        let count = self.workout_ids.len().max(1);
         match command {
-            Command::Up => move_focus(&mut self.summary_index, N, false, fresh),
-            Command::Down => move_focus(&mut self.summary_index, N, true, fresh),
+            Command::Up => move_focus(&mut self.course_index, count, false, fresh),
+            Command::Down => move_focus(&mut self.course_index, count, true, fresh),
+            Command::Back => {
+                self.screen = if self.settings_from_title {
+                    Screen::Title
+                } else {
+                    Screen::Pause
+                };
+            }
+            Command::Accept => {
+                let index = self.course_index.min(count - 1);
+                let id = self.workout_ids.get(index).cloned().unwrap_or(None);
+                self.screen = Screen::Title;
+                self.title_index = 0;
+                return ShellEffect::PickWorkout(id);
+            }
+            Command::Left | Command::Right => {}
+        }
+        ShellEffect::None
+    }
+
+    fn summary_command(&mut self, command: Command, fresh: bool) -> ShellEffect {
+        let count = 3 + self.summary_extra.len();
+        match command {
+            Command::Up => move_focus(&mut self.summary_index, count, false, fresh),
+            Command::Down => move_focus(&mut self.summary_index, count, true, fresh),
             Command::Left | Command::Right => {}
             Command::Accept => match self.summary_index {
                 0 => {
@@ -520,7 +614,16 @@ impl Shell {
                     self.title_index = 0;
                     return ShellEffect::BackToTitle;
                 }
-                _ => return ShellEffect::OpenRides,
+                2 => return ShellEffect::OpenRides,
+                _ => {
+                    let extra = self.summary_index - 3;
+                    if self.summary_upload && extra == 0 {
+                        return ShellEffect::UploadStrava;
+                    }
+                    if let Some(watts) = self.summary_ftp {
+                        return ShellEffect::AcceptFtp(watts);
+                    }
+                }
             },
             Command::Back => {}
         }
@@ -551,13 +654,14 @@ impl Shell {
     }
 }
 
-fn title_rows(course: &str, trainer: &str, heart: &str) -> Vec<ShellRow> {
+fn title_rows(course: &str, trainer: &str, heart: &str, workout: &str) -> Vec<ShellRow> {
     vec![
         row("Start ride", ""),
         row("Course", course),
         row("Trainer", trainer),
         row("Heart rate", heart),
         row("Settings", ""),
+        row("Workout", workout),
         row("Quit", ""),
         row("Progress", ""),
     ]
@@ -571,6 +675,9 @@ fn pause_rows(heart: &str) -> Vec<ShellRow> {
         row("Settings", ""),
         row("End ride", ""),
         row("Progress", ""),
+        row("Intensity −5%", ""),
+        row("Intensity +5%", ""),
+        row("Skip interval", ""),
     ]
 }
 
@@ -641,6 +748,7 @@ mod tests {
             heart_line: String::new(),
             riders: Vec::new(),
             kits: Vec::new(),
+            strava: crate::extras::StravaRow::Connect,
         }
     }
 
@@ -686,12 +794,12 @@ mod tests {
     #[test]
     fn a_fresh_press_wraps_and_a_hold_stops() {
         let mut shell = Shell::new(false);
-        shell.title_index = 6;
+        shell.title_index = 7;
         shell.handle(Command::Down, true, &snap(), 1);
         assert_eq!(shell.title_index, 0);
-        shell.title_index = 6;
+        shell.title_index = 7;
         shell.handle(Command::Down, false, &snap(), 1);
-        assert_eq!(shell.title_index, 6);
+        assert_eq!(shell.title_index, 7);
     }
 
     #[test]

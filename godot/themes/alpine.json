@@ -1,6 +1,8 @@
 {
   "name": "alpine",
   "seed": 7,
+  "time_of_day": "day",
+  "weather": "clear",
   "sky": {
     "top": [0.16, 0.34, 0.78],
     "horizon": [0.93, 0.78, 0.62],

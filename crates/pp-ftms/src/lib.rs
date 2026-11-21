@@ -33,8 +33,8 @@ pub use feature::{
     TARGET_FEATURE_POWER,
 };
 pub use fec::{
-    FecChecksum, FecData, FecMessage, GeneralFeData, SpecificTrainerData, TrackResistance,
-    UserConfiguration,
+    FecChecksum, FecData, FecMessage, GeneralFeData, SpecificTrainerData, TargetPower,
+    TrackResistance, UserConfiguration,
 };
 pub use heart_rate::HeartRateMeasurement;
 pub use indoor_bike::IndoorBikeData;

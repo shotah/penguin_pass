@@ -62,6 +62,8 @@ Steer into one to collect it. The counter is beside the lane hint, and a
 collect plays a short blip at the music volume. Settings has `Fish and
 powerups`. Off hides the fish and ignores the powerup button. `Ghost` draws a pale rider from your best first lap.
 `Progress` on the title and pause menus lists lifetime totals and badges.
+Settings also has `Time of day`, `Weather`, `Other riders`, and `Strava`.
+`[` and `]` nudge a workout's intensity. The title `Workout` row picks a plan.
 
 The bottom line is the session status: the simulated rider and the Up/Down
 hint, or the trainer's name and whether resistance follows the road. Until a

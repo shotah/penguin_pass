@@ -1869,6 +1869,28 @@ pub struct RideChrome {
     pub card_title: String,
     /// Second line of the finish card.
     pub card_line: String,
+    /// Empty hides the draft chip.
+    pub draft: String,
+    /// Empty hides the workout card.
+    pub workout_title: String,
+    /// Target watts, or Open.
+    pub workout_target: String,
+    /// 0 hidden, 1 in range, 2 out of range, 3 not judged yet.
+    pub workout_range: u8,
+    /// Time left in the step.
+    pub workout_clock: String,
+    /// Next interval. Empty hides the line.
+    pub workout_next: String,
+    /// `+5%` or empty.
+    pub workout_bias: String,
+    /// The trainer is holding an ERG target.
+    pub workout_erg: bool,
+    /// Cue banner. Empty hides it.
+    pub workout_cue: String,
+    /// Mini profile, FTP fraction at the left of each bar.
+    pub workout_bars: Vec<f32>,
+    /// Cursor through the plan, 0 to 1.
+    pub workout_cursor: f32,
 }
 
 impl Default for RideChrome {
@@ -1886,6 +1908,17 @@ impl Default for RideChrome {
             power_fill: 1.0,
             card_title: String::new(),
             card_line: String::new(),
+            draft: String::new(),
+            workout_title: String::new(),
+            workout_target: String::new(),
+            workout_range: 0,
+            workout_clock: String::new(),
+            workout_next: String::new(),
+            workout_bias: String::new(),
+            workout_erg: false,
+            workout_cue: String::new(),
+            workout_bars: Vec::new(),
+            workout_cursor: 0.0,
         }
     }
 }
@@ -1917,6 +1950,17 @@ fn paint_chrome(board: &mut ConsoleBoard, frame: DesignFrame) {
         let title = board.chrome.card_title.clone();
         let line = board.chrome.card_line.clone();
         paint_finish_card(board, frame, &title, &line);
+    }
+    if !board.chrome.draft.is_empty() {
+        let text = board.chrome.draft.clone();
+        paint_draft(board, frame, &text);
+    }
+    if !board.chrome.workout_title.is_empty() {
+        paint_workout(board, frame);
+    }
+    if !board.chrome.workout_cue.is_empty() {
+        let text = board.chrome.workout_cue.clone();
+        paint_cue(board, frame, &text);
     }
 }
 
@@ -2089,6 +2133,163 @@ fn paint_finish_card(board: &mut ConsoleBoard, frame: DesignFrame, title: &str, 
         line,
         frame.px(18.0),
         if line.starts_with('+') { BAD } else { GOOD },
+    );
+}
+
+fn paint_draft(board: &mut ConsoleBoard, frame: DesignFrame, text: &str) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let word = measure(&font, text, frame.px(16.0));
+    let width = word + frame.len(28.0);
+    let x = frame.x(32.0);
+    let y = frame.y(72.0);
+    paint_pill(board, frame, x, y, width, frame.len(32.0));
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(14.0), y + frame.len(22.0)),
+        text,
+        frame.px(16.0),
+        ui_style::GOOD,
+    );
+}
+
+fn paint_workout(board: &mut ConsoleBoard, frame: DesignFrame) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let chrome = board.chrome.clone();
+    let x = frame.x(24.0);
+    let y = frame.y(78.0);
+    let width = frame.len(360.0);
+    let height = frame.len(118.0);
+    paint_pill(board, frame, x, y, width, height);
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(14.0), y + frame.len(26.0)),
+        &chrome.workout_title,
+        frame.px(16.0),
+        SNOW,
+    );
+    let range = match chrome.workout_range {
+        1 => ui_style::GOOD,
+        2 => ui_style::BAD,
+        _ => ui_style::WARN,
+    };
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(14.0), y + frame.len(50.0)),
+        &chrome.workout_target,
+        frame.px(22.0),
+        range,
+    );
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(140.0), y + frame.len(50.0)),
+        &chrome.workout_clock,
+        frame.px(18.0),
+        SNOW,
+    );
+    if chrome.workout_erg {
+        draw_text(
+            board,
+            &font,
+            Vector2::new(x + frame.len(230.0), y + frame.len(50.0)),
+            "ERG",
+            frame.px(16.0),
+            ui_style::SUN,
+        );
+    }
+    if !chrome.workout_bias.is_empty() {
+        draw_text(
+            board,
+            &font,
+            Vector2::new(x + frame.len(280.0), y + frame.len(26.0)),
+            &chrome.workout_bias,
+            frame.px(16.0),
+            ui_style::SUN,
+        );
+    }
+    if !chrome.workout_next.is_empty() {
+        draw_text(
+            board,
+            &font,
+            Vector2::new(x + frame.len(14.0), y + frame.len(72.0)),
+            &chrome.workout_next,
+            frame.px(14.0),
+            ui_style::MIST,
+        );
+    }
+    paint_workout_bars(
+        board,
+        frame,
+        x + frame.len(14.0),
+        y + frame.len(88.0),
+        width - frame.len(28.0),
+        &chrome.workout_bars,
+        chrome.workout_cursor,
+    );
+}
+
+fn paint_workout_bars(
+    board: &mut ConsoleBoard,
+    frame: DesignFrame,
+    x: f32,
+    y: f32,
+    width: f32,
+    bars: &[f32],
+    cursor: f32,
+) {
+    if bars.is_empty() || width <= 1.0 {
+        return;
+    }
+    let slot = width / bars.len() as f32;
+    let h = frame.len(16.0);
+    for (index, ftp) in bars.iter().enumerate() {
+        let color = if *ftp < 0.0 {
+            ui_style::MIST
+        } else if *ftp < 0.6 {
+            Color::from_rgb(0.45, 0.7, 0.95)
+        } else if *ftp < 0.76 {
+            ui_style::GOOD
+        } else if *ftp < 0.91 {
+            ui_style::WARN
+        } else if *ftp < 1.06 {
+            ui_style::SUN
+        } else {
+            ui_style::BAD
+        };
+        let bar_h = (h * ftp.clamp(0.15, 1.4) / 1.4).max(frame.len(3.0));
+        board.base_mut().draw_rect(
+            Rect2::new(
+                Vector2::new(x + slot * index as f32, y + h - bar_h),
+                Vector2::new((slot - frame.len(2.0)).max(1.0), bar_h),
+            ),
+            color,
+        );
+    }
+    let mark = x + width * cursor.clamp(0.0, 1.0);
+    board.base_mut().draw_line(
+        Vector2::new(mark, y - frame.len(2.0)),
+        Vector2::new(mark, y + h + frame.len(2.0)),
+        SNOW,
+    );
+}
+
+fn paint_cue(board: &mut ConsoleBoard, frame: DesignFrame, text: &str) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let word = measure(&font, text, frame.px(20.0));
+    let width = word + frame.len(36.0);
+    let x = (board.base().get_size().x - width) * 0.5;
+    let y = frame.y(220.0);
+    paint_pill(board, frame, x, y, width, frame.len(44.0));
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(18.0), y + frame.len(28.0)),
+        text,
+        frame.px(20.0),
+        SNOW,
     );
 }
 

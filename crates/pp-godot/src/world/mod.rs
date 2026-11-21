@@ -14,6 +14,7 @@ use godot::classes::{
 use godot::obj::Gd;
 use godot::prelude::*;
 
+pub(crate) mod atmosphere;
 pub(crate) mod landmarks;
 pub(crate) mod scenery;
 pub(crate) mod terrain;
@@ -22,7 +23,9 @@ use crate::assets::Catalog;
 use crate::road::{self, CenterSample};
 use crate::theme::Theme;
 use pp_course::Course;
+use pp_world::{TimeOfDay, Weather, atmosphere_at, hour_at};
 
+pub use atmosphere::Atmosphere;
 pub use scenery::ScatterReport;
 
 /// Alpine morning: procedural sky, a low sun, aerial fog, AgX so snow holds detail.
@@ -89,6 +92,21 @@ pub fn build_environment(parent: &mut Gd<Node3D>, theme: &Theme, catalog: &Catal
     sun.set_param(LightParam::SHADOW_MAX_DISTANCE, theme.sun.shadow_distance);
     sun.set_blend_splits(true);
     parent.add_child(&sun);
+
+    let mut atmosphere = Atmosphere::new_alloc();
+    atmosphere.set_name("Atmosphere");
+    parent.add_child(&atmosphere);
+    let state = if theme.name == "alpine" {
+        Atmosphere::default_atmosphere()
+    } else {
+        atmosphere_at(&theme.name, hour_at(TimeOfDay::Day, 0.0), Weather::Clear)
+    };
+    atmosphere.bind_mut().apply_atmosphere(
+        &state,
+        Vector3::ZERO,
+        Vector3::new(0.0, 0.0, -1.0),
+        0.0,
+    );
 }
 
 /// Checksum of the scatter the world would build for this course and theme.

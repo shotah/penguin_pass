@@ -61,6 +61,7 @@ impl FecChecksum {
 
 const PAGE_GENERAL: u8 = 0x10;
 const PAGE_TRAINER: u8 = 0x19;
+const PAGE_TARGET_POWER: u8 = 0x31;
 const PAGE_TRACK: u8 = 0x33;
 const PAGE_USER: u8 = 0x37;
 
@@ -208,6 +209,50 @@ pub struct SpecificTrainerData {
     pub trainer_status: u8,
     /// Flags and FE state (byte 7). Bits 0–3 are flags, bits 4–7 are FE state.
     pub flags_and_state: u8,
+}
+
+/// Page 49 (0x31), target power. The ERG command.
+///
+/// The ANT+ FE-C profile puts the page number in byte 0, reserved `0xFF` in
+/// bytes 1–5, and the target in bytes 6–7. The target is little-endian, in
+/// units of 0.25 W, from 0 W to 4000 W. `0xFFFF` is the invalid value and is
+/// never sent. This type only encodes. It is not part of [`FecData`], so a
+/// frame the trainer sends back still has to be a page this crate already
+/// parses.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TargetPower {
+    /// Target power, in watts.
+    pub watts: f32,
+}
+
+impl TargetPower {
+    /// Highest target the page can express, in watts.
+    pub const MAX_W: f32 = 4000.0;
+
+    /// Encode an acknowledged command on Tacx channel 5.
+    ///
+    /// Watts are rounded to the nearest 0.25 W and saturated into 0 W…4000 W.
+    /// A non-finite target is [`FtmsError::NonFinite`]. `checksum` selects the
+    /// trailer byte.
+    pub fn encode(&self, checksum: FecChecksum) -> Result<Vec<u8>, FtmsError> {
+        if !self.watts.is_finite() {
+            return Err(FtmsError::NonFinite);
+        }
+        let raw = encode_target_power(self.watts);
+        Ok(command_frame(
+            PAGE_TARGET_POWER,
+            [
+                0xFF,
+                0xFF,
+                0xFF,
+                0xFF,
+                0xFF,
+                raw.to_le_bytes()[0],
+                raw.to_le_bytes()[1],
+            ],
+            checksum,
+        ))
+    }
 }
 
 /// Page 51 (0x33), track resistance. The grade command.
@@ -485,6 +530,11 @@ fn encode_gear(ratio: Option<f32>) -> Result<u8, FtmsError> {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         Ok(scaled as u8)
     }
+}
+
+fn encode_target_power(watts: f32) -> u16 {
+    let capped = watts.clamp(0.0, TargetPower::MAX_W);
+    saturate_u16_unit((capped * 4.0).round(), 16_000)
 }
 
 fn saturate_u16_unit(scaled: f32, max: u16) -> u16 {
@@ -766,6 +816,67 @@ mod tests {
         assert_eq!(low[9], 0x00);
         assert_eq!(low[10], 0x00);
         assert_eq!(low[11], 0);
+    }
+
+    #[test]
+    fn page_49_target_power_matches_the_hand_vector() {
+        // 200 W → 800 counts of 0.25 W = 0x0320, little-endian in bytes 6–7.
+        // Reserved bytes 1–5 are 0xFF. Page layout: ANT+ FE-C page 49.
+        // Tacx sum of the bytes after sync, by hand:
+        // 0x09+0x4F+0x05+0x31+5×0xFF+0x20+0x03 = 0x5AC, low byte 0xAC.
+        // XOR of every byte including sync is 0x0A.
+        let page = TargetPower { watts: 200.0 };
+        assert_eq!(
+            page.encode(FecChecksum::Sum).unwrap(),
+            vec![
+                0xA4, 0x09, 0x4F, 0x05, 0x31, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x20, 0x03, 0xAC,
+            ]
+        );
+        assert_eq!(
+            page.encode(FecChecksum::Xor).unwrap(),
+            vec![
+                0xA4, 0x09, 0x4F, 0x05, 0x31, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x20, 0x03, 0x0A,
+            ]
+        );
+    }
+
+    #[test]
+    fn page_49_rounds_to_a_quarter_watt_and_clamps() {
+        // 200.25 W is 801 counts (0x0321). 200.125 W is 800.5 counts, which
+        // rounds to 801.
+        let quarter = TargetPower { watts: 200.25 }
+            .encode(FecChecksum::Sum)
+            .unwrap();
+        assert_eq!(quarter[10], 0x21);
+        assert_eq!(quarter[11], 0x03);
+        let half_up = TargetPower { watts: 200.125 }
+            .encode(FecChecksum::Sum)
+            .unwrap();
+        assert_eq!(half_up[10], 0x21);
+        assert_eq!(half_up[11], 0x03);
+        let high = TargetPower { watts: 10_000.0 }
+            .encode(FecChecksum::Sum)
+            .unwrap();
+        // 4000 W → 16000 = 0x3E80.
+        assert_eq!(high[10], 0x80);
+        assert_eq!(high[11], 0x3E);
+        let low = TargetPower { watts: -50.0 }
+            .encode(FecChecksum::Sum)
+            .unwrap();
+        assert_eq!(low[10], 0x00);
+        assert_eq!(low[11], 0x00);
+        assert!(
+            TargetPower { watts: f32::NAN }
+                .encode(FecChecksum::Sum)
+                .is_err()
+        );
+        assert!(
+            TargetPower {
+                watts: f32::INFINITY
+            }
+            .encode(FecChecksum::Xor)
+            .is_err()
+        );
     }
 
     #[test]

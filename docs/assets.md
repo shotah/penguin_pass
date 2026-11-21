@@ -14,6 +14,7 @@ credits and the Steam page.
 | --- | --- | --- | --- | --- |
 | Stylized Nature MegaKit, standard edition | Quaternius | CC0 1.0 | https://quaternius.com/packs/stylizednaturemegakit.html | Pines, broadleaf trees, dead trees, bush, fern, grass, flowers, rocks |
 | LowPoly Medieval Village Pack, December 2020 | Quaternius | CC0 1.0 | https://opengameart.org/content/lowpoly-medieval-village-pack | Houses, inn, mill, bell tower, stable, blacksmith, fence, hay, well, barrel, cart |
+| Gothic Statue, 1K glTF | Poly Haven (Benny Weimer) | CC0 1.0, stated on https://polyhaven.com/a/gothic_statue | https://polyhaven.com/a/gothic_statue | A classical figure, about 4 MB. Not placed: the reveal frame looking down the road did not show it. |
 | Farm Animals | Quaternius | CC0 1.0 | https://opengameart.org/content/lowpoly-farm-animal-pack | Sheep and cow |
 | Nature Kit 2.1 | Kenney | CC0 1.0 | https://kenney.nl/assets/nature-kit | Wooden bridge, cacti, tents, campfire, statue pieces, waterfall cliffs |
 | Castle Kit | Kenney | CC0 1.0 | https://kenney.nl/assets/castle-kit | Watchtower, gate, wall, flag, rocks |
@@ -327,3 +328,62 @@ godot/assets/**/*.import
 ```
 
 Do not commit either while loading stays on `GLTFDocument` and `Image.load`.
+
+## Sound
+
+CC0 or public domain, confirmed on each file's own page on 2026-11-21.
+Everything below was trimmed or retimed, faded a few tens of milliseconds at
+the ends so a loop meets itself near zero, and peak-normalised to about 0.4
+before Ogg Vorbis at quality 3. The shipped folder is about 1.95 MB.
+`godot/assets/sfx/` has no `.import` files; the game loads the ogg at run time.
+
+Kenney's own download on kenney.nl returned 403 (the page asks for a signed
+link). The same Interface Sounds pack is on OpenGameArt with a CC0 badge,
+and the zip contains Kenney's `License.txt` stating Creative Commons Zero.
+Freesound was tried (`/download/` on a sound page) and redirected to the
+login form, so nothing was taken from there, including previews.
+BigSoundBank's home page says CC0, and its licence page says "Royalty-Free
+Sound License (CC0-like)". That is not CC0. Nothing was downloaded.
+
+No CC0 tyre hum, drivetrain whirr, freewheel pawl, hawk, or stream was
+fetched. The stream and a hawk are still scheduled; the player skips the
+missing files. The tyre and drivetrain levels are computed and logged, and
+they have no recording. The coasting layer uses the spoke recording below
+and is not a freehub.
+
+| File | Source | Author | Licence | What changed |
+| --- | --- | --- | --- | --- |
+| `alpine-birds.ogg` | https://commons.wikimedia.org/wiki/File:Birds_chirping_in_a_garden.ogg | Akum20 | CC0 1.0, stated on the file page | 50 s from the recording, end fades, peak about 0.37. Seam gap 4 sample units. |
+| `alpine-breeze.ogg` | https://opengameart.org/content/wind (`Wind.ogg`) | IgnasD, from WolfTech | CC0 1.0, stated on the page | Tiled to 48 s with an 80 ms crossfade. Seam gap 80. |
+| `desert-wind.ogg` | same pack, `Wind2.ogg` | IgnasD, from WolfTech | CC0 1.0 | Tiled to 48 s the same way. Seam gap 74. |
+| `desert-insects.ogg` | https://opengameart.org/content/cicada-sounds (`082526-cicadasounds2`) and https://opengameart.org/content/crickets-ambient-noise-loopable | syncopika (cicadas, a phone recording); Wolfgang_ (crickets; the page also names 2DPIXX and kimdagamer) | CC0 1.0 on both pages | Cicadas with the cricket loop mixed under them, 40 s. Seam gap 4. |
+| `wind-rush.ogg` | https://opengameart.org/content/short-wind-sound | Nukaze | CC0 1.0, stated on the page | High-passed around 350 Hz and tiled to 24 s. Seam gap 0. |
+| `ratchet.ogg` | https://opengameart.org/content/bicycle-sounds (`bicycle_spokes-1`) | AntumDeluge | CC0 1.0. The page says the spokes sound is an object brushed across a wheel | Tiled to 8 s. This is the coasting layer. It is not a freewheel recording. Seam gap 3. |
+| `cowbell.ogg` | https://commons.wikimedia.org/wiki/File:Cowbell.ogg | Freddythehat | Public domain, stated on the file page | First 2 s of a cowbell pattern, not a distant herd. |
+| `breath.ogg` | https://opengameart.org/content/breathing-tired | Phani29 (the page also names 2DPIXX) | CC0 1.0 | Tiled to 14 s. Seam gap 128 sample units, about 0.004 of full scale. |
+| `lap-bell.ogg` | https://opengameart.org/content/bicycle-sounds (`rotating_bicycle_bell-1`) | AntumDeluge | CC0 1.0. The page calls it a child's rotating bicycle bell | Kept the whole 1.3 s. |
+| `fish.ogg` | Kenney Interface Sounds, `pluck_001.ogg`, https://opengameart.org/content/interface-sounds | Kenney | CC0 1.0, in the zip's License.txt and on the OpenGameArt page | Re-encoded and peak-normalised. Pitch is raised in the game as the combo grows. |
+| `fish-gold.ogg` | same pack, `confirmation_002.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `combo-break.ogg` | `drop_002.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `powerup-award.ogg` | `switch_002.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `powerup-on.ogg` | `open_001.ogg` | Kenney | CC0 1.0 | Same treatment. Peak after encode about 0.51. |
+| `powerup-off.ogg` | `close_001.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `segment-enter.ogg` | `select_002.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `segment-finish.ogg` | `confirmation_003.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `record.ogg` | `confirmation_004.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `ghost.ogg` | `pluck_002.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `badge.ogg` | `select_005.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `ride-start.ogg` | `open_002.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `pause.ogg` | `close_002.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `ride-saved.ogg` | `select_003.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `ui-move.ogg` | `click_001.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `ui-select.ogg` | `confirmation_001.ogg` | Kenney | CC0 1.0 | Same treatment. |
+| `ui-back.ogg` | `back_001.ogg` | Kenney | CC0 1.0 | Same treatment. |
+
+`hawk.ogg` and `stream.ogg` are not in the folder. A CC0 stream on Commons
+(`File:363120 fractalstudios water-trickle.wav`, FractalStudios) was
+confirmed on the file page and then the download was refused with HTTP 429.
+Hawk calls found on Commons were CC-BY-SA. The "Birds and Wind" pack on
+OpenGameArt is CC0 and is made of synthesizers plus bird cries, so it was
+not used. The as3sfxr bird-and-cricket zip on OpenGameArt is generated, and
+was not used.

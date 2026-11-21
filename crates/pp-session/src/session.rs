@@ -7,6 +7,7 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 
+use pp_bots::PlayerInput;
 use pp_cast::{CastConfig, CastServer, CourseProfile, ProfilePoint as CastPoint};
 use pp_core::{Telemetry, TrainerCommand, TrainerSample};
 use pp_course::{Course, Ride};
@@ -17,6 +18,7 @@ use pp_trainer::{
 use crate::connection::{self, ConnectionStatus, LinkPhase, ResistanceMode};
 use crate::course_sel::{self, CourseChoice, CourseOption, RidePhase};
 use crate::events::{EventQueue, RideEvent};
+use crate::group::{ErgSend, Group};
 use crate::heart::{self, HeartRateFactory, SensorEntry};
 use crate::link::{BleTrainerFactory, TrainerFactory, TrainerLink};
 use crate::play::Play;
@@ -248,6 +250,7 @@ pub struct Session {
     last_saved_ride: Option<PathBuf>,
     utc_offset_s: i32,
     play_state: Play,
+    group: Group,
 }
 
 impl Session {
@@ -324,6 +327,7 @@ impl Session {
             last_saved_ride: None,
             utc_offset_s: 0,
             play_state: Play::new(),
+            group: Group::new(),
         };
         if let Some(detail) = fallback {
             session.events.push(RideEvent::CourseUnavailable { detail });
@@ -518,6 +522,7 @@ impl Session {
     /// sample, or a link that is not [`ConnectionState::Connected`], counts
     /// as 0 W. The last wattage is not reused.
     pub fn tick(&mut self, dt_s: f64) -> Telemetry {
+        self.drain_strava();
         self.reap_drops();
         self.poll_dashboard();
         self.note_heart_events();
@@ -536,6 +541,16 @@ impl Session {
         self.clock_s += dt;
         let observed = self.observe_power();
         let telemetry = self.step_physics(dt_s, &observed.physics);
+        let power_w = observed.power_w.unwrap_or(0.0);
+        self.group
+            .tick_bots(dt as f32, &self.player_input(&telemetry, power_w));
+        let (workout_events, erg) =
+            self.group
+                .tick_workout(dt as f32, power_w, observed.cadence_rpm);
+        for event in workout_events {
+            self.events.push(event);
+        }
+        self.apply_erg(erg);
         self.power.record(self.clock_s, dt, observed.power_w);
         if let Some(event) = self.stats.record(
             dt,
@@ -1052,17 +1067,26 @@ impl Session {
         summary.fish = fish;
         summary.best_combo = best_combo;
         summary.segments = segments;
+        summary.workout_result = self.group.workout_result();
+        summary.strava_uploaded = self.group.strava_uploaded();
         summary
     }
 
     /// Segments, the ghost, fish, and the powerup slot for this frame.
     #[must_use]
     pub fn play(&self) -> crate::play::PlayView {
-        self.play_state.view(
-            self.settings.arcade,
-            self.settings.ghost,
-            &self.ride.telemetry(),
-        )
+        let frame = self.ride.telemetry();
+        let mut view = self
+            .play_state
+            .view(self.settings.arcade, self.settings.ghost, &frame);
+        let power_w = frame.power_w;
+        let player = self.player_input(&frame, power_w);
+        view.bots = self.group.bots();
+        view.draft_saving_pct = self.group.draft_saving_pct(&player);
+        view.workout = self.group.workout_view();
+        view.workout_profile = self.group.workout_profile();
+        view.workout_erg_w = self.group.erg_w();
+        view
     }
 
     /// Lane the rider is in, from `0.0` to `4.0`. The game calls this every frame.
@@ -1091,6 +1115,94 @@ impl Session {
     #[must_use]
     pub fn profile(&self) -> crate::play::ProfileView {
         self.play_state.profile_view()
+    }
+
+    /// Built-in workouts, then any `.zwo` files beside the settings.
+    #[must_use]
+    pub fn workouts(&self) -> Vec<crate::play::WorkoutSummary> {
+        Group::workouts(self.bundle_dir().as_deref())
+    }
+
+    /// The workout selected for the next ride, if one is selected.
+    #[must_use]
+    pub fn selected_workout_id(&self) -> Option<&str> {
+        self.group.selected_workout_id()
+    }
+
+    /// Select a workout, or `None` for a free ride.
+    ///
+    /// An unknown id is ignored. The runner reloads from the start.
+    pub fn select_workout(&mut self, id: Option<&str>) {
+        let dir = self.bundle_dir();
+        self.group.select(id, dir.as_deref(), self.settings.ftp_w);
+    }
+
+    /// Scale workout targets by this percent, clamped to `-25..=25`.
+    ///
+    /// A ramp test ignores the nudge.
+    pub fn set_workout_bias(&mut self, percent: i8) {
+        self.group.set_bias(percent);
+    }
+
+    /// End the current workout step and start the next one.
+    pub fn skip_workout_step(&mut self) {
+        let (events, erg) = self.group.skip();
+        for event in events {
+            self.events.push(event);
+        }
+        self.apply_erg(erg);
+    }
+
+    /// Store a ramp-test FTP and save settings when a settings path is known.
+    pub fn accept_ramp_ftp(&mut self, ftp_w: u16) {
+        self.settings.ftp_w = ftp_w;
+        self.settings = self.settings.normalized();
+        self.ride.set_rider(self.settings.rider_profile());
+        if let Some(path) = self.settings_path.clone() {
+            let _ = self.save_settings(&path);
+        }
+    }
+
+    /// Point Strava at these origins. Tests use a local server.
+    ///
+    /// Nothing is opened until a settings path or rides directory is set.
+    pub fn set_strava_endpoints(&mut self, endpoints: pp_strava::Endpoints) {
+        self.group.set_endpoints(endpoints);
+        if let Some(dir) = self.bundle_dir() {
+            self.group.ensure_strava(&dir);
+        }
+    }
+
+    /// What the Strava menu can show without waiting.
+    #[must_use]
+    pub fn strava_state(&self) -> pp_strava::StravaState {
+        self.group.strava_state()
+    }
+
+    /// Start the Strava login. The string is the page to open.
+    ///
+    /// `None` when no settings directory is configured.
+    pub fn begin_strava_connect(&mut self) -> Option<String> {
+        self.group.begin_strava_connect()
+    }
+
+    /// Stop a Strava login that is in progress.
+    pub fn cancel_strava_connect(&mut self) {
+        self.group.cancel_strava_connect();
+    }
+
+    /// Forget the Strava login and keep the application keys.
+    pub fn disconnect_strava(&mut self) {
+        self.group.disconnect_strava();
+    }
+
+    /// Upload the last saved FIT file, if there is one and it has not been sent.
+    pub fn upload_last_ride_to_strava(&mut self) {
+        let Some(path) = self.last_saved_ride.clone() else {
+            return;
+        };
+        let name = self.course().name().to_owned();
+        self.group.upload_file(&path, &name, false);
     }
 
     /// Freeze the ride and the summary, and ease a controlled trainer to flat.
@@ -1225,6 +1337,9 @@ impl Session {
     }
 
     fn send_grade(&mut self, grade_pct: f32) {
+        if self.group.holding_erg() {
+            return;
+        }
         if self.using_trainer && !self.controlling_trainer() {
             return;
         }
@@ -1737,18 +1852,25 @@ impl Session {
             return;
         };
         if self.play_state.has_dir() && self.ride.telemetry().distance_m > 1.0 {
+            self.group.ensure_strava(&dir);
             return;
         }
         let choice = self.choice.clone();
         let arcade = self.settings.arcade;
         self.play_state
-            .attach(dir, self.ride.course(), &choice, arcade);
+            .attach(dir.clone(), self.ride.course(), &choice, arcade);
+        self.group.ensure_strava(&dir);
     }
 
     fn open_play(&mut self) {
         let choice = self.choice.clone();
         let arcade = self.settings.arcade;
+        let count = self.settings.bots_count;
+        let ftp_w = self.settings.ftp_w;
+        let dir = self.bundle_dir();
         self.play_state.open(self.ride.course(), &choice, arcade);
+        self.group
+            .on_ride_start(self.ride.course(), &choice, count, ftp_w, dir.as_deref());
     }
 
     fn finish_play(&mut self) {
@@ -1767,15 +1889,84 @@ impl Session {
         let base = self.settings.rider_profile();
         let modifiers = self.play_state.modifiers();
         let assisted = self.settings.arcade && modifiers != pp_arcade::PhysicsModifiers::IDENTITY;
-        if assisted {
-            self.ride.set_rider(modifiers.apply(base));
+        let before = self.ride.telemetry();
+        let power_w = f32::from(sample.power_w.unwrap_or(0));
+        let count = self.settings.bots_count;
+        let choice = self.choice.clone();
+        self.group.sync_count(self.ride.course(), &choice, count);
+        let draft = self
+            .group
+            .draft_factor(&self.player_input(&before, power_w));
+        let mut profile = if assisted {
+            modifiers.apply(base)
+        } else {
+            base
+        };
+        if draft.is_finite() && (draft - 1.0).abs() > 1.0e-4 {
+            profile.cda_m2 *= draft;
+        }
+        let changed = profile != base;
+        if changed {
+            self.ride.set_rider(profile);
         }
         let frame = self.ride.step(dt_s, sample);
-        if assisted {
+        if changed {
             self.ride.set_rider(base);
         }
         self.play_state.set_assisted(assisted);
         frame
+    }
+
+    fn player_input(&self, frame: &Telemetry, power_w: f32) -> PlayerInput {
+        PlayerInput {
+            total_distance_m: frame.distance_m,
+            speed_mps: frame.speed_mps,
+            power_w,
+            slot: self.play_state.lane(),
+            mass_kg: self.settings.rider_profile().rider_mass_kg,
+        }
+    }
+
+    fn apply_erg(&mut self, send: ErgSend) {
+        match send {
+            ErgSend::Keep => {}
+            ErgSend::Hold(watts) => {
+                if self.send_target_power(watts) {
+                    self.group.note_erg(Some(watts));
+                }
+            }
+            ErgSend::Release => self.group.note_erg(None),
+        }
+    }
+
+    fn send_target_power(&mut self, watts: u16) -> bool {
+        if self.using_trainer && !self.controlling_trainer() {
+            return false;
+        }
+        let command = TrainerCommand::SetTargetPower { watts };
+        if self.using_trainer {
+            let Some(trainer) = self.trainer.as_mut() else {
+                return false;
+            };
+            if !matches!(trainer.state(), ConnectionState::Connected) {
+                return false;
+            }
+            let _ = trainer.send(command);
+            return true;
+        }
+        let _ = self.sim.send(command);
+        true
+    }
+
+    fn drain_strava(&mut self) {
+        for event in self.group.drain_strava() {
+            self.events.push(event);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn sim_grade_and_target(&self) -> (Option<f32>, Option<u16>) {
+        (self.sim.last_grade_pct(), self.sim.last_target_power_w())
     }
 
     fn start_recording(&mut self) {
@@ -1833,6 +2024,9 @@ impl Session {
             Ok(pp_record::WriteOutcome::Written(path)) => {
                 eprintln!("pp-session: ride {}", path.display());
                 self.last_saved_ride = Some(path.clone());
+                let course_name = self.course().name().to_owned();
+                self.group
+                    .maybe_auto_upload(&path, self.settings.strava_auto_upload, &course_name);
                 self.events.push(RideEvent::RideSaved { path });
             }
             Ok(pp_record::WriteOutcome::Skipped(reason)) => {

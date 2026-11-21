@@ -128,6 +128,17 @@ if [[ -n "$resolution" ]]; then
 fi
 if [[ -n "$quit_after" ]]; then
     args+=(--quit-after "$quit_after")
+    # A timed launch is a check, not a ride. Keep it off the speakers
+    # unless this run asked for sound.
+    sound_on=0
+    for arg in "${user_args[@]}"; do
+        if [[ "$arg" == "--sound" || "$arg" == "--sound-capture" ]]; then
+            sound_on=1
+        fi
+    done
+    if [[ "$sound_on" -eq 0 ]]; then
+        args+=(--audio-driver Dummy)
+    fi
 fi
 if [[ ${#user_args[@]} -gt 0 ]]; then
     args+=(-- "${user_args[@]}")

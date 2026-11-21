@@ -9,7 +9,7 @@ use pp_session::{
     MIN_BIKE_MASS_KG, MIN_FTP_W, MIN_RIDER_MASS_KG, MIN_TRAINER_DIFFICULTY, Settings,
 };
 
-const MAIN_ROWS: usize = 18;
+const MAIN_ROWS: usize = 26;
 
 /// What the player just pressed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,6 +30,7 @@ pub enum Command {
 
 /// What the game should do after a command.
 #[derive(Clone, Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Action {
     /// Stay as we are.
     None,
@@ -55,6 +56,8 @@ pub enum Action {
     ConnectHeart(String),
     /// Forget the remembered strap.
     ForgetHeart,
+    /// Connect, cancel, or disconnect Strava.
+    Strava,
 }
 
 /// Which page is showing.
@@ -128,6 +131,8 @@ pub struct Snapshot {
     pub riders: Vec<RiderOption>,
     /// `default` plus the kits this profile has unlocked.
     pub kits: Vec<RiderOption>,
+    /// What the Strava row should say.
+    pub strava: crate::extras::StravaRow,
 }
 
 /// One rider the settings row can show. The id is what gets saved.
@@ -268,22 +273,25 @@ impl MenuState {
                     self.selected_id.clear();
                     return Action::Scan;
                 }
-                12 => return Action::ChooseMusicFolder,
-                13 => {
+                15 => return Action::ChooseMusicFolder,
+                16 => {
                     self.page = Page::ConfirmRestart;
                     self.index = 0;
                 }
-                14 => {
+                17 => {
                     self.page = Page::ConfirmQuit;
                     self.index = 0;
                 }
-                15 => return Action::OpenRides,
-                16 | 17 => return Action::Apply(toggled(snap.settings.clone(), self.index)),
-                1 | 8 | 9 | 10 => return Action::Apply(toggled(snap.settings.clone(), self.index)),
+                18 => return Action::OpenRides,
+                19 | 20 | 25 => return Action::Apply(toggled(snap.settings.clone(), self.index)),
+                24 => return Action::Strava,
+                1 | 8 | 9 | 10 | 14 => {
+                    return Action::Apply(toggled(snap.settings.clone(), self.index));
+                }
                 _ => {}
             },
             Command::Left | Command::Right => {
-                if self.index == 12 && matches!(command, Command::Right) {
+                if self.index == 15 && matches!(command, Command::Right) {
                     return Action::ChooseMusicFolder;
                 }
                 let increase = matches!(command, Command::Right);
@@ -442,12 +450,32 @@ impl MenuState {
             format!("TV dashboard    {}", dashboard_value(snap)),
             format!("Full screen    {}", on_off(settings.fullscreen)),
             format!("Music volume    {}%", settings.music_volume),
+            format!("Ambient sound    {}%", settings.ambient_volume),
+            format!("Sound effects    {}%", settings.effects_volume),
+            format!("Rider breathing    {}", on_off(settings.rider_breathing)),
             format!("Music folder    {}", music_folder_line(snap)),
             "Restart ride".to_owned(),
             "Quit".to_owned(),
             "Open rides folder".to_owned(),
             format!("Fish and powerups    {}", on_off(settings.arcade)),
             format!("Ghost    {}", on_off(settings.ghost)),
+            format!(
+                "Time of day    ◀ {} ▶",
+                crate::extras::time_label(&settings.time_of_day)
+            ),
+            format!(
+                "Weather    ◀ {} ▶",
+                crate::extras::weather_label(&settings.weather)
+            ),
+            format!(
+                "Other riders    ◀ {} ▶",
+                crate::extras::bots_label(settings.bots_count)
+            ),
+            crate::extras::strava_line(&strava_row(snap)),
+            format!(
+                "Strava auto-upload    {}",
+                on_off(settings.strava_auto_upload)
+            ),
         ];
         let detail = if !self.save_error.is_empty() {
             self.save_error.clone()
@@ -460,10 +488,18 @@ impl MenuState {
                 9 => dashboard_detail(snap),
                 0 => "Open this to scan and connect. The ride keeps going.".to_owned(),
                 11 => "How loud the music is. Left and right change it immediately.".to_owned(),
-                12 => music_folder_detail(snap),
-                15 => "Show the folder of saved rides in the file manager.".to_owned(),
-                16 => "Fish to steer for, and the powerups they award.".to_owned(),
-                17 => "A pale rider on your best first lap.".to_owned(),
+                12 => "Birds, wind, and the odd bell or stream. Left and right change it immediately.".to_owned(),
+                13 => "The bike, the rush of air, and the ride's cues.".to_owned(),
+                14 => "A quiet breath that follows how hard you are working.".to_owned(),
+                15 => music_folder_detail(snap),
+                18 => "Show the folder of saved rides in the file manager.".to_owned(),
+                19 => "Fish to steer for, and the powerups they award.".to_owned(),
+                20 => "A pale rider on your best first lap.".to_owned(),
+                21 => "Day, a clock that moves with the ride, dawn, sunset, or night.".to_owned(),
+                22 => "Clear, a changing sky, cloud, rain, snow, or fog.".to_owned(),
+                23 => "Computer riders on the road. Off, or a small group.".to_owned(),
+                24 => "Open Strava in the browser, or disconnect.".to_owned(),
+                25 => "Send a saved ride when Strava is connected.".to_owned(),
                 _ => String::new(),
             }
         };
@@ -570,14 +606,20 @@ pub fn rank(devices: &[Device]) -> Vec<Device> {
 fn toggled(mut settings: Settings, index: usize) -> Settings {
     match index {
         1 => settings.control_trainer = !settings.control_trainer,
-        16 => settings.arcade = !settings.arcade,
-        17 => settings.ghost = !settings.ghost,
+        14 => settings.rider_breathing = !settings.rider_breathing,
+        19 => settings.arcade = !settings.arcade,
+        20 => settings.ghost = !settings.ghost,
+        25 => settings.strava_auto_upload = !settings.strava_auto_upload,
         8 => settings.zwift_controllers = !settings.zwift_controllers,
         9 => settings.tv_dashboard_enabled = !settings.tv_dashboard_enabled,
         10 => settings.fullscreen = !settings.fullscreen,
         _ => {}
     }
     settings
+}
+
+fn strava_row(snap: &Snapshot) -> crate::extras::StravaRow {
+    snap.strava.clone()
 }
 
 fn kit_name(snap: &Snapshot) -> String {
@@ -604,7 +646,7 @@ fn stepped(
     kits: &[RiderOption],
 ) -> Option<Settings> {
     match index {
-        1 | 8 | 9 | 10 | 16 | 17 => Some(toggled(settings, index)),
+        1 | 8 | 9 | 10 | 14 | 19 | 20 | 25 => Some(toggled(settings, index)),
         2 => {
             settings.trainer_difficulty = step_f32(
                 settings.trainer_difficulty,
@@ -673,12 +715,32 @@ fn stepped(
             settings.kit = kits[next].id.clone();
             Some(settings)
         }
+        21 => {
+            settings.time_of_day =
+                crate::extras::cycle_time(&settings.time_of_day, increase).to_owned();
+            Some(settings)
+        }
+        22 => {
+            settings.weather = crate::extras::cycle_weather(&settings.weather, increase).to_owned();
+            Some(settings)
+        }
+        23 => {
+            settings.bots_count = crate::extras::cycle_bots(settings.bots_count, increase);
+            Some(settings)
+        }
         11 => {
-            let next = i32::from(settings.music_volume) + if increase { 5 } else { -5 };
-            settings.music_volume = u8::try_from(next.clamp(0, 100)).unwrap_or(0);
+            settings.music_volume = step_volume(settings.music_volume, increase);
             Some(settings)
         }
         12 => {
+            settings.ambient_volume = step_volume(settings.ambient_volume, increase);
+            Some(settings)
+        }
+        13 => {
+            settings.effects_volume = step_volume(settings.effects_volume, increase);
+            Some(settings)
+        }
+        15 => {
             if !increase {
                 settings.music_folder = None;
                 Some(settings)
@@ -688,6 +750,11 @@ fn stepped(
         }
         _ => None,
     }
+}
+
+fn step_volume(value: u8, increase: bool) -> u8 {
+    let next = i32::from(value) + if increase { 5 } else { -5 };
+    u8::try_from(next.clamp(0, 100)).unwrap_or(0)
 }
 
 fn step_f32(value: f32, step: f32, increase: bool, min: f32, max: f32) -> f32 {
@@ -808,6 +875,7 @@ mod tests {
                 id: "default".to_owned(),
                 name: "Default".to_owned(),
             }],
+            strava: crate::extras::StravaRow::Connect,
             devices: vec![
                 Device {
                     id: "FAKE:KICKR".to_owned(),
@@ -931,7 +999,7 @@ mod tests {
     fn confirm_yes_quits_and_no_returns_and_bluetooth_has_a_plain_hint() {
         let mut menu = MenuState::default();
         menu.open_main();
-        menu.index = 14;
+        menu.index = 17;
         menu.handle(Command::Accept, &snap());
         assert_eq!(menu.page(), Page::ConfirmQuit);
         menu.handle(Command::Down, &snap());
@@ -940,7 +1008,7 @@ mod tests {
             Action::None
         ));
         assert_eq!(menu.page(), Page::Main);
-        menu.index = 14;
+        menu.index = 17;
         menu.handle(Command::Accept, &snap());
         assert!(matches!(
             menu.handle(Command::Accept, &snap()),

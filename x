@@ -142,7 +142,7 @@ cmd_smoke() {
     fi
     log=$(mktemp)
     set +e
-    "${godot_cmd[@]}" --headless --path "$ROOT/godot" \
+    "${godot_cmd[@]}" --headless --audio-driver Dummy --path "$ROOT/godot" \
         --script res://tests/smoke.gd >"$log" 2>&1
     code=$?
     set -e

@@ -71,6 +71,10 @@ pub struct RideSummary {
     pub best_combo: u32,
     /// Segments finished on this ride, in the order they finished.
     pub segments: Vec<SegmentResult>,
+    /// Workout totals when this ride followed a plan.
+    pub workout_result: Option<pp_workout::WorkoutResult>,
+    /// A FIT file from this ride was accepted by Strava.
+    pub strava_uploaded: bool,
 }
 
 /// One segment finish from the current ride, for the summary screen.
@@ -224,6 +228,8 @@ impl RideStats {
             fish: 0,
             best_combo: 0,
             segments: Vec::new(),
+            workout_result: None,
+            strava_uploaded: false,
         }
     }
 

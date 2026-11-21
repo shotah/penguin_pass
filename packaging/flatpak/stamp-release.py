@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Set the single <release> version and date in the AppStream metainfo."""
+"""Set the single <release> version and date in the AppStream metainfo.
+
+VERSION is X.Y.Z for a tag, or X.Y.Z+<short commit> for the moving
+prerelease (for example 0.1.0+a1b2c3d).
+"""
 
 import re
 import sys

@@ -41,7 +41,8 @@ func _on_drawn() -> void:
 		var image := _viewport.get_texture().get_image()
 		if image != null:
 			image.save_png(_shot)
-			print("LANDMARK_FRAME %s" % _shot)
+			var ms := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+			print("LANDMARK_FRAME %s %.3f" % [_shot, ms])
 		_shot = ""
 		return
 	if _queue.is_empty():

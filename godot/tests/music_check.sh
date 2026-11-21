@@ -14,4 +14,4 @@ if [[ -n "${GODOT:-}" ]]; then
 else
     godot_cmd=(flatpak run org.godotengine.Godot)
 fi
-exec "${godot_cmd[@]}" --headless --path "$ROOT/godot" --script res://tests/music_check.gd
+exec "${godot_cmd[@]}" --headless --audio-driver Dummy --path "$ROOT/godot" --script res://tests/music_check.gd

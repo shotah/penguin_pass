@@ -2,8 +2,7 @@
 
 use godot::classes::mesh::PrimitiveType;
 use godot::classes::{
-    ArrayMesh, AudioStreamPlayer, AudioStreamWav, Material, MeshInstance3D, Node3D,
-    StandardMaterial3D, SurfaceTool,
+    ArrayMesh, Material, MeshInstance3D, Node3D, StandardMaterial3D, SurfaceTool,
 };
 use godot::obj::Gd;
 use godot::prelude::*;
@@ -46,7 +45,6 @@ pub struct FishSchool {
     body_gold: Gd<ArrayMesh>,
     eye_white: Gd<ArrayMesh>,
     eye_pupil: Gd<ArrayMesh>,
-    player: Option<Gd<AudioStreamPlayer>>,
 }
 
 impl FishSchool {
@@ -71,7 +69,6 @@ impl FishSchool {
             body_gold: fish_mesh(1.2),
             eye_white: disc(0.09),
             eye_pupil: disc(0.04),
-            player: None,
         }
     }
 
@@ -122,23 +119,6 @@ impl FishSchool {
             }
         });
         let _ = (combo, volume);
-    }
-
-    /// Play a short rising blip. `volume` is 0 to 1 from the music setting.
-    pub fn blip(&mut self, combo: u32, volume: f32) {
-        if volume <= 0.01 {
-            return;
-        }
-        let freq = 520.0 + combo.min(8) as f32 * 70.0;
-        let stream = tone(freq, 0.12, volume);
-        let player = self.player.get_or_insert_with(|| {
-            let mut player = AudioStreamPlayer::new_alloc();
-            player.set_name("FishBlip");
-            self.root.add_child(&player);
-            player
-        });
-        player.set_stream(&stream);
-        player.play();
     }
 
     fn spawn(&mut self, spot: &FishSpot) -> Live {
@@ -319,26 +299,4 @@ fn unit_or(vector: Vector3, fallback: Vector3) -> Vector3 {
     } else {
         vector.normalized()
     }
-}
-
-fn tone(freq: f32, seconds: f32, volume: f32) -> Gd<AudioStreamWav> {
-    let rate = 22050;
-    let count = (seconds * rate as f32) as usize;
-    let mut bytes = PackedByteArray::new();
-    let gain = (volume.clamp(0.0, 1.0) * 0.35 * i16::MAX as f32) as i32;
-    for index in 0..count {
-        let t = index as f32 / rate as f32;
-        let env = (1.0 - t / seconds).max(0.0);
-        let sample = (t * freq * std::f32::consts::TAU).sin() * env;
-        let value = (sample * gain as f32) as i16;
-        let pair = value.to_le_bytes();
-        bytes.push(pair[0]);
-        bytes.push(pair[1]);
-    }
-    let mut stream = AudioStreamWav::new_gd();
-    stream.set_format(godot::classes::audio_stream_wav::Format::FORMAT_16_BITS);
-    stream.set_mix_rate(rate);
-    stream.set_stereo(false);
-    stream.set_data(&bytes);
-    stream
 }

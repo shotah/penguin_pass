@@ -22,6 +22,7 @@ func _init() -> void:
 	OS.set_environment("PENGUIN_PASS_DASHBOARD_PORT", "0")
 	OS.set_environment("PENGUIN_PASS_DASHBOARD_LOOPBACK", "1")
 	OS.set_environment("PENGUIN_PASS_NO_MUSIC", "1")
+	OS.set_environment("PENGUIN_PASS_NO_SOUND", "1")
 	var version := _probe()
 	if version.is_empty():
 		return
@@ -213,6 +214,10 @@ func _exercise(game: Node, version: String) -> void:
 		return
 	if assets.find("textures=") < 0 or assets.find("sky=") < 0:
 		_fail("asset line incomplete: %s" % assets)
+		return
+	var sound_line := str(game.sound_line())
+	if sound_line.find("PENGUIN_PASS_SOUND") < 0 or sound_line.find("missing=0") < 0:
+		_fail("sound files did not load: %s" % sound_line)
 		return
 	if FileAccess.file_exists("res://assets/manifest.json") and game.asset_model_count() < 1:
 		_fail("manifest present but no models parsed")

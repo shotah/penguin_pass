@@ -1,9 +1,14 @@
 # Penguin Pass
 
-<img src="docs/img/banner.svg" alt="Penguin Pass. A penguin in a red cycling helmet beside a road into a snowy pass, and the words: Indoor cycling for Linux. Your trainer, a mountain, no Wine." width="1280">
+<img src="docs/img/banner.svg" alt="Penguin Pass. A penguin in a red headband and cycling glasses beside a sunny green mountain pass road, and the words: Native indoor cycling. Smart trainers, mountains, Strava-ready." width="1280">
 
-A native Linux indoor-cycling game. The core is Rust, the front end is
-Godot 4, and it runs on SteamOS. No Wine.
+A native indoor-cycling game built with Rust and Godot 4 for winter
+fitness riding, with FIT ride recording and Strava upload support.
+
+It started out to give Linux and SteamOS riders a native trainer app
+without Wine, and targets SteamOS and Flatpak first — because the core
+is Rust and the front end is Godot 4, Windows and macOS ports are open
+too.
 
 `./x fetch` once, then `./x play`. The title screen offers Start ride,
 Course, Trainer, Settings, and Quit. With no trainer, Up and Down change
@@ -23,47 +28,45 @@ still being reworked. See [Roadmap](#roadmap).
 
 ## Screenshots
 
-Some of these were taken before the latest menu restyle and terrain work.
-
 <table>
 <tr>
 <td width="400" valign="top">
-<img src="docs/img/shots/switchback-chase.png" alt="Chase view of a rider in black and orange on a left-hand alpine curve, pines and a guard rail beside the road, and the dark console showing 250 watts in zone 6, 31.2 km/h, and 4.2 percent grade." width="400"><br>
-Chase view on a switchback. The console shows the power zone, the grade, and the course profile.
+<img src="docs/img/shots/arcade/segment-start.png" alt="Chase view approaching the Penguin Pass climb arch in the right-hand lane, rider in white KOM kit, console showing 180 watts in zone 3, 31.1 km/h, and course elevation profile." width="400"><br>
+Approaching the Penguin Pass climb arch in the right-hand lane, with the console HUD and course profile.
 </td>
 <td width="400" valign="top">
-<img src="docs/img/shots/start-fp.png" alt="Handlebar view at the start: a white arch with a red banner over a straight road, pines and low mountains, and the console at 250 watts and 0 percent grade." width="400"><br>
-Handlebar view at the start arch.
+<img src="docs/img/shots/arcade/fish-chase.png" alt="Chase view with yellow fish hovering in the right-hand lane, pale blue ghost rider ahead, Ghost -19 m chip at the top, and fish counter beside the lane hint." width="400"><br>
+Fish pickups in the five lane positions and your ghost rider from a previous lap.
 </td>
 </tr>
 <tr>
 <td width="400" valign="top">
-<img src="docs/img/readme/desert.png" alt="Chase view on a desert road bending right through sand and mesas, the rider in black and orange, console at 200 watts, 23.4 km/h, and 2.5 percent grade." width="400"><br>
-Desert theme, chase view.
+<img src="docs/img/world/landmarks/alpine-meadow_0-reveal.png" alt="Alpine road passing a fenced pasture of cows with pine trees and a snow-capped mountain horn on the horizon." width="400"><br>
+Alpine landmarks: roadside pasture and the snow horn on the horizon.
 </td>
 <td width="400" valign="top">
-<img src="docs/img/shots/climb-chase.png" alt="Chase view of the rider climbing a straight road through pines, console at 250 watts, 11.9 km/h, and 8.6 percent grade." width="400"><br>
-A climb, at 8.6 percent.
+<img src="docs/img/world/landmarks/desert-ruins_0-reveal.png" alt="Desert road curving toward stone temple columns with a banded sandstone mesa and volcano cone on the horizon." width="400"><br>
+Desert theme with temple ruins, sandstone mesa, and volcano.
 </td>
 </tr>
 <tr>
+<td width="400" valign="top">
+<img src="docs/img/shots/arcade/power-active.png" alt="Active Aero powerup with edge speed lines and slot ring on the right, plus a segment finish card reading Penguin Pass climb 11:10." width="400"><br>
+Timed segment finish card and an active Aero powerup.
+</td>
+<td width="400" valign="top">
+<img src="docs/img/world/atmosphere/alpine-night.png" alt="Night ride on the alpine pass with a bike headlight illuminating the road, stars and moon above, and the snow peak in the distance." width="400"><br>
+Night riding with the bike headlight (part of the time-of-day and weather system).
+</td>
+</tr>
+<tr>
+<td width="400" valign="top">
+<img src="docs/img/shots/arcade/progress.png" alt="Progress screen listing lifetime totals, earned badges with green checkmarks, gold progress bars, and kit unlocks." width="400"><br>
+Progress screen with lifetime totals, badges, and unlockable kits.
+</td>
 <td width="400" valign="top">
 <img src="docs/img/tv/round3-1080.png" alt="TV dashboard web page for Penguin Pass, a 5 km loop: 345 watts in zone 6 anaerobic, 11.8 km/h, 10 percent grade, 68 rpm, 176 bpm, and the course profile." width="400"><br>
 TV dashboard, a web page on the LAN. Checked in a desktop browser.
-</td>
-<td width="400" valign="top">
-<img src="docs/img/shots/course.png" alt="Course picker over the road, listing Penguin Pass 5.0 km, Rolling 5 km, Rolling 10 km, Mountain 10 km, Desert 10 km, and Flat 10 km, each with distance and ascent." width="400"><br>
-Course picker. Six routes. Generated ones can be rerolled.
-</td>
-</tr>
-<tr>
-<td width="400" valign="top">
-<img src="docs/img/shots/title.png" alt="Title screen over the road. The menu reads Start ride, Course Penguin Pass, Trainer Fake Neo 2T, Settings, and Quit. A line says Now playing: Zen Theme. The course is 5.0 km with 169 m of ascent." width="400"><br>
-Title screen. The trainer row here is a stand-in, Fake Neo 2T.
-</td>
-<td width="400" valign="top">
-Rider weight, FTP, resistance, the TV page, full screen, and music
-are saved between sessions.
 </td>
 </tr>
 </table>
@@ -129,7 +132,7 @@ Not built yet: world streaming for long routes, and an endless mode.
 | `tools/` | Build container definition and helper scripts |
 | `tools/rider-preview/` | Standalone Godot project that renders the rider. It does not load the game library |
 | `tools/steam/` | SteamPipe upload templates. Placeholders only. See `docs/steam-release.md` |
-| `packaging/flatpak/` | Flatpak manifest and install scripts. The workflow has not been run |
+| `packaging/flatpak/` | Flatpak manifest and install scripts. A push to `main` is set up to publish a `latest` prerelease; `./x release` publishes a numbered release (`docs/release.md`). The workflow has not been run |
 
 ## Requirements
 
@@ -279,6 +282,29 @@ Three tiers, in the order they arrive:
 - [ ] M13: all of the above ridden on the real trainer (so far only
   with the simulated rider)
 - [ ] Later: Chromecast video, ANT+, riding a course in reverse
+
+## Contributors wanted
+
+A lot of the code, tests, and plumbing here was built with coding
+agents, which got the game riding quickly — but several parts really
+benefit from a human eye, ear, or bike:
+
+- **3D art and landmarks:** low-poly CC0 models that fit the world
+  (waterfalls, statues, roadside props, bridges, desert ruins, extra
+  riders and bikes, and custom kit textures like real KOM polka dots).
+- **Sound effects and music:** real CC0 recordings of bike sounds we
+  still lack (tyre hum, drivetrain whirr, a true freehub ratchet), extra
+  nature ambience (streams, hawks), and cycling-friendly music tracks.
+- **Courses and themes:** new route profiles, elevation curves, and
+  visual themes beyond alpine and desert.
+- **Hardware testing:** trying Bluetooth FTMS / Tacx FE-C trainers
+  beyond the Tacx Neo 2T, heart-rate straps, and Zwift controllers, and
+  reporting what works or breaks.
+- **Windows and macOS support:** packaging, Bluetooth backend testing,
+  and CI builds so Penguin Pass isn't Linux-only.
+
+See `docs/assets.md` for how assets are licensed and credited (CC0 for
+art and audio) and `docs/play.md` to run a local build.
 
 ## Steam
 

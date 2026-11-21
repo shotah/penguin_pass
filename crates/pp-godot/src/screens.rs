@@ -34,6 +34,7 @@ pub struct Screens {
     progress_totals: Gd<Label>,
     progress_badges: Vec<BadgeBlock>,
     progress_page: ProgressPage,
+    workout_samples: Vec<Vec<f32>>,
     toast_panel: Gd<PanelContainer>,
     toast: Gd<Label>,
     toast_s: f64,
@@ -114,7 +115,7 @@ impl Screens {
         let mut rows = Vec::new();
         let mut row_panels = Vec::new();
         let mut sparks = Vec::new();
-        for index in 0..8 {
+        for index in 0..16 {
             let mut row_panel = PanelContainer::new_alloc();
             row_panel.set_name(&format!("ScreenPanel{index}"));
             row_panel.set_custom_minimum_size(Vector2::new(400.0, 40.0));
@@ -237,6 +238,7 @@ impl Screens {
             progress_totals,
             progress_badges,
             progress_page: ProgressPage::default(),
+            workout_samples: Vec::new(),
             toast_panel,
             toast,
             toast_s: 0.0,
@@ -350,12 +352,18 @@ impl Screens {
         self.hints
             .set_visible(!matches!(view.screen, Screen::Riding | Screen::Settings));
         self.paint_profiles(view, profiles);
+        self.paint_workout_bars(view.screen);
         self.paint_figures(view.screen, figures);
         if view.screen != Screen::Summary {
             self.saved.set_visible(false);
             self.saved_folder.set_visible(false);
         }
         self.fit_card();
+    }
+
+    /// Twelve samples per workout row. Empty means no bars.
+    pub fn set_workout_samples(&mut self, samples: Vec<Vec<f32>>) {
+        self.workout_samples = samples;
     }
 
     /// Totals and badges for the Progress screen.
@@ -444,6 +452,43 @@ impl Screens {
                 let height = 6.0 + heights[bar] * 28.0;
                 mark.set_custom_minimum_size(Vector2::new(4.0, height));
                 mark.set_color(ui_style::SNOW);
+            }
+        }
+    }
+
+    fn paint_workout_bars(&mut self, screen: Screen) {
+        let show = screen == Screen::Workout;
+        for (index, group) in self.sparks.iter_mut().enumerate() {
+            let samples = if show {
+                self.workout_samples.get(index)
+            } else {
+                None
+            };
+            for (bar, mark) in group.iter_mut().enumerate() {
+                let Some(value) = samples.and_then(|row| row.get(bar)).copied() else {
+                    if show {
+                        mark.set_visible(false);
+                    }
+                    continue;
+                };
+                mark.set_visible(true);
+                let height = if value < 0.0 {
+                    8.0
+                } else {
+                    8.0 + value.clamp(0.15, 1.5) * 20.0
+                };
+                mark.set_custom_minimum_size(Vector2::new(6.0, height));
+                mark.set_color(if value < 0.0 {
+                    ui_style::MIST
+                } else if value < 0.76 {
+                    ui_style::GOOD
+                } else if value < 0.91 {
+                    ui_style::WARN
+                } else if value < 1.06 {
+                    ui_style::SUN
+                } else {
+                    ui_style::BAD
+                });
             }
         }
     }

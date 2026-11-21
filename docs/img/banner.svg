@@ -1,103 +1,236 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-labelledby="title desc">
   <title id="title">Penguin Pass</title>
-  <desc id="desc">A penguin in a cycling helmet beside a road into a mountain pass, with the words Penguin Pass.</desc>
+  <desc id="desc">A determined penguin wearing a red headband and mirrored cycling glasses beside a sunny green alpine pass with pine trees and a winding road, and the words Penguin Pass.</desc>
 
   <defs>
     <clipPath id="frame">
       <rect width="1280" height="320" rx="28"/>
     </clipPath>
+
+    <!-- Bright sunny alpine day sky -->
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#16325c"/>
-      <stop offset="0.42" stop-color="#12284a"/>
-      <stop offset="1" stop-color="#0B1220"/>
+      <stop offset="0%" stop-color="#1A7CE0"/>
+      <stop offset="56%" stop-color="#5EC0FA"/>
+      <stop offset="100%" stop-color="#CFF0FF"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#ffe9a8" stop-opacity="0.85"/>
-      <stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/>
+    <radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#FFF9C4" stop-opacity="0.95"/>
+      <stop offset="48%" stop-color="#FFE066" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#FFE066" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="snow" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#d7e3f4"/>
+    <linearGradient id="meadowMid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#60BE56"/>
+      <stop offset="100%" stop-color="#358644"/>
     </linearGradient>
-    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1a2744"/>
-      <stop offset="1" stop-color="#0B1220"/>
+    <linearGradient id="meadowFore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3B8E47"/>
+      <stop offset="100%" stop-color="#1E522E"/>
+    </linearGradient>
+    <linearGradient id="profileFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.0"/>
+    </linearGradient>
+
+    <!-- Mascot gradients (exact match to godot/assets/logo-mark.svg) -->
+    <linearGradient id="bandGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF4D5A"/>
+      <stop offset="55%" stop-color="#E63946"/>
+      <stop offset="100%" stop-color="#A81825"/>
+    </linearGradient>
+    <linearGradient id="bandTail" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#D92B3A"/>
+      <stop offset="100%" stop-color="#991522"/>
+    </linearGradient>
+    <linearGradient id="lensGrad" x1="0" y1="0.1" x2="1" y2="0.9">
+      <stop offset="0%" stop-color="#00C6FF"/>
+      <stop offset="42%" stop-color="#0072FF"/>
+      <stop offset="72%" stop-color="#FF5E62"/>
+      <stop offset="100%" stop-color="#FFBE0B"/>
+    </linearGradient>
+    <linearGradient id="plumage" x1="0.15" y1="0.05" x2="0.85" y2="0.95">
+      <stop offset="0%" stop-color="#2B3E5C"/>
+      <stop offset="50%" stop-color="#152136"/>
+      <stop offset="100%" stop-color="#0B1220"/>
+    </linearGradient>
+    <linearGradient id="cheek" x1="0.25" y1="0.1" x2="0.75" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="76%" stop-color="#EEF5FC"/>
+      <stop offset="100%" stop-color="#CFE0F2"/>
+    </linearGradient>
+    <linearGradient id="beakTop" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0%" stop-color="#FFD447"/>
+      <stop offset="55%" stop-color="#FF9F1C"/>
+      <stop offset="100%" stop-color="#E06D06"/>
+    </linearGradient>
+    <linearGradient id="beakBottom" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F2850A"/>
+      <stop offset="100%" stop-color="#BD5104"/>
+    </linearGradient>
+    <linearGradient id="sweat" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#E0FAFF"/>
+      <stop offset="55%" stop-color="#5CE1FF"/>
+      <stop offset="100%" stop-color="#00A8E8"/>
     </linearGradient>
   </defs>
 
   <g clip-path="url(#frame)">
-    <rect width="1280" height="320" fill="#0B1220"/>
+    <!-- Bright blue summer sky -->
     <rect width="1280" height="320" fill="url(#sky)"/>
 
-    <!-- Sun in the notch between the peaks. The glow stays tight so it does not wash the ridges. -->
-    <circle cx="292" cy="158" r="88" fill="url(#glow)"/>
-    <circle cx="292" cy="158" r="40" fill="#FFD166"/>
+    <!-- Warm summer sun high above the pass -->
+    <circle cx="426" cy="76" r="118" fill="url(#sunGlow)"/>
+    <circle cx="426" cy="76" r="36" fill="#FFE169"/>
 
-    <!-- Ridgelines, paler as they recede. The near one sits under the wordmark as a horizon. -->
-    <path d="M-20 188 L120 158 L240 176 L380 148 L520 170 L680 154 L860 172 L1040 150 L1300 168 L1300 200 L-20 200 Z" fill="#4d74aa" opacity="0.22"/>
-    <path d="M-20 210 L80 168 L170 192 L280 156 L400 188 L530 162 L670 190 L830 164 L1000 188 L1160 166 L1300 184 L1300 236 L-20 236 Z" fill="#1c3566" opacity="0.8"/>
+    <!-- Fluffy sunlit clouds -->
+    <g fill="#FFFFFF" opacity="0.82">
+      <path d="M56 76 C56 64 66 56 78 58 C86 46 106 44 116 54 C128 52 140 62 138 76 Z"/>
+      <path d="M542 66 C542 56 551 49 562 51 C569 40 587 39 596 48 C606 47 616 55 614 66 Z" opacity="0.72"/>
+      <path d="M1110 72 C1110 61 1120 53 1132 55 C1140 44 1158 43 1168 53 C1179 51 1190 60 1188 72 Z" opacity="0.76"/>
+    </g>
 
-    <!-- Two peaks, the same silhouette as the logo, set wider for the banner -->
-    <path d="M-40 278 L176 96 L336 278 Z" fill="#22386b"/>
-    <path d="M176 96 L336 278 L220 278 Z" fill="#1a2c57"/>
-    <path d="M176 96 L214 156 L198 146 L184 164 L166 146 L148 162 L128 148 Z" fill="#f4f8ff"/>
+    <!-- Distant hazy alpine ridgeline spanning the banner -->
+    <path d="M-20 202 L124 148 L252 178 L398 134 L548 170 L712 148 L882 172 L1060 142 L1300 166 L1300 228 L-20 228 Z" fill="#6396C6" opacity="0.52"/>
 
-    <path d="M200 278 L408 52 L590 278 Z" fill="#2e4a86"/>
-    <path d="M408 52 L590 278 L462 278 Z" fill="#243c70"/>
-    <path d="M408 52 L456 128 L438 142 L418 118 L396 146 L374 122 L356 134 Z" fill="#f4f8ff"/>
+    <!-- Two sunlit alpine peaks framing the mountain pass -->
+    <path d="M138 258 L302 74 L436 258 Z" fill="#46729E"/>
+    <path d="M302 74 L436 258 L334 258 Z" fill="#355B82"/>
+    <path d="M302 74 L336 128 L322 122 L308 136 L292 122 L276 134 L264 124 Z" fill="#F4F9FF" opacity="0.92"/>
 
-    <!-- Snow only at the foot of the peaks, then the dark ground -->
-    <path d="M0 232 C140 206 280 200 420 222 C500 236 540 250 548 258 L500 272 C360 268 160 274 0 280 Z" fill="url(#snow)"/>
-    <path d="M0 256 C260 236 620 268 1280 242 V320 H0 Z" fill="url(#ground)"/>
+    <path d="M342 258 L516 58 L688 258 Z" fill="#5282B0"/>
+    <path d="M516 58 L688 258 L560 258 Z" fill="#3C6791"/>
+    <path d="M516 58 L556 120 L540 130 L524 112 L506 132 L488 114 L472 124 Z" fill="#F4F9FF" opacity="0.9"/>
 
-    <!-- Road narrowing toward the pass, white edges like the ride -->
-    <path d="M132 320 C196 262 236 224 258 198 L322 192 C304 228 268 272 368 320 Z" fill="none" stroke="#f4f8ff" stroke-width="7" stroke-linejoin="round"/>
-    <path d="M132 320 C196 262 236 224 258 198 L322 192 C304 228 268 272 368 320 Z" fill="#39425a"/>
-    <path d="M248 320 C238 268 262 226 290 196" fill="none" stroke="#f4f8ff" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="13 11"/>
+    <!-- Lush rolling green alpine hills -->
+    <path d="M-20 224 C140 186 320 198 510 218 C720 240 980 196 1300 224 V320 H-20 Z" fill="url(#meadowMid)"/>
 
-    <!-- Penguin from docs/img/logo.svg, stood on the left verge -->
-    <g transform="translate(-6 -228) scale(0.96)">
-      <ellipse cx="112" cy="494" rx="22" ry="9" fill="#f59e0b"/>
-      <ellipse cx="160" cy="494" rx="22" ry="9" fill="#f59e0b"/>
-      <ellipse cx="70" cy="404" rx="15" ry="50" transform="rotate(14 70 404)" fill="#0b1220"/>
-      <ellipse cx="134" cy="406" rx="64" ry="90" fill="#111a2e"/>
-      <ellipse cx="146" cy="420" rx="43" ry="70" fill="#ffffff"/>
-      <ellipse cx="194" cy="402" rx="13" ry="46" transform="rotate(-16 194 402)" fill="#0b1220"/>
-      <circle cx="138" cy="312" r="46" fill="#111a2e"/>
-      <ellipse cx="156" cy="328" rx="24" ry="20" fill="#ffffff"/>
-      <circle cx="162" cy="324" r="5.5" fill="#111a2e"/>
-      <path d="M176 318 L212 329 L176 340 Z" fill="#f59e0b"/>
-      <path d="M176 329 L212 329 L176 340 Z" fill="#d97706"/>
-      <path d="M88 306 A50 50 0 0 1 188 306 L188 311 Q138 294 88 311 Z" fill="#e63946"/>
-      <path d="M88 311 Q138 294 188 311 L188 316 Q138 300 88 316 Z" fill="#b3202c"/>
-      <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.92">
-        <path d="M110 290 L121 273"/>
-        <path d="M136 284 L138 264"/>
-        <path d="M163 289 L154 272"/>
+    <!-- Evergreen pine trees along the green hills -->
+    <g>
+      <!-- Left hill pines -->
+      <path d="M14 234 L28 184 L42 234 Z" fill="#1F6338"/>
+      <path d="M18 212 L28 172 L38 212 Z" fill="#2D854C"/>
+      <path d="M44 236 L56 196 L68 236 Z" fill="#1A5430"/>
+      <!-- Mid pass pines -->
+      <path d="M472 232 L486 184 L500 232 Z" fill="#226B3D"/>
+      <path d="M476 210 L486 172 L496 210 Z" fill="#308C50"/>
+      <path d="M500 238 L518 176 L536 238 Z" fill="#1B5932"/>
+      <path d="M505 210 L518 164 L531 210 Z" fill="#2B8049"/>
+      <path d="M538 240 L552 194 L566 240 Z" fill="#226B3D"/>
+      <path d="M572 244 L584 206 L596 244 Z" fill="#1B5932"/>
+      <!-- Far right pines -->
+      <path d="M1132 230 L1146 184 L1160 230 Z" fill="#226B3D"/>
+      <path d="M1136 208 L1146 174 L1156 208 Z" fill="#308C50"/>
+      <path d="M1164 234 L1182 172 L1200 234 Z" fill="#1B5932"/>
+      <path d="M1170 206 L1182 162 L1194 206 Z" fill="#2B8049"/>
+      <path d="M1202 236 L1218 186 L1234 236 Z" fill="#226B3D"/>
+      <path d="M1234 238 L1248 196 L1262 238 Z" fill="#1A5430"/>
+    </g>
+
+    <!-- Foreground sunlit green meadow -->
+    <path d="M-20 250 C250 226 620 258 1300 232 V320 H-20 Z" fill="url(#meadowFore)"/>
+
+    <!-- Summer mountain pass road climbing over the crest -->
+    <path d="M242 320 C296 266 334 232 362 204 L402 204 C384 236 356 274 440 320 Z" fill="#364054"/>
+    <g fill="none" stroke="#F8FAFC" stroke-linecap="round">
+      <path d="M242 320 C296 266 334 232 362 204" stroke-width="5.5"/>
+      <path d="M440 320 C356 274 384 236 402 204" stroke-width="5.5"/>
+      <path d="M338 320 C332 270 356 232 382 205" stroke-width="3.5" stroke-dasharray="13 11"/>
+    </g>
+
+    <!-- Hardcore cycling penguin head mascot (matched to godot/assets/logo-mark.svg & docs/img/logo.svg) -->
+    <g transform="translate(46 42) scale(0.94)">
+      <!-- Drop shadow -->
+      <g transform="translate(5 8)" fill="#0B1220" opacity="0.28">
+        <path d="M74 90 C44 82 22 92 10 108 C28 112 48 110 70 112 Z"/>
+        <path d="M72 106 C46 112 28 128 18 148 C38 144 56 134 74 124 Z"/>
+        <path d="M98 44 C128 24 176 34 200 72 C214 96 218 126 210 162 C200 202 164 228 122 226 C80 224 54 192 56 146 C58 102 74 64 98 44 Z"/>
+        <path d="M196 112 C224 106 244 114 248 128 C236 138 220 144 208 146 C224 156 234 172 224 184 C206 188 184 182 174 166 Z"/>
+      </g>
+
+      <!-- Headband tails -->
+      <g stroke="#0B1220" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M74 102 C48 108 28 124 18 145 C36 143 56 134 76 122 Z" fill="url(#bandTail)"/>
+        <path d="M78 86 C48 76 24 85 10 103 C30 107 52 104 74 106 Z" fill="url(#bandGrad)"/>
+        <path d="M26 98 C42 93 56 93 68 95" fill="none" stroke="#FFF5F5" stroke-width="3.5" opacity="0.9"/>
+      </g>
+
+      <!-- Head + windswept crest -->
+      <g stroke-linejoin="round" stroke-linecap="round">
+        <path d="M72 86 C66 64 78 44 100 36 C92 48 94 56 98 58 C112 34 146 26 176 42 C196 54 208 76 211 104 C215 138 208 176 188 202 C166 226 126 232 94 216 C66 202 52 168 58 130 C61 112 66 98 72 86 Z"
+              fill="url(#plumage)" stroke="#0B1220" stroke-width="9.5"/>
+        <path d="M71 132 C66 160 72 188 92 204" fill="none" stroke="#45618A" stroke-width="5.5" opacity="0.72"/>
+        <path d="M120 44 C140 37 162 40 178 52" fill="none" stroke="#45618A" stroke-width="4.5" opacity="0.65"/>
+        <path d="M114 106 C138 98 174 100 198 116 C208 142 204 176 184 200 C162 222 124 226 98 210 C82 198 80 170 90 146 C96 130 102 114 114 106 Z"
+              fill="url(#cheek)"/>
+        <path d="M98 152 C94 172 102 194 118 204 C109 190 107 170 112 152 Z" fill="#FFD166" opacity="0.8"/>
+        <path d="M134 152 L146 149" fill="none" stroke="#94B0CC" stroke-width="3.5" opacity="0.6"/>
+        <path d="M140 160 L152 157" fill="none" stroke="#94B0CC" stroke-width="3" opacity="0.5"/>
+        <path d="M72 86 C66 64 78 44 100 36 C92 48 94 56 98 58 C112 34 146 26 176 42 C196 54 208 76 211 104 C215 138 208 176 188 202 C166 226 126 232 94 216 C66 202 52 168 58 130 C61 112 66 98 72 86 Z"
+              fill="none" stroke="#0B1220" stroke-width="9.5"/>
+      </g>
+
+      <!-- Open screaming beak -->
+      <g stroke-linejoin="round" stroke-linecap="round">
+        <path d="M180 132 L236 134 C228 152 218 166 202 174 L174 162 Z" fill="#590D22" stroke="#0B1220" stroke-width="7"/>
+        <path d="M182 158 C194 148 208 150 216 158 C206 168 192 170 182 164 Z" fill="#FF4D6D"/>
+        <path d="M178 156 C196 158 214 163 226 173 C214 186 192 188 176 176 C172 170 173 160 178 156 Z" fill="url(#beakBottom)" stroke="#0B1220" stroke-width="8"/>
+        <path d="M182 115 C208 106 236 112 246 125 C248 128 245 133 239 135 C218 140 198 140 180 135 C175 129 176 120 182 115 Z" fill="url(#beakTop)" stroke="#0B1220" stroke-width="8"/>
+        <path d="M192 119 C209 114 225 117 235 123" fill="none" stroke="#FFF3B0" stroke-width="3.8" opacity="0.9"/>
+        <ellipse cx="207" cy="125" rx="2.6" ry="1.5" transform="rotate(8 207 125)" fill="#8F3D03"/>
+      </g>
+
+      <!-- Headband -->
+      <g stroke-linejoin="round" stroke-linecap="round">
+        <path d="M66 86 C102 68 158 66 206 86 C212 89 214 98 212 108 C164 90 106 94 64 114 C60 104 61 92 66 86 Z" fill="url(#bandGrad)" stroke="#0B1220" stroke-width="9"/>
+        <path d="M71 97 C108 81 158 80 206 96" fill="none" stroke="#F8FAFC" stroke-width="4.5" opacity="0.92"/>
+      </g>
+
+      <!-- Pro cycling shield sunglasses -->
+      <g stroke-linejoin="round" stroke-linecap="round">
+        <path d="M84 114 L132 102 L134 114 L88 126 Z" fill="#F8FAFC" stroke="#0B1220" stroke-width="7"/>
+        <path d="M126 99 C152 92 184 92 208 100 C214 102 216 108 214 116 C210 128 198 136 182 137 C164 138 148 134 135 128 C127 125 123 118 123 110 C123 104 124 100 126 99 Z"
+              fill="url(#lensGrad)" stroke="#0B1220" stroke-width="8"/>
+        <path d="M141 101 L158 98 L145 128 L132 124 Z" fill="#FFFFFF" opacity="0.46"/>
+        <path d="M166 97 L175 97 L162 132 L153 131 Z" fill="#FFFFFF" opacity="0.34"/>
+        <path d="M129 102 C154 96 182 96 207 103" fill="none" stroke="#0B1220" stroke-width="3.5" opacity="0.35"/>
+        <path d="M121 101 C150 91 184 91 210 100 C214 101 215 105 213 108 C186 100 152 100 123 109 C120 110 118 103 121 101 Z"
+              fill="#F8FAFC" stroke="#0B1220" stroke-width="6.5"/>
+      </g>
+
+      <!-- Flying sweat drops -->
+      <g stroke="#0B1220" stroke-width="5.5" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M36 42 C45 54 52 61 48 70 C44 78 32 78 28 70 C24 62 29 53 36 42 Z" fill="url(#sweat)" transform="rotate(-38 38 62)"/>
+        <circle cx="34" cy="64" r="2.8" fill="#FFFFFF" stroke="none"/>
+        <path d="M114 150 C120 158 124 163 121 169 C118 175 110 175 107 169 C104 164 108 158 114 150 Z" fill="url(#sweat)" transform="rotate(-18 114 164)"/>
+        <circle cx="111.5" cy="165" r="1.9" fill="#FFFFFF" stroke="none"/>
+        <path d="M36 154 C41 160 44 164 42 169 C40 173 33 173 31 169 C29 165 32 160 36 154 Z" fill="url(#sweat)" transform="rotate(-48 36 164)"/>
       </g>
     </g>
 
+    <!-- Bold outlined wordmark popping cleanly against sunny daytime sky -->
     <g font-family="'Barlow Semi Condensed', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif" text-anchor="middle">
-      <text x="900" y="132" font-size="76" font-weight="700" fill="#F4F8FF" letter-spacing="1.4">Penguin Pass</text>
-      <text x="900" y="176" font-size="22" font-weight="500" fill="#B4C0D4">Indoor cycling for Linux. Your trainer, a mountain, no Wine.</text>
+      <text x="920" y="132" font-size="80" font-weight="800" fill="#0B1220" opacity="0.35" letter-spacing="3" transform="translate(0 5)">PENGUIN PASS</text>
+      <text x="920" y="132" font-size="80" font-weight="800" fill="#FFFFFF" stroke="#0B1220" stroke-width="9" paint-order="stroke" stroke-linejoin="round" letter-spacing="3">PENGUIN PASS</text>
+      <!-- Tagline pill for razor-sharp contrast over bright sky & hills -->
+      <rect x="576" y="152" width="688" height="38" rx="19" fill="#0B1220" opacity="0.76"/>
+      <text x="920" y="178" font-size="21" font-weight="600" fill="#F8FAFC">Native indoor cycling. Smart trainers, mountains, Strava-ready.</text>
     </g>
 
-    <!-- Course profile along the bottom, coloured the way the ride console colours grade -->
-    <g fill="none" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M430 304 L510 298" stroke="#9AA8BD"/>
-      <path d="M510 298 L590 288" stroke="#3DD68C"/>
-      <path d="M590 288 L670 276" stroke="#FFD166"/>
-      <path d="M670 276 L750 268" stroke="#FF9A3C"/>
-      <path d="M750 268 L820 264" stroke="#FF5A52"/>
-      <path d="M820 264 L890 270" stroke="#D277FF"/>
-      <path d="M890 270 L970 282" stroke="#4FA8FF"/>
-      <path d="M970 282 L1050 292" stroke="#9AA8BD"/>
-      <path d="M1050 292 L1130 284" stroke="#3DD68C"/>
-      <path d="M1130 284 L1216 296" stroke="#4FA8FF"/>
+    <!-- Course elevation profile along the bottom right -->
+    <path d="M510 304 L584 298 L658 288 L732 276 L806 268 L874 263 L942 270 L1018 282 L1094 292 L1164 284 L1232 296 L1232 320 L510 320 Z" fill="url(#profileFill)"/>
+    <g fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M510 304 L584 298" stroke="#CBD5E1"/>
+      <path d="M584 298 L658 288" stroke="#4ADE80"/>
+      <path d="M658 288 L732 276" stroke="#FFE066"/>
+      <path d="M732 276 L806 268" stroke="#FF9A3C"/>
+      <path d="M806 268 L874 263" stroke="#FF5A52"/>
+      <path d="M874 263 L942 270" stroke="#D277FF"/>
+      <path d="M942 270 L1018 282" stroke="#5CE1FF"/>
+      <path d="M1018 282 L1094 292" stroke="#CBD5E1"/>
+      <path d="M1094 292 L1164 284" stroke="#4ADE80"/>
+      <path d="M1164 284 L1232 296" stroke="#5CE1FF"/>
     </g>
-    <circle cx="820" cy="264" r="5" fill="#F4F8FF"/>
-    <circle cx="820" cy="264" r="2.4" fill="#0B1220"/>
+    <circle cx="874" cy="263" r="6" fill="#FFFFFF" stroke="#0B1220" stroke-width="2.5"/>
   </g>
 
-  <rect x="1.5" y="1.5" width="1277" height="317" rx="26.5" fill="none" stroke="#F4F8FF" stroke-opacity="0.16" stroke-width="3"/>
+  <rect x="1.5" y="1.5" width="1277" height="317" rx="26.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="3"/>
 </svg>

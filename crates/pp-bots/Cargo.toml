@@ -1,0 +1,13 @@
+[package]
+name = "pp-bots"
+description = "Computer-controlled riders for Penguin Pass"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+pp-core = { path = "../pp-core" }
+pp-course = { path = "../pp-course" }
+
+[lints]
+workspace = true

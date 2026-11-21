@@ -13,7 +13,8 @@ tv_dashboard_enabled = true
 tv_dashboard_port = 7878
 EOF
 GODOT_BIN=${GODOT:-flatpak run org.godotengine.Godot}
-$GODOT_BIN --path "$ROOT/godot" --script res://tests/shot.gd -- \
+$GODOT_BIN --audio-driver Dummy --path "$ROOT/godot" --script res://tests/shot.gd -- \
+    --no-sound \
     --fake-trainer \
     --settings "$SETTINGS" --dashboard-port 0 --dashboard-loopback \
     --set --dir "$DIR" --power 250

@@ -24,6 +24,7 @@
 mod connection;
 mod course_sel;
 mod events;
+mod group;
 mod heart;
 mod link;
 mod play;
@@ -44,12 +45,16 @@ pub use play::{
     ActivePowerup, ActiveSegment, BadgeView, FishView, GhostView, PlayView, ProfileView,
     SegmentInfo,
 };
+pub use play::{WorkoutBar, WorkoutSummary};
 pub use pp_arcade::PowerupKind;
+pub use pp_bots::BotState;
 pub use pp_core::{RiderProfile, Telemetry};
 pub use pp_course::Course;
 pub use pp_routegen::TerrainPreset;
 pub use pp_segments::SegmentKind;
+pub use pp_strava::StravaState;
 pub use pp_trainer::{ConnectionState, DiscoveredTrainer, SessionMode, Trainer, TrainerError};
+pub use pp_workout::{WorkoutResult, WorkoutView};
 pub use readout::{LiveReadout, MAX_POWER_WINDOW_S, POWER_AVERAGE_WINDOW_S};
 pub use session::{
     ActiveSource, AheadPoint, CourseFacts, DASHBOARD_PROFILE_STEP_M, DashboardRun, PAIRING_HOLD_S,

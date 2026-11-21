@@ -1,6 +1,8 @@
 {
   "name": "desert",
   "seed": 11,
+  "time_of_day": "day",
+  "weather": "clear",
   "sky": {
     "top": [0.40, 0.58, 0.88],
     "horizon": [0.96, 0.74, 0.48],

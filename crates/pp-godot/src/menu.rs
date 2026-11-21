@@ -19,7 +19,7 @@ use godot::prelude::*;
 use pp_session::{Session, Settings};
 use pp_view::menu::{Action, Device, MenuState, MenuView, Snapshot};
 
-const ROW_COUNT: usize = 18;
+const ROW_COUNT: usize = 26;
 
 /// What the player just pressed.
 pub use pp_view::menu::Command;
@@ -283,6 +283,10 @@ impl RideMenu {
             }
             Action::ChooseMusicFolder => Effect::ChooseMusicFolder,
             Action::OpenRides => Effect::OpenRides,
+            Action::Strava => {
+                on_strava_click(session);
+                Effect::None
+            }
             Action::OpenHeart => Effect::None,
             Action::ConnectHeart(id) => {
                 session.connect_heart_rate(&id);
@@ -390,6 +394,35 @@ fn heart_line(session: &Session) -> String {
     }
 }
 
+pub(crate) fn strava_row(state: &pp_session::StravaState) -> pp_view::extras::StravaRow {
+    match state {
+        pp_session::StravaState::NoKeys | pp_session::StravaState::NotConnected => {
+            pp_view::extras::StravaRow::Connect
+        }
+        pp_session::StravaState::Connecting { .. } => pp_view::extras::StravaRow::Waiting,
+        pp_session::StravaState::Connected { athlete } => {
+            pp_view::extras::StravaRow::Connected(athlete.clone())
+        }
+        pp_session::StravaState::Error(reason) => {
+            pp_view::extras::StravaRow::Failed(reason.clone())
+        }
+    }
+}
+
+fn on_strava_click(session: &mut Session) {
+    match session.strava_state() {
+        pp_session::StravaState::Connecting { .. } => session.cancel_strava_connect(),
+        pp_session::StravaState::Connected { .. } => session.disconnect_strava(),
+        pp_session::StravaState::NoKeys
+        | pp_session::StravaState::NotConnected
+        | pp_session::StravaState::Error(_) => {
+            if let Some(url) = session.begin_strava_connect() {
+                let _ = godot::classes::Os::singleton().shell_open(&GString::from(url.as_str()));
+            }
+        }
+    }
+}
+
 fn kit_options(session: &Session) -> Vec<pp_view::menu::RiderOption> {
     let mut kits = vec![pp_view::menu::RiderOption {
         id: "default".to_owned(),
@@ -447,6 +480,7 @@ fn snapshot(session: &mut Session, music_report: &str, controller_status: &str) 
             })
             .collect(),
         kits: kit_options(session),
+        strava: strava_row(&session.strava_state()),
         devices: session
             .pairing()
             .into_iter()

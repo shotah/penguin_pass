@@ -26,6 +26,7 @@
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
 
+mod atmosphere;
 mod error;
 mod grid;
 mod ground;
@@ -35,6 +36,10 @@ mod planner;
 mod route;
 mod seed;
 
+pub use atmosphere::{
+    AUTO_DAY_SECONDS, AUTO_START_HOUR, AtmosphereState, DAY_HOUR, PrecipKind, TimeOfDay, Weather,
+    WeatherMix, atmosphere_at, hour_at, mix_atmosphere, resolve_weather, ride_atmosphere,
+};
 pub use error::WorldError;
 pub use grid::{ChunkBounds, ChunkCoord, ChunkGrid};
 pub use ground::{GroundPlan, GroundVertex, PlannedChunk, PlannedFar, SKIRT_M, Skirt, plan};

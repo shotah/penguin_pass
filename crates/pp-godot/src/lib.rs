@@ -6,6 +6,7 @@
 
 mod assets;
 mod banners;
+mod bots;
 mod camera;
 mod fake_trainer;
 mod fish;
@@ -21,6 +22,7 @@ mod rider;
 mod road;
 mod screens;
 mod sim;
+mod sound;
 mod theme;
 pub mod ui_style;
 mod world;

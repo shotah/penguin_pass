@@ -7,8 +7,9 @@ same player directory as `./x export`. Rust is compiled on the runner,
 not inside the Flatpak sandbox.
 
 The workflow is `.github/workflows/flatpak.yml`. It runs when a tag
-named `v*` is pushed, and when someone starts it by hand. It does not
-run on a normal push to `main`, so it does not block development.
+named `v*` is pushed, when someone starts it by hand, and on a push to
+`main` that changes more than docs or pictures. A push to `main`
+updates one prerelease tagged `latest`; see `docs/release.md`.
 
 A manual run uploads the bundle as a workflow artifact. A tag run does
 that and also attaches the file to the GitHub Release for the tag. If

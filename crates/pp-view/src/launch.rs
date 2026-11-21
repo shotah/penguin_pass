@@ -32,6 +32,13 @@ pub struct LaunchFlags {
     pub play_through: bool,
     /// Start silent. A settings change can still raise the volume.
     pub no_music: bool,
+    /// Start with ambience and effects silent. A settings change can raise them.
+    ///
+    /// Also set for smoke, pictures, bench runs, and `--quit-after`, unless
+    /// `--sound` or `--sound-capture` was given.
+    pub no_sound: bool,
+    /// Write a mix of a scripted ride to this wav, then quit.
+    pub sound_capture: Option<PathBuf>,
     /// Hide the console, chips, and toasts. World screenshots use this.
     pub no_hud: bool,
 }
@@ -51,12 +58,19 @@ pub struct LaunchEnv {
     pub dashboard_loopback: Option<String>,
     /// `PENGUIN_PASS_NO_MUSIC`.
     pub no_music: Option<String>,
+    /// `PENGUIN_PASS_NO_SOUND`.
+    pub no_sound: Option<String>,
     /// `PENGUIN_PASS_NO_HUD`.
     pub no_hud: Option<String>,
 }
 
 /// User arguments win over the environment. Later flags win over earlier ones.
 pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
+    parse_launch_in(args, env, &[])
+}
+
+/// [`parse_launch`] plus Godot's own arguments (`--headless`, `--quit-after`, the script).
+pub fn parse_launch_in(args: &[String], env: &LaunchEnv, engine_args: &[String]) -> LaunchFlags {
     let mut mode = env_mode(env);
     let mut settings_path = nonempty(&env.settings).map(PathBuf::from);
     let mut dashboard_port = nonempty(&env.dashboard_port).and_then(|value| value.parse().ok());
@@ -65,6 +79,9 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
     let mut skip_title = false;
     let mut play_through = false;
     let mut no_music = is_flag(env.no_music.as_deref());
+    let mut no_sound = is_flag(env.no_sound.as_deref());
+    let mut sound_explicit = false;
+    let mut sound_capture = None;
     let mut no_hud = is_flag(env.no_hud.as_deref());
     let mut index = 0;
     while index < args.len() {
@@ -76,7 +93,23 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
             "--skip-title" => skip_title = true,
             "--play-through" => play_through = true,
             "--no-music" => no_music = true,
+            "--no-sound" => {
+                no_sound = true;
+                sound_explicit = false;
+            }
+            "--sound" => {
+                no_sound = false;
+                sound_explicit = true;
+            }
             "--no-hud" => no_hud = true,
+            "--sound-capture" => {
+                if let Some(value) = args.get(index + 1) {
+                    sound_capture = Some(PathBuf::from(value));
+                    no_sound = false;
+                    sound_explicit = true;
+                    index += 1;
+                }
+            }
             "--settings" => {
                 if let Some(value) = args.get(index + 1) {
                     settings_path = Some(PathBuf::from(value));
@@ -95,6 +128,9 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
         }
         index += 1;
     }
+    if !sound_explicit && (automated(args) || automated(engine_args)) {
+        no_sound = true;
+    }
     LaunchFlags {
         mode,
         settings_path,
@@ -104,8 +140,23 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
         skip_title,
         play_through,
         no_music,
+        no_sound,
+        sound_capture,
         no_hud,
     }
+}
+
+fn automated(args: &[String]) -> bool {
+    args.iter().any(|arg| {
+        arg == "--quit-after"
+            || arg == "--headless"
+            || arg == "--bench"
+            || arg.ends_with("smoke.gd")
+            || arg.ends_with("shot.gd")
+            || arg.ends_with("hud_shot.gd")
+            || arg.ends_with("ingame.gd")
+            || arg.ends_with("world.gd")
+    })
 }
 
 fn env_mode(env: &LaunchEnv) -> TrainerMode {
@@ -178,6 +229,8 @@ mod tests {
         assert!(!flags.skip_title);
         assert!(!flags.play_through);
         assert!(!flags.no_music);
+        assert!(!flags.no_sound);
+        assert!(flags.sound_capture.is_none());
         assert!(!flags.no_hud);
         assert!(flags.settings_path.is_none());
         assert!(flags.dashboard_port.is_none());
@@ -196,5 +249,39 @@ mod tests {
         assert_eq!(flags.mode, TrainerMode::Off);
         assert!(flags.settings_path.is_none());
         assert!(flags.dashboard_port.is_none());
+    }
+
+    #[test]
+    fn automated_runs_are_silent_until_sound_is_asked_for() {
+        let engine = vec!["--headless".to_owned(), "res://tests/smoke.gd".to_owned()];
+        let flags = parse_launch_in(&[], &LaunchEnv::default(), &engine);
+        assert!(flags.no_sound);
+        let flags = parse_launch_in(
+            &["--sound".to_owned()],
+            &LaunchEnv::default(),
+            &["--quit-after".to_owned(), "90".to_owned()],
+        );
+        assert!(!flags.no_sound);
+        let flags = parse_launch(
+            &[
+                "--bench".to_owned(),
+                "--no-sound".to_owned(),
+                "--sound".to_owned(),
+            ],
+            &LaunchEnv::default(),
+        );
+        assert!(!flags.no_sound);
+        let flags = parse_launch_in(
+            &["--sound-capture".to_owned(), "mix.wav".to_owned()],
+            &LaunchEnv::default(),
+            &["--headless".to_owned()],
+        );
+        assert!(!flags.no_sound);
+        assert_eq!(flags.sound_capture.unwrap(), PathBuf::from("mix.wav"));
+        let env = LaunchEnv {
+            no_sound: Some("1".to_owned()),
+            ..LaunchEnv::default()
+        };
+        assert!(parse_launch(&[], &env).no_sound);
     }
 }

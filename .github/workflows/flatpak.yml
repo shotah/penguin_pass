@@ -1,5 +1,8 @@
 # Build a single-file Flatpak of the exported game.
-# Tags and manual runs only, so this does not run on a normal push.
+# A push to main updates the moving "latest" prerelease.
+# A v* tag attaches a numbered release. A manual run only uploads an artifact,
+# unless it is dispatched on a v* tag.
+# Docs, markdown, and pictures do not start a push build.
 # The export job links the Rust library on the runner. org.freedesktop.Platform
 # 26.08 ships glibc 2.44, which is newer than Ubuntu 26.04's glibc 2.43.
 # The ubuntu-latest move to Ubuntu 26.04 was scheduled to finish on
@@ -11,15 +14,28 @@ name: Flatpak
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.webp"
+      - "**/*.svg"
 
 permissions:
   contents: read
 
+# Branch builds share one group and cancel the older run.
+# Each tag has its own group and is not cancelled.
 concurrency:
-  group: flatpak-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.ref_type == 'tag' && format('flatpak-tag-{0}', github.ref_name) || 'flatpak-branch' }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 env:
   PP_NATIVE: "1"
@@ -142,12 +158,15 @@ jobs:
       - name: Stamp the metainfo version
         run: |
           set -euo pipefail
+          base=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          [[ -n "$base" ]]
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             ver=${GITHUB_REF_NAME#v}
+          elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
+            ver="${base}+${GITHUB_SHA:0:7}"
           else
-            ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+            ver=$base
           fi
-          [[ -n "$ver" ]]
           date=$(date -u +%Y-%m-%d)
           python3 packaging/flatpak/stamp-release.py \
             packaging/flatpak/io.github.shotah.PenguinPass.metainfo.xml \
@@ -238,5 +257,72 @@ jobs:
           else
             gh release create "$tag" "$bundle" \
               --title "Penguin Pass ${tag}" \
+              --notes "$notes"
+          fi
+
+  prerelease:
+    name: prerelease
+    needs: bundle
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download the bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: flatpak-bundle
+          path: dist/flatpak
+
+      - name: Update the latest prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/flatpak/*.flatpak)
+          if [[ ${#files[@]} -ne 1 ]]; then
+            echo "prerelease: expected one .flatpak, found ${#files[@]}" >&2
+            ls -la dist/flatpak >&2
+            exit 1
+          fi
+          bundle=${files[0]}
+          name=$(basename "$bundle")
+          hash=$(sha256sum "$bundle" | awk '{print $1}')
+          when=$(date -u +%Y-%m-%d)
+          echo "prerelease: $name"
+          echo "sha256: $hash"
+          # Point the latest tag at this commit. A v* tag is not touched.
+          if gh api "/repos/${GITHUB_REPOSITORY}/git/ref/tags/latest" >/dev/null 2>&1; then
+            gh api --method PATCH "/repos/${GITHUB_REPOSITORY}/git/refs/tags/latest" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
+          else
+            gh api --method POST "/repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/latest" \
+              -f sha="$GITHUB_SHA" >/dev/null
+          fi
+          notes=$(printf '%s\n' \
+            "Latest build of main." \
+            "" \
+            "Commit: ${GITHUB_SHA}" \
+            "Date: ${when}" \
+            "" \
+            "Install: flatpak install --user ./${name}" \
+            "" \
+            "sha256: ${hash}")
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest --prerelease --title "Latest build" --notes "$notes"
+            while IFS= read -r asset; do
+              [[ -n "$asset" ]] || continue
+              case "$asset" in
+                *.flatpak) gh release delete-asset latest "$asset" --yes ;;
+              esac
+            done < <(gh release view latest --json assets --jq '.assets[].name')
+            gh release upload latest "$bundle"
+          else
+            gh release create latest "$bundle" \
+              --prerelease \
+              --title "Latest build" \
               --notes "$notes"
           fi

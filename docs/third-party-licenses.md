@@ -16,10 +16,12 @@ copies to `licenses/assets.md`.
 
 | Crate | Version | Licence | Repository |
 | --- | --- | --- | --- |
+| ascii | 1.1.0 | Apache-2.0 OR MIT | https://github.com/tomprogrammer/rust-ascii |
 | async-trait | 0.1.92 | MIT OR Apache-2.0 | https://github.com/dtolnay/async-trait |
 | atomic-waker | 1.1.2 | Apache-2.0 OR MIT | https://github.com/smol-rs/atomic-waker |
 | axum | 0.8.9 | MIT | https://github.com/tokio-rs/axum |
 | axum-core | 0.5.6 | MIT | https://github.com/tokio-rs/axum |
+| base64 | 0.22.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | base64 | 0.23.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | bitflags | 2.13.2 | MIT OR Apache-2.0 | https://github.com/bitflags/bitflags |
 | bluez-async | 0.9.0 | MIT OR Apache-2.0 | https://github.com/bluez-rs/bluez-async/ |
@@ -27,14 +29,17 @@ copies to `licenses/assets.md`.
 | btleplug | 0.13.5 | MIT/Apache-2.0/BSD-3-Clause | https://github.com/deviceplug/btleplug |
 | bytes | 1.12.2 | MIT | https://github.com/tokio-rs/bytes |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/cfg-if |
+| chunked_transfer | 1.5.0 | MIT OR Apache-2.0 | https://github.com/frewsxcv/rust-chunked-transfer |
 | crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | dashmap | 6.2.1 | MIT | https://github.com/xacrimon/dashmap |
 | dbus | 0.9.12 | Apache-2.0/MIT | https://github.com/diwic/dbus-rs |
 | dbus-tokio | 0.7.6 | Apache-2.0/MIT | https://github.com/diwic/dbus-rs |
+| displaydoc | 0.2.7 | MIT OR Apache-2.0 | https://github.com/yaahc/displaydoc |
 | either | 1.19.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/either |
 | embedded-io | 0.7.1 | MIT OR Apache-2.0 | https://github.com/rust-embedded/embedded-hal |
 | embedded-io-adapters | 0.7.0 | MIT OR Apache-2.0 | https://github.com/rust-embedded/embedded-hal |
 | equivalent | 1.0.3 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/equivalent |
+| form_urlencoded | 1.2.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | futures | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-channel | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-core | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
@@ -61,6 +66,15 @@ copies to `licenses/assets.md`.
 | httpdate | 1.0.3 | MIT OR Apache-2.0 | https://github.com/pyfisch/httpdate |
 | hyper | 1.12.0 | MIT | https://github.com/hyperium/hyper |
 | hyper-util | 0.1.21 | MIT | https://github.com/hyperium/hyper-util |
+| icu_collections | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| icu_locale_core | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| icu_normalizer | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| icu_normalizer_data | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| icu_properties | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| icu_properties_data | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| icu_provider | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| idna | 1.1.0 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
+| idna_adapter | 1.2.2 | Apache-2.0 OR MIT | https://github.com/hsivonen/idna_adapter |
 | if-addrs | 0.13.4 | MIT OR BSD-3-Clause | https://github.com/messense/if-addrs |
 | indexmap | 2.14.2 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/indexmap |
 | ipnet | 2.12.2 | MIT OR Apache-2.0 | https://github.com/krisprice/ipnet |
@@ -68,6 +82,7 @@ copies to `licenses/assets.md`.
 | itoa | 1.0.19 | MIT OR Apache-2.0 | https://github.com/dtolnay/itoa |
 | libc | 0.2.191 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
 | libdbus-sys | 0.2.7 | Apache-2.0/MIT | https://github.com/diwic/dbus-rs |
+| litemap | 0.8.3 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | log | 0.4.35 | MIT OR Apache-2.0 | https://github.com/rust-lang/log |
 | matchit | 0.8.4 | MIT AND BSD-3-Clause | https://github.com/ibraheemdev/matchit |
@@ -78,6 +93,9 @@ copies to `licenses/assets.md`.
 | parking_lot_core | 0.9.12 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
 | pin-project-lite | 0.2.18 | Apache-2.0 OR MIT | https://github.com/taiki-e/pin-project-lite |
+| potential_utf | 0.1.6 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| pp-arcade | 0.1.0 | missing |  |
+| pp-bots | 0.1.0 | missing |  |
 | pp-cast | 0.1.0 | missing |  |
 | pp-controllers | 0.1.0 | missing |  |
 | pp-core | 0.1.0 | missing |  |
@@ -86,9 +104,12 @@ copies to `licenses/assets.md`.
 | pp-record | 0.1.0 | missing |  |
 | pp-rider | 0.1.0 | missing |  |
 | pp-routegen | 0.1.0 | missing |  |
+| pp-segments | 0.1.0 | missing |  |
 | pp-session | 0.1.0 | missing |  |
+| pp-strava | 0.1.0 | missing |  |
 | pp-trainer | 0.1.0 | missing |  |
 | pp-view | 0.1.0 | missing |  |
+| pp-workout | 0.1.0 | missing |  |
 | pp-world | 0.1.0 | missing |  |
 | ppv-lite86 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/cryptocorrosion/cryptocorrosion |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
@@ -96,6 +117,11 @@ copies to `licenses/assets.md`.
 | rand | 0.8.5 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | rand_chacha | 0.3.1 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | rand_core | 0.6.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
+| ring | 0.17.14 | Apache-2.0 AND ISC | https://github.com/briansmith/ring |
+| roxmltree | 0.20.0 | MIT OR Apache-2.0 | https://github.com/RazrFalcon/roxmltree |
+| rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
+| rustls-pki-types | 1.16.0 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
+| rustls-webpki | 0.103.17 | ISC | https://github.com/rustls/webpki |
 | rustyfit | 0.11.2 | BSD-3-Clause | https://github.com/muktihari/rustyfit |
 | scopeguard | 1.2.0 | MIT OR Apache-2.0 | https://github.com/bluss/scopeguard |
 | serde | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
@@ -108,11 +134,16 @@ copies to `licenses/assets.md`.
 | slab | 0.4.12 | MIT | https://github.com/tokio-rs/slab |
 | smallvec | 1.16.6 | MIT OR Apache-2.0 | https://github.com/smallvec/smallvec |
 | socket2 | 0.6.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/socket2 |
+| stable_deref_trait | 1.2.1 | MIT OR Apache-2.0 | https://github.com/storyyeller/stable_deref_trait |
 | static_assertions | 1.1.0 | MIT OR Apache-2.0 | https://github.com/nvzqz/static-assertions-rs |
+| subtle | 2.6.1 | BSD-3-Clause | https://github.com/dalek-cryptography/subtle |
 | syn | 3.0.10 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
 | sync_wrapper | 1.0.2 | Apache-2.0 | https://github.com/Actyx/sync_wrapper |
+| synstructure | 0.14.0 | MIT | https://github.com/mystor/synstructure |
 | thiserror | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | thiserror-impl | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
+| tiny_http | 0.12.0 | MIT OR Apache-2.0 | https://github.com/tiny-http/tiny-http |
+| tinystr | 0.8.5 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | tokio | 1.54.1 | MIT | https://github.com/tokio-rs/tokio |
 | tokio-macros | 2.7.2 | MIT | https://github.com/tokio-rs/tokio |
 | tokio-stream | 0.1.19 | MIT | https://github.com/tokio-rs/tokio |
@@ -128,18 +159,35 @@ copies to `licenses/assets.md`.
 | tracing-core | 0.1.36 | MIT | https://github.com/tokio-rs/tracing |
 | try-lock | 0.2.5 | MIT | https://github.com/seanmonstar/try-lock |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/dtolnay/unicode-ident |
+| untrusted | 0.9.0 | ISC | https://github.com/briansmith/untrusted |
+| ureq | 2.12.1 | MIT OR Apache-2.0 | https://github.com/algesten/ureq |
+| url | 2.5.8 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
+| utf8_iter | 1.1.0 | Apache-2.0 OR MIT | https://github.com/hsivonen/utf8_iter |
+| utf_types | 1.0.0 | Apache-2.0 OR MIT | https://github.com/hsivonen/utf_types |
 | uuid | 1.29.3 | Apache-2.0 OR MIT | https://github.com/uuid-rs/uuid |
 | venial | 0.6.1 | MIT | https://github.com/PoignardAzur/venial |
 | want | 0.3.2 | MIT | https://github.com/seanmonstar/want |
+| webpki-roots | 0.26.8 | MPL-2.0 | https://github.com/rustls/webpki-roots |
 | winnow | 0.7.15 | MIT | https://github.com/winnow-rs/winnow |
+| writeable | 0.6.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | xml | 1.4.0 | MIT | https://github.com/kornelski/xml-rs |
+| yoke | 0.8.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| yoke-derive | 0.8.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | zerocopy | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT | https://github.com/google/zerocopy |
+| zerofrom | 0.1.8 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| zerofrom-derive | 0.1.8 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| zeroize | 1.9.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
+| zerotrie | 0.2.5 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| zerovec | 0.11.9 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| zerovec-derive | 0.11.7 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | zmij | 1.0.23 | MIT | https://github.com/dtolnay/zmij |
 
 ## Needs a decision
 
 Missing a `license` field:
 
+- pp-arcade 0.1.0
+- pp-bots 0.1.0
 - pp-cast 0.1.0
 - pp-controllers 0.1.0
 - pp-core 0.1.0
@@ -148,8 +196,11 @@ Missing a `license` field:
 - pp-record 0.1.0
 - pp-rider 0.1.0
 - pp-routegen 0.1.0
+- pp-segments 0.1.0
 - pp-session 0.1.0
+- pp-strava 0.1.0
 - pp-trainer 0.1.0
 - pp-view 0.1.0
+- pp-workout 0.1.0
 - pp-world 0.1.0
 

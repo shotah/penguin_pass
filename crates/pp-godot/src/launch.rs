@@ -11,7 +11,7 @@ use godot::classes::{Os, ProjectSettings, Time};
 use godot::prelude::*;
 use pp_session::{HeartRateFactory, Session, SessionOptions, Settings, TrainerFactory};
 use pp_trainer::{DiscoveredSensor, HeartRateLink, SimHeartRate};
-use pp_view::launch::{LaunchEnv, LaunchFlags, TrainerMode as ViewMode, parse_launch};
+use pp_view::launch::{LaunchEnv, LaunchFlags, TrainerMode as ViewMode, parse_launch_in};
 
 use crate::fake_trainer::{FakeFactory, FakeHub, UnavailableFactory};
 
@@ -45,6 +45,10 @@ pub struct Launch {
     pub play_through: bool,
     /// Start with the music bus muted.
     pub no_music: bool,
+    /// Start with ambience and effects silent.
+    pub no_sound: bool,
+    /// Record a scripted ride to this wav and then quit.
+    pub sound_capture: Option<std::path::PathBuf>,
     /// Hide the console, chips, and toasts.
     pub no_hud: bool,
 }
@@ -55,14 +59,9 @@ impl Launch {
     /// The environment is how `smoke.gd` forces a fake trainer. `./x smoke`
     /// does not forward arguments after `--`.
     pub fn from_engine() -> Self {
-        let args = Os::singleton().get_cmdline_user_args();
-        let mut collected = Vec::new();
-        for index in 0..args.len() {
-            if let Some(arg) = args.get(index) {
-                collected.push(arg.to_string());
-            }
-        }
-        let flags = parse_launch(&collected, &read_env());
+        let collected = cmdline(Os::singleton().get_cmdline_user_args());
+        let engine = cmdline(Os::singleton().get_cmdline_args());
+        let flags = parse_launch_in(&collected, &read_env(), &engine);
         Self::from_flags(flags)
     }
 
@@ -81,6 +80,8 @@ impl Launch {
             skip_title: flags.skip_title,
             play_through: flags.play_through,
             no_music: flags.no_music,
+            no_sound: flags.no_sound,
+            sound_capture: flags.sound_capture,
             no_hud: flags.no_hud,
         }
     }
@@ -94,6 +95,7 @@ fn read_env() -> LaunchEnv {
         dashboard_port: env_string("PENGUIN_PASS_DASHBOARD_PORT"),
         dashboard_loopback: env_string("PENGUIN_PASS_DASHBOARD_LOOPBACK"),
         no_music: env_string("PENGUIN_PASS_NO_MUSIC"),
+        no_sound: env_string("PENGUIN_PASS_NO_SOUND"),
         no_hud: env_string("PENGUIN_PASS_NO_HUD"),
     }
 }
@@ -189,6 +191,16 @@ fn session_with(
 fn default_settings_path() -> PathBuf {
     let global = ProjectSettings::singleton().globalize_path("user://settings.toml");
     PathBuf::from(global.to_string())
+}
+
+fn cmdline(args: godot::builtin::PackedStringArray) -> Vec<String> {
+    let mut collected = Vec::new();
+    for index in 0..args.len() {
+        if let Some(arg) = args.get(index) {
+            collected.push(arg.to_string());
+        }
+    }
+    collected
 }
 
 fn env_string(name: &str) -> Option<String> {

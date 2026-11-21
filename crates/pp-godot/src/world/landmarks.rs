@@ -65,10 +65,57 @@ struct Kind {
 }
 
 fn kinds_for(theme: &str) -> Vec<Kind> {
-    // Enabled only after the rider's-eye frames looked like something to show.
-    // Only kinds whose rider-eye reveal actually showed the model.
     if theme == "desert" {
-        return Vec::new();
+        return vec![
+            Kind {
+                id: "ruins",
+                footprint_m: 22.0,
+                road_m: 70.0,
+                site: SiteKind::Vista,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "cactus",
+                footprint_m: 10.0,
+                road_m: 15.0,
+                site: SiteKind::Roadside,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "cactus_b",
+                footprint_m: 10.0,
+                road_m: 18.0,
+                site: SiteKind::Roadside,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "wreck",
+                footprint_m: 8.0,
+                road_m: 14.0,
+                site: SiteKind::Roadside,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "tower",
+                footprint_m: 14.0,
+                road_m: 22.0,
+                site: SiteKind::Crest,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "arch",
+                footprint_m: 8.0,
+                road_m: 8.0,
+                site: SiteKind::Straight,
+                rarity: 1.0,
+                spans_road: true,
+            },
+        ];
     }
     vec![
         Kind {
@@ -87,6 +134,54 @@ fn kinds_for(theme: &str) -> Vec<Kind> {
             rarity: 1.0,
             spans_road: false,
         },
+        Kind {
+            id: "meadow",
+            footprint_m: 12.0,
+            road_m: 16.0,
+            site: SiteKind::Roadside,
+            rarity: 1.0,
+            spans_road: false,
+        },
+        Kind {
+            id: "herd",
+            footprint_m: 12.0,
+            road_m: 18.0,
+            site: SiteKind::Roadside,
+            rarity: 1.0,
+            spans_road: false,
+        },
+        Kind {
+            id: "camp",
+            footprint_m: 10.0,
+            road_m: 14.0,
+            site: SiteKind::Roadside,
+            rarity: 1.0,
+            spans_road: false,
+        },
+        Kind {
+            id: "sign",
+            footprint_m: 4.0,
+            road_m: 13.0,
+            site: SiteKind::Roadside,
+            rarity: 1.0,
+            spans_road: false,
+        },
+        Kind {
+            id: "tower",
+            footprint_m: 16.0,
+            road_m: 22.0,
+            site: SiteKind::Crest,
+            rarity: 1.0,
+            spans_road: false,
+        },
+        Kind {
+            id: "bridge",
+            footprint_m: 8.0,
+            road_m: 8.0,
+            site: SiteKind::Straight,
+            rarity: 1.0,
+            spans_road: true,
+        },
     ]
 }
 
@@ -104,7 +199,6 @@ pub fn prepare(course: &Course, field: &mut Field, theme: &Theme) -> Vec<PlacedL
         })
         .collect();
     let mut placed = place_landmarks(course, theme.seed, &requests, field);
-    placed.retain(|site| site.id != "waterfall" || slope_at(field, site.x, site.z) > 0.22);
     for site in &mut placed {
         if site.id == "waterfall" {
             site.pad = None;
@@ -149,15 +243,23 @@ fn spawn_one(parent: &mut Gd<Node3D>, site: &PlacedLandmark, index: usize, _them
         "village" => build_village_models(&mut root),
         "mill" => build_mill(&mut root),
         "statue" => build_statue(&mut root),
-        "bridge" => build_bridge(&mut root),
-        "animals" => build_animals(&mut root),
+        "bridge" | "arch" => build_bridge(&mut root),
+        "meadow" | "herd" | "animals" => build_animals(&mut root),
         "camp" => build_camp(&mut root),
-        "tower" => prop(&mut root, "Tower", CASTLE_TOWER, Vector3::ZERO, 0.0, 3.2),
+        "sign" => prop(
+            &mut root,
+            "Sign",
+            &format!("{NATURE}sign.glb"),
+            Vector3::ZERO,
+            0.2,
+            12.0,
+        ),
+        "tower" => build_castle(&mut root),
         "waterfall" => build_waterfall_models(&mut root),
-        "cactus" => build_cacti(&mut root),
-        "temple" => build_temple_models(&mut root),
+        "cactus" | "cactus_b" => build_cacti(&mut root),
+        "ruins" | "temple" => build_temple_models(&mut root),
         "ruin" => build_ruin(&mut root),
-        "wreck" => prop(&mut root, "Cart", MED_CART, Vector3::ZERO, 0.6, 1.6),
+        "wreck" => prop(&mut root, "Cart", MED_CART, Vector3::ZERO, 1.2, 3.6),
         _ => {}
     }
     parent.add_child(&root);
@@ -170,6 +272,7 @@ const CASTLE: &str = "res://assets/landmarks/kenney-castle/models/";
 const MED_MILL: &str = "res://assets/landmarks/quaternius-medieval/models/mill.gltf";
 const MED_CART: &str = "res://assets/landmarks/quaternius-medieval/models/cart.gltf";
 const CASTLE_TOWER: &str = "res://assets/landmarks/kenney-castle/models/tower-square.glb";
+const STATUE: &str = "res://assets/landmarks/polyhaven-gothic-statue/gothic_statue.gltf";
 
 fn slope_at(field: &Field, x: f32, z: f32) -> f32 {
     let step = 6.0;
@@ -301,65 +404,110 @@ fn build_village_models(root: &mut Gd<Node3D>) {
 }
 
 fn build_statue(root: &mut Gd<Node3D>) {
+    let scale = 6.0;
     prop(
         root,
-        "Column",
+        "Plinth",
         &format!("{NATURE}statue_column.glb"),
         Vector3::ZERO,
         0.2,
-        4.0,
+        2.2,
     );
+    // Mesh origin sits about 1.21 m above the feet. Scale makes a figure ~8 m tall.
     prop(
         root,
-        "Obelisk",
-        &format!("{NATURE}statue_obelisk.glb"),
-        Vector3::new(0.0, 3.2, 0.0),
-        0.0,
-        3.5,
-    );
-    prop(
-        root,
-        "Flag",
-        &format!("{CASTLE}flag.glb"),
-        Vector3::new(1.2, 6.5, 0.0),
+        "Figure",
+        STATUE,
+        Vector3::new(0.0, 1.21 * scale, 0.0),
         0.4,
-        2.0,
+        scale,
     );
 }
 
 fn build_bridge(root: &mut Gd<Node3D>) {
-    for (index, x) in [-4.0_f32, 0.0, 4.0].iter().enumerate() {
+    prop(
+        root,
+        "Gate",
+        &format!("{CASTLE}gate.glb"),
+        Vector3::ZERO,
+        0.0,
+        5.5,
+    );
+    for (index, x) in [-6.0_f32, 6.0].iter().enumerate() {
         prop(
             root,
-            &format!("Span{index}"),
-            &format!("{NATURE}bridge_wood.glb"),
-            Vector3::new(*x, 0.4, 0.0),
-            1.57,
-            3.5,
+            &format!("Pier{index}"),
+            CASTLE_TOWER,
+            Vector3::new(*x, 0.0, 0.0),
+            0.0,
+            2.4,
         );
     }
 }
 
 fn build_animals(root: &mut Gd<Node3D>) {
-    for i in 0..5 {
-        let x = (i % 3) as f32 * 2.4 - 2.0;
-        let z = (i / 3) as f32 * 2.8;
+    for i in 0..8 {
+        let x = (i % 4) as f32 * 2.2 - 3.3;
+        let z = (i / 4) as f32 * 3.0 - 1.0;
         prop(
             root,
             &format!("Sheep{i}"),
             &format!("{ANIMAL}sheep.gltf"),
             Vector3::new(x, 0.0, z),
-            i as f32,
-            0.38,
+            i as f32 * 0.7,
+            0.55,
         );
     }
     prop(
         root,
-        "Cow",
+        "CowA",
         &format!("{ANIMAL}cow.gltf"),
-        Vector3::new(3.5, 0.0, 1.0),
-        0.8,
-        0.42,
+        Vector3::new(-4.5, 0.0, 3.2),
+        0.4,
+        0.5,
+    );
+    prop(
+        root,
+        "CowB",
+        &format!("{ANIMAL}cow.gltf"),
+        Vector3::new(2.2, 0.0, 3.6),
+        1.8,
+        0.48,
+    );
+    for i in 0..6 {
+        let z = -4.0 + i as f32 * 1.8;
+        prop(
+            root,
+            &format!("FenceL{i}"),
+            &format!("{MED}fence.gltf"),
+            Vector3::new(-6.5, 0.0, z),
+            0.0,
+            5.0,
+        );
+        prop(
+            root,
+            &format!("FenceR{i}"),
+            &format!("{MED}fence.gltf"),
+            Vector3::new(6.5, 0.0, z),
+            0.0,
+            5.0,
+        );
+    }
+    prop(
+        root,
+        "Hay",
+        &format!("{MED}hay.gltf"),
+        Vector3::new(4.0, 0.0, -2.0),
+        0.3,
+        12.0,
+    );
+    prop(
+        root,
+        "Trough",
+        &format!("{MED}well.gltf"),
+        Vector3::new(-2.0, 0.0, 4.5),
+        1.2,
+        1.6,
     );
 }
 
@@ -426,17 +574,17 @@ fn build_camp(root: &mut Gd<Node3D>) {
         root,
         "TentA",
         &format!("{NATURE}tent_detailedOpen.glb"),
-        Vector3::new(-5.5, 0.0, 1.5),
-        0.4,
-        4.6,
+        Vector3::new(-3.2, 0.0, 0.6),
+        0.5,
+        4.4,
     );
     prop(
         root,
         "TentB",
         &format!("{NATURE}tent_smallOpen.glb"),
-        Vector3::new(6.0, 0.0, -1.0),
-        -0.6,
-        4.2,
+        Vector3::new(3.4, 0.0, -0.4),
+        -0.7,
+        4.0,
     );
     prop(
         root,
@@ -444,16 +592,23 @@ fn build_camp(root: &mut Gd<Node3D>) {
         &format!("{NATURE}campfire_logs.glb"),
         Vector3::ZERO,
         0.2,
-        3.4,
+        2.8,
     );
     prop(
         root,
-        "Wood",
-        &format!("{MED}hay.gltf"),
-        Vector3::new(2.0, 0.0, 2.2),
-        0.5,
-        8.0,
+        "Logs",
+        &format!("{NATURE}log_stack.glb"),
+        Vector3::new(2.4, 0.0, 1.6),
+        0.8,
+        2.0,
     );
+    let mut light = godot::classes::OmniLight3D::new_alloc();
+    light.set_name("FireLight");
+    light.set_position(Vector3::new(0.0, 1.2, 0.0));
+    light.set_param(godot::classes::light_3d::Param::ENERGY, 2.4);
+    light.set_param(godot::classes::light_3d::Param::RANGE, 14.0);
+    light.set_color(Color::from_rgb(1.0, 0.62, 0.28));
+    root.add_child(&light);
 }
 
 fn build_cacti(root: &mut Gd<Node3D>) {
@@ -478,7 +633,7 @@ fn build_cacti(root: &mut Gd<Node3D>) {
             &format!("{NATURE}{model}"),
             Vector3::new(*x, 0.0, *z),
             i as f32 * 0.4,
-            2.4,
+            5.2,
         );
     }
 }
@@ -513,40 +668,106 @@ fn build_ruin(root: &mut Gd<Node3D>) {
     );
 }
 
-fn build_temple_models(root: &mut Gd<Node3D>) {
+fn build_castle(root: &mut Gd<Node3D>) {
     prop(
         root,
-        "Tower",
+        "Keep",
         CASTLE_TOWER,
-        Vector3::new(0.0, 0.0, 8.0),
+        Vector3::new(0.0, 0.0, 2.0),
         0.2,
+        9.0,
+    );
+    prop(
+        root,
+        "FlankL",
+        CASTLE_TOWER,
+        Vector3::new(-8.0, 0.0, -2.0),
+        0.4,
         4.2,
     );
-    for (index, x) in [-8.0_f32, -4.0, 4.0, 8.0].iter().enumerate() {
-        prop(
-            root,
-            &format!("Column{index}"),
-            &format!("{NATURE}statue_column.glb"),
-            Vector3::new(*x, 0.0, 0.0),
-            0.1 * index as f32,
-            4.0,
-        );
-    }
+    prop(
+        root,
+        "FlankR",
+        &format!("{CASTLE}tower-base.glb"),
+        Vector3::new(7.0, 0.0, -1.0),
+        1.1,
+        3.6,
+    );
     prop(
         root,
         "Wall",
         &format!("{CASTLE}wall-narrow.glb"),
-        Vector3::new(0.0, 0.0, -2.0),
-        0.0,
-        2.0,
+        Vector3::new(0.0, 0.0, -4.0),
+        0.1,
+        3.4,
     );
     prop(
         root,
-        "Rocks",
+        "Gate",
+        &format!("{CASTLE}gate.glb"),
+        Vector3::new(-2.0, 0.0, -5.0),
+        0.3,
+        2.8,
+    );
+    prop(
+        root,
+        "Rubble",
         &format!("{CASTLE}rocks-large.glb"),
-        Vector3::new(6.0, 0.0, 4.0),
+        Vector3::new(5.0, 0.0, 3.0),
         0.8,
-        1.6,
+        2.2,
+    );
+}
+
+fn build_temple_models(root: &mut Gd<Node3D>) {
+    for row in 0..2 {
+        for index in 0..5 {
+            let fallen = row == 1 && index == 3;
+            prop(
+                root,
+                &format!("Column{row}{index}"),
+                &format!("{NATURE}statue_column.glb"),
+                Vector3::new(
+                    -10.0 + index as f32 * 5.0,
+                    if fallen { 0.4 } else { 0.0 },
+                    row as f32 * 8.0,
+                ),
+                if fallen { 1.4 } else { 0.1 * index as f32 },
+                if fallen { 4.2 } else { 5.5 },
+            );
+        }
+    }
+    prop(
+        root,
+        "Arch",
+        &format!("{CASTLE}gate.glb"),
+        Vector3::new(0.0, 0.0, -4.0),
+        0.0,
+        4.5,
+    );
+    prop(
+        root,
+        "WallL",
+        &format!("{CASTLE}wall-narrow.glb"),
+        Vector3::new(-8.0, 0.0, 12.0),
+        0.2,
+        3.2,
+    );
+    prop(
+        root,
+        "WallR",
+        &format!("{CASTLE}wall-narrow.glb"),
+        Vector3::new(8.0, 0.0, 12.0),
+        -0.3,
+        2.6,
+    );
+    prop(
+        root,
+        "Steps",
+        &format!("{MED}path_straight.gltf"),
+        Vector3::new(0.0, 0.0, -8.0),
+        0.0,
+        3.0,
     );
 }
 
@@ -555,35 +776,61 @@ fn build_waterfall_models(root: &mut Gd<Node3D>) {
         root,
         "CliffA",
         &format!("{NATURE}cliff_waterfall_rock.glb"),
-        Vector3::new(0.0, 0.0, -1.0),
+        Vector3::new(0.0, 0.0, 1.0),
         0.0,
-        4.5,
+        8.0,
     );
     prop(
         root,
         "CliffB",
         &format!("{NATURE}cliff_waterfallTop_rock.glb"),
-        Vector3::new(0.0, 3.5, -1.2),
+        Vector3::new(0.2, 6.5, 1.4),
         0.1,
-        4.0,
+        7.0,
     );
     prop(
         root,
         "CliffC",
-        &format!("{NATURE}rock_largeA.glb"),
-        Vector3::new(-2.5, 0.0, 0.5),
-        0.6,
-        3.0,
+        &format!("{NATURE}cliff_large_rock.glb"),
+        Vector3::new(-3.5, 2.0, 0.4),
+        0.5,
+        6.0,
     );
-    let mut sheet = quad(2.2, 6.0, water_material(Color::from_rgb(0.72, 0.9, 1.0)));
-    sheet.set_name("Falls");
-    sheet.set_position(Vector3::new(0.2, 3.2, 0.8));
-    root.add_child(&sheet);
-    let mut pool = quad(8.0, 5.0, water_material(Color::from_rgb(0.25, 0.55, 0.75)));
+    prop(
+        root,
+        "CliffD",
+        &format!("{NATURE}rock_largeA.glb"),
+        Vector3::new(3.2, 0.0, 0.2),
+        0.8,
+        5.5,
+    );
+    for (index, offset) in [0.0_f32, 0.35, -0.28].iter().enumerate() {
+        let mut sheet = quad(2.4, 14.0, water_material(Color::from_rgb(0.75, 0.92, 1.0)));
+        sheet.set_name(&format!("Falls{index}"));
+        sheet.set_position(Vector3::new(*offset, 7.0, 2.4));
+        root.add_child(&sheet);
+    }
+    let mut foam = quad(6.0, 2.2, water_material(Color::from_rgb(0.92, 0.96, 1.0)));
+    foam.set_name("Foam");
+    foam.set_position(Vector3::new(0.0, 0.8, 3.6));
+    root.add_child(&foam);
+    let mut pool = quad(10.0, 7.0, water_material(Color::from_rgb(0.22, 0.48, 0.62)));
     pool.set_name("Pool");
     pool.set_rotation(Vector3::new(-std::f32::consts::FRAC_PI_2, 0.0, 0.0));
-    pool.set_position(Vector3::new(0.0, 0.15, 3.0));
+    pool.set_position(Vector3::new(0.0, 0.12, 6.0));
     root.add_child(&pool);
+    let mut mist = quad(4.0, 3.0, smoke_material());
+    mist.set_name("Mist");
+    mist.set_position(Vector3::new(0.2, 1.6, 4.2));
+    root.add_child(&mist);
+    prop(
+        root,
+        "Culvert",
+        &format!("{NATURE}bridge_wood.glb"),
+        Vector3::new(0.0, 0.2, -6.0),
+        1.57,
+        4.0,
+    );
 }
 
 fn build_waterfall(root: &mut Gd<Node3D>) {

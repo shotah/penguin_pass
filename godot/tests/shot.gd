@@ -26,6 +26,7 @@ var _title := false
 var _fish := false
 var _arcade := false
 var _follow := false
+var _extras := false
 var _banked := false
 var _dir := ""
 var _view := 0
@@ -106,6 +107,7 @@ func _read_args() -> void:
 	_fish = args.has("--fish")
 	_arcade = args.has("--arcade")
 	_follow = args.has("--follow")
+	_extras = args.has("--extras")
 	_dir = _arg(args, "--dir", "")
 	if _bench:
 		_frames = max(_frames, 240)
@@ -141,6 +143,13 @@ func _on_drawn() -> void:
 
 
 func _views() -> Array:
+	if _extras:
+		return [
+			["bots-peloton", 180.0, false, 1280, 800, "bots"],
+			["workout-picker", 8.0, false, 1280, 800, "workout-picker"],
+			["workout-hud", 80.0, false, 1280, 800, "workout-hud"],
+			["settings-extras", 8.0, false, 1280, 800, "settings-extras"],
+		]
 	if _follow:
 		return [
 			["kit-sunrise", 40.0, false, 1280, 800, "kit"],
@@ -312,6 +321,27 @@ func _pose(kind: String) -> void:
 		_game.debug_menu_action("accept")
 		_game.debug_menu_action("right")
 		_game.debug_menu_action("accept")
+	elif kind == "bots":
+		_game.debug_show_title()
+		_game.debug_start_ride()
+		_game.debug_seek(180.0, 180.0, 0.0)
+	elif kind == "workout-picker":
+		_game.debug_show_title()
+		for _step in 5:
+			_game.debug_menu_action("down")
+		_game.debug_menu_action("accept")
+	elif kind == "workout-hud":
+		_game.debug_show_title()
+		_game.debug_select_workout(0)
+		_game.debug_start_ride()
+		_game.debug_seek(80.0, 180.0, 0.0)
+	elif kind == "settings-extras":
+		_game.debug_show_title()
+		for _step in 4:
+			_game.debug_menu_action("down")
+		_game.debug_menu_action("accept")
+		for _step in 21:
+			_game.debug_menu_action("down")
 	elif kind == "kit":
 		_game.debug_show_title()
 		_game.debug_set_kit(str(_views()[_view][0]))

@@ -10,7 +10,10 @@ pp-cast = { path = "../pp-cast" }
 pp-core = { path = "../pp-core" }
 pp-course = { path = "../pp-course" }
 pp-arcade = { path = "../pp-arcade" }
+pp-bots = { path = "../pp-bots" }
 pp-record = { path = "../pp-record" }
+pp-strava = { path = "../pp-strava" }
+pp-workout = { path = "../pp-workout" }
 pp-routegen = { path = "../pp-routegen" }
 pp-segments = { path = "../pp-segments" }
 pp-trainer = { path = "../pp-trainer" }
@@ -21,6 +24,7 @@ toml = "0.8"
 [dev-dependencies]
 fitparser = "0.12"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json"] }
+tiny_http = { version = "0.12", default-features = false }
 
 [lints]
 workspace = true

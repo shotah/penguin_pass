@@ -116,6 +116,8 @@ pub fn install() {
         &[JoyButton::X],
         None,
     );
+    bind_keys(&mut map, "workout_easier", &[Key::BRACKETLEFT], &[], None);
+    bind_keys(&mut map, "workout_harder", &[Key::BRACKETRIGHT], &[], None);
     bind_keys(
         &mut map,
         "music_next",

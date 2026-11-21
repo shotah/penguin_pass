@@ -15,6 +15,11 @@ pub const MIN_SPACING_M: f64 = 400.0;
 pub enum SiteKind {
     /// Just past a bend with a large heading change.
     Bend,
+    /// Straight ahead of a bend's approach, on the outside, past the apex.
+    /// The rider rides toward it, then the road turns away beside it.
+    Vista,
+    /// A few metres off the asphalt, large in the forward view.
+    Roadside,
     /// Where a climb turns into a descent.
     Crest,
     /// The highest point on the course.
@@ -96,10 +101,12 @@ pub fn place_landmarks(
     let mut ordered: Vec<&LandmarkRequest> = requests.iter().collect();
     ordered.sort_by_key(|request| match request.site {
         SiteKind::Summit => 0,
-        SiteKind::Valley => 1,
+        SiteKind::Vista => 1,
         SiteKind::Crest => 2,
-        SiteKind::Bend => 3,
-        SiteKind::Straight => 4,
+        SiteKind::Valley => 3,
+        SiteKind::Bend => 4,
+        SiteKind::Roadside => 5,
+        SiteKind::Straight => 6,
     });
     let mut placed = Vec::new();
     for request in &ordered {
@@ -139,16 +146,32 @@ fn try_place(
         if preferred_only && candidate.kind != request.site {
             continue;
         }
+        if request.spans_road && candidate.distance_m < 700.0 {
+            continue;
+        }
+        if request.site == SiteKind::Vista && candidate.kind != SiteKind::Vista {
+            continue;
+        }
         if too_close(candidate.distance_m, placed) {
             continue;
         }
-        let offset = request.road_m.clamp(15.0, 120.0);
-        let (x, z) = if request.spans_road {
+        let offset = match request.site {
+            SiteKind::Roadside => request.road_m.clamp(13.0, 26.0),
+            SiteKind::Vista => request.road_m.clamp(45.0, 110.0),
+            SiteKind::Crest => request.road_m.clamp(16.0, 36.0),
+            _ => request.road_m.clamp(15.0, 120.0),
+        };
+        let placed_at = if request.site == SiteKind::Vista {
+            vista_point(course, candidate, offset, ground)
+        } else if request.spans_road {
             let at = course.position_at(candidate.distance_m);
-            (at[0], at[2])
+            Some((at[0], at[2], course.tangent_at(candidate.distance_m)))
         } else if let Some((x, z, _)) = stand_off(course, candidate, offset, ground) {
-            (x, z)
+            Some((x, z, course.tangent_at(candidate.distance_m)))
         } else {
+            None
+        };
+        let Some((x, z, face)) = placed_at else {
             continue;
         };
         let slope = slope_at(ground, x, z);
@@ -166,8 +189,13 @@ fn try_place(
         } else {
             None
         };
-        let tangent = course.tangent_at(candidate.distance_m);
-        let lead = (offset / 0.45).clamp(36.0, 160.0);
+        let lead = match request.site {
+            SiteKind::Vista => 70.0,
+            SiteKind::Roadside => 32.0,
+            SiteKind::Crest => 55.0,
+            _ if request.spans_road => 55.0,
+            _ => (offset / 0.45).clamp(36.0, 160.0),
+        };
         let reveal_d = (candidate.distance_m - f64::from(lead)).max(0.0);
         let reveal = course.position_at(reveal_d);
         placed.push(PlacedLandmark {
@@ -175,7 +203,7 @@ fn try_place(
             x,
             z,
             ground_y,
-            yaw: (-tangent[0]).atan2(-tangent[2]),
+            yaw: (-face[0]).atan2(-face[2]),
             distance_m: candidate.distance_m,
             site: candidate.kind,
             pad,
@@ -234,6 +262,18 @@ fn candidates(course: &Course) -> Vec<Candidate> {
                 kind: SiteKind::Bend,
                 turn,
             });
+            out.push(Candidate {
+                distance_m: distance,
+                kind: SiteKind::Vista,
+                turn,
+            });
+        }
+        if turn.abs() < 0.18 && index > 12 && index % 12 == 0 {
+            out.push(Candidate {
+                distance_m: distance,
+                kind: SiteKind::Roadside,
+                turn: 0.0,
+            });
         }
         if before.3 > 2.0
             && grade > -1.0
@@ -262,6 +302,11 @@ fn candidates(course: &Course) -> Vec<Candidate> {
                 kind: SiteKind::Straight,
                 turn: 0.0,
             });
+            out.push(Candidate {
+                distance_m: distance,
+                kind: SiteKind::Roadside,
+                turn: 0.0,
+            });
         }
     }
     out.sort_by(|a, b| {
@@ -276,6 +321,37 @@ fn heading_delta(from: [f32; 3], to: [f32; 3]) -> f32 {
     let cross = from[0] * to[2] - from[2] * to[0];
     let dot = from[0] * to[0] + from[2] * to[2];
     cross.atan2(dot)
+}
+
+/// Ahead of the approach, on the outside of the bend, so it terminates the view.
+fn vista_point(
+    course: &Course,
+    candidate: &Candidate,
+    ahead: f32,
+    ground: &impl GroundQuery,
+) -> Option<(f32, f32, [f32; 3])> {
+    let apex = candidate.distance_m;
+    let approach = (apex - 50.0).max(0.0);
+    let tangent = course.tangent_at(approach);
+    let at = course.position_at(apex);
+    let mut right_x = -tangent[2];
+    let mut right_z = tangent[0];
+    let span = right_x.hypot(right_z);
+    if span < 1.0e-4 {
+        return None;
+    }
+    right_x /= span;
+    right_z /= span;
+    let outside = if candidate.turn >= 0.0 { -1.0 } else { 1.0 };
+    for lateral in [18.0_f32, 28.0, 40.0] {
+        let x = at[0] + tangent[0] * ahead + right_x * outside * lateral;
+        let z = at[2] + tangent[2] * ahead + right_z * outside * lateral;
+        if ground.road_distance(x, z) < 14.0 {
+            continue;
+        }
+        return Some((x, z, tangent));
+    }
+    None
 }
 
 fn stand_off(
@@ -688,5 +764,130 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn ahead_of(course: &Course, site: &PlacedLandmark) -> f32 {
+        let at = course.position_at(site.reveal_m);
+        let tangent = course.tangent_at(site.reveal_m);
+        let dx = site.x - at[0];
+        let dz = site.z - at[2];
+        let len = dx.hypot(dz).max(1.0);
+        let tlen = tangent[0].hypot(tangent[2]).max(0.001);
+        (dx / len) * (tangent[0] / tlen) + (dz / len) * (tangent[2] / tlen)
+    }
+
+    #[test]
+    fn a_vista_is_ahead_of_the_approach_and_a_roadside_is_close() {
+        let course = Course::penguin_pass();
+        let requests = vec![
+            LandmarkRequest {
+                id: "statue".into(),
+                footprint_m: 6.0,
+                road_m: 70.0,
+                site: SiteKind::Vista,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            LandmarkRequest {
+                id: "meadow".into(),
+                footprint_m: 10.0,
+                road_m: 16.0,
+                site: SiteKind::Roadside,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            LandmarkRequest {
+                id: "bridge".into(),
+                footprint_m: 6.0,
+                road_m: 8.0,
+                site: SiteKind::Straight,
+                rarity: 1.0,
+                spans_road: true,
+            },
+        ];
+        let placed = place_landmarks(&course, 3, &requests, &Flat);
+        let vista = placed
+            .iter()
+            .find(|site| site.id == "statue")
+            .expect("vista");
+        let dot = ahead_of(&course, vista);
+        assert!(dot > 0.90, "vista sits {dot:.2} off the forward view");
+        assert!(Flat.road_distance(vista.x, vista.z) >= 12.0);
+        let side = placed
+            .iter()
+            .find(|site| site.id == "meadow")
+            .expect("roadside");
+        let gap = Flat.road_distance(side.x, side.z);
+        assert!(
+            (13.0..30.0).contains(&gap),
+            "roadside is {gap:.1} m from the road"
+        );
+        assert!(
+            ahead_of(&course, side) > 0.80,
+            "roadside is outside the forward view"
+        );
+        let bridge = placed
+            .iter()
+            .find(|site| site.id == "bridge")
+            .expect("bridge");
+        assert!(Flat.road_distance(bridge.x, bridge.z) < 8.0);
+        assert!(bridge.distance_m >= 700.0);
+    }
+
+    #[test]
+    fn a_ten_kilometre_mountain_gets_a_site_every_few_hundred_metres() {
+        use pp_routegen::{RouteSpec, Terrain, TerrainPreset, generate};
+        let spec = RouteSpec::new(
+            "mountain",
+            11,
+            10_000.0,
+            Terrain::Preset(TerrainPreset::Mountain),
+        );
+        let course = generate(&spec).expect("mountain").course().clone();
+        let mut requests = Vec::new();
+        for (index, kind) in [
+            SiteKind::Vista,
+            SiteKind::Roadside,
+            SiteKind::Crest,
+            SiteKind::Vista,
+            SiteKind::Roadside,
+            SiteKind::Straight,
+            SiteKind::Roadside,
+            SiteKind::Crest,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            requests.push(LandmarkRequest {
+                id: format!("kind{index}"),
+                footprint_m: 8.0,
+                road_m: if kind == SiteKind::Roadside {
+                    16.0
+                } else {
+                    24.0
+                },
+                site: kind,
+                rarity: 1.0,
+                spans_road: kind == SiteKind::Straight,
+            });
+        }
+        let placed = place_landmarks(&course, 11, &requests, &Flat);
+        let spacing = course.length_m() / placed.len().max(1) as f64;
+        let pass = place_landmarks(&Course::penguin_pass(), 1, &requests, &Flat);
+        println!(
+            "SITE_COUNTS mountain_m {:.0} placed {} every {:.0} pass_m {:.0} pass_placed {}",
+            course.length_m(),
+            placed.len(),
+            spacing,
+            Course::penguin_pass().length_m(),
+            pass.len()
+        );
+        assert!(
+            placed.len() >= 6,
+            "mountain {:.0} m placed only {}",
+            course.length_m(),
+            placed.len()
+        );
+        assert!(spacing < 900.0, "sites are {spacing:.0} m apart");
     }
 }

@@ -136,6 +136,54 @@ pub enum RideEvent {
         /// The stored ghost's lap, in seconds.
         previous_s: Option<f64>,
     },
+    /// A workout step became the current one.
+    WorkoutStepStarted {
+        /// Short label, such as `Sweet spot 2 of 3`.
+        label: String,
+        /// Target at the start of the step, in watts. `None` when the step is open.
+        target_w: Option<f32>,
+    },
+    /// The current step has a few seconds left.
+    WorkoutStepEndingSoon {
+        /// Seconds remaining in the warning.
+        seconds: u8,
+    },
+    /// A workout cue fired.
+    WorkoutCue {
+        /// Cue text.
+        text: String,
+    },
+    /// The workout plan ended.
+    WorkoutFinished {
+        /// Ramp-test FTP estimate, in watts, when this plan was a ramp test and a scored minute finished.
+        ramp_test_ftp_w: Option<u16>,
+    },
+    /// Strava login finished.
+    StravaConnected {
+        /// Athlete name.
+        athlete: String,
+    },
+    /// The Strava login stopped without a saved connection.
+    StravaConnectFailed {
+        /// A short reason safe to show.
+        reason: String,
+    },
+    /// A FIT upload has started.
+    StravaUploadStarted,
+    /// Strava accepted the ride.
+    StravaUploaded {
+        /// Strava activity id.
+        activity_id: u64,
+        /// Activity page.
+        url: String,
+    },
+    /// The upload did not finish.
+    StravaUploadFailed {
+        /// A short reason safe to show.
+        reason: String,
+        /// Strava reported this file as a duplicate.
+        duplicate: bool,
+    },
 }
 
 #[derive(Debug, Default)]

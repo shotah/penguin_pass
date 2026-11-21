@@ -118,6 +118,46 @@ pub struct PlayView {
     pub powerup_held: Option<PowerupKind>,
     /// The powerup that is running.
     pub powerup_active: Option<ActivePowerup>,
+    /// Bots on the road. Empty when bots are off.
+    pub bots: Vec<pp_bots::BotState>,
+    /// Drag saved by drafting, from 0 to 40.
+    pub draft_saving_pct: u8,
+    /// The workout step on screen. `None` on a free ride.
+    pub workout: Option<pp_workout::WorkoutView>,
+    /// Bars for the workout graph. Empty on a free ride.
+    pub workout_profile: Vec<WorkoutBar>,
+    /// Last ERG target sent to the trainer, while ERG is holding one.
+    pub workout_erg_w: Option<u16>,
+}
+
+/// One workout in the picker.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkoutSummary {
+    /// Stable id.
+    pub id: String,
+    /// Name shown in the list.
+    pub name: String,
+    /// One or two sentences.
+    pub description: String,
+    /// Planned length, in seconds.
+    pub duration_s: f32,
+    /// The plan is the ramp test.
+    pub ramp_test: bool,
+    /// Flattened bars for the preview graph.
+    pub profile: Vec<WorkoutBar>,
+}
+
+/// One bar of a workout graph.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkoutBar {
+    /// Width of the bar, in seconds.
+    pub duration_s: f32,
+    /// Fraction of FTP at the left edge.
+    pub start_ftp: f32,
+    /// Fraction of FTP at the right edge.
+    pub end_ftp: f32,
+    /// Free ride or max effort. The trainer does not hold a target.
+    pub open: bool,
 }
 
 /// One badge on the profile screen.
@@ -270,6 +310,10 @@ impl Play {
         }
     }
 
+    pub(crate) fn lane(&self) -> f32 {
+        self.lane
+    }
+
     pub(crate) fn modifiers(&self) -> PhysicsModifiers {
         self.run
             .as_ref()
@@ -376,6 +420,11 @@ impl Play {
             combo: if arcade { run.fish.combo() } else { 0 },
             powerup_held: if arcade { run.power.held() } else { None },
             powerup_active: if arcade { active_powerup(run) } else { None },
+            bots: Vec::new(),
+            draft_saving_pct: 0,
+            workout: None,
+            workout_profile: Vec::new(),
+            workout_erg_w: None,
         }
     }
 
@@ -644,6 +693,11 @@ fn empty_view() -> PlayView {
         combo: 0,
         powerup_held: None,
         powerup_active: None,
+        bots: Vec::new(),
+        draft_saving_pct: 0,
+        workout: None,
+        workout_profile: Vec::new(),
+        workout_erg_w: None,
     }
 }
 
