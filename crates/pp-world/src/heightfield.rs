@@ -62,6 +62,8 @@ pub struct Field {
     surface_nz: i32,
     surface: Vec<f32>,
     snow_line: f32,
+    /// Flat pads for landmarks, `(x, z, radius_m, height_m)`.
+    pads: Vec<(f32, f32, f32, f32)>,
 }
 
 impl Field {
@@ -166,7 +168,14 @@ impl Field {
             surface_nz: 1,
             surface: vec![0.0],
             snow_line: 200.0,
+            pads: Vec::new(),
         }
+    }
+
+    /// Level small pads into the ground. A pad never changes the road bed:
+    /// inside 12 m of the centreline the height is left alone.
+    pub fn set_pads(&mut self, pads: Vec<(f32, f32, f32, f32)>) {
+        self.pads = pads;
     }
 
     /// Mountains for this theme, then one baked surface every level samples.
@@ -257,16 +266,36 @@ impl Field {
     /// function of position only, so every level still agrees.
     #[must_use]
     pub fn height(&self, x: f32, z: f32) -> f32 {
-        if self.road(x, z).0 > EXACT_FAR_M + 16.0 {
-            return self.sample_surface(x, z);
+        let base = if self.road(x, z).0 > EXACT_FAR_M + 16.0 {
+            self.sample_surface(x, z)
+        } else {
+            let (dist, road_y, field_y) = self.road_inputs(x, z);
+            let exact =
+                relief::compose(x, z, dist, road_y, field_y, &self.relief, self.relief_seed);
+            let fade = relief::smoothstep(EXACT_NEAR_M, EXACT_FAR_M, dist);
+            if fade <= 0.0 {
+                exact
+            } else {
+                exact + (self.sample_surface(x, z) - exact) * fade
+            }
+        };
+        self.with_pads(x, z, base)
+    }
+
+    fn with_pads(&self, x: f32, z: f32, height: f32) -> f32 {
+        if self.pads.is_empty() || self.road(x, z).0 < 12.0 {
+            return height;
         }
-        let (dist, road_y, field_y) = self.road_inputs(x, z);
-        let exact = relief::compose(x, z, dist, road_y, field_y, &self.relief, self.relief_seed);
-        let fade = relief::smoothstep(EXACT_NEAR_M, EXACT_FAR_M, dist);
-        if fade <= 0.0 {
-            return exact;
+        let mut out = height;
+        for &(px, pz, radius, flat) in &self.pads {
+            let distance = (x - px).hypot(z - pz);
+            if distance >= radius {
+                continue;
+            }
+            let edge = relief::smoothstep(radius * 0.45, radius, distance);
+            out = flat * (1.0 - edge) + height * edge;
         }
-        exact + (self.sample_surface(x, z) - exact) * fade
+        out
     }
 
     fn sample_surface(&self, x: f32, z: f32) -> f32 {

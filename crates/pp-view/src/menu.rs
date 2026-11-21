@@ -9,7 +9,7 @@ use pp_session::{
     MIN_BIKE_MASS_KG, MIN_FTP_W, MIN_RIDER_MASS_KG, MIN_TRAINER_DIFFICULTY, Settings,
 };
 
-const MAIN_ROWS: usize = 15;
+const MAIN_ROWS: usize = 18;
 
 /// What the player just pressed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,6 +126,8 @@ pub struct Snapshot {
     pub heart_line: String,
     /// Rider presets, id then display name, in menu order.
     pub riders: Vec<RiderOption>,
+    /// `default` plus the kits this profile has unlocked.
+    pub kits: Vec<RiderOption>,
 }
 
 /// One rider the settings row can show. The id is what gets saved.
@@ -266,27 +268,32 @@ impl MenuState {
                     self.selected_id.clear();
                     return Action::Scan;
                 }
-                11 => return Action::ChooseMusicFolder,
-                12 => {
+                12 => return Action::ChooseMusicFolder,
+                13 => {
                     self.page = Page::ConfirmRestart;
                     self.index = 0;
                 }
-                13 => {
+                14 => {
                     self.page = Page::ConfirmQuit;
                     self.index = 0;
                 }
-                14 => return Action::OpenRides,
-                1 | 7 | 8 | 9 => return Action::Apply(toggled(snap.settings.clone(), self.index)),
+                15 => return Action::OpenRides,
+                16 | 17 => return Action::Apply(toggled(snap.settings.clone(), self.index)),
+                1 | 8 | 9 | 10 => return Action::Apply(toggled(snap.settings.clone(), self.index)),
                 _ => {}
             },
             Command::Left | Command::Right => {
-                if self.index == 11 && matches!(command, Command::Right) {
+                if self.index == 12 && matches!(command, Command::Right) {
                     return Action::ChooseMusicFolder;
                 }
                 let increase = matches!(command, Command::Right);
-                if let Some(settings) =
-                    stepped(snap.settings.clone(), self.index, increase, &snap.riders)
-                {
+                if let Some(settings) = stepped(
+                    snap.settings.clone(),
+                    self.index,
+                    increase,
+                    &snap.riders,
+                    &snap.kits,
+                ) {
                     return Action::Apply(settings);
                 }
             }
@@ -426,6 +433,7 @@ impl MenuState {
             format!("Bike weight    {:.1} kg", settings.bike_mass_kg),
             format!("FTP    {} W", settings.ftp_w),
             format!("Rider    ◀ {} ▶", rider_name(snap)),
+            format!("Kit    ◀ {} ▶", kit_name(snap)),
             format!(
                 "Zwift controllers    {}{}",
                 on_off(settings.zwift_controllers),
@@ -438,6 +446,8 @@ impl MenuState {
             "Restart ride".to_owned(),
             "Quit".to_owned(),
             "Open rides folder".to_owned(),
+            format!("Fish and powerups    {}", on_off(settings.arcade)),
+            format!("Ghost    {}", on_off(settings.ghost)),
         ];
         let detail = if !self.save_error.is_empty() {
             self.save_error.clone()
@@ -445,12 +455,15 @@ impl MenuState {
             match self.index {
                 2 => "How much of the hill the trainer makes you feel. On-screen speed always uses the real hill.".to_owned(),
                 6 => "Left and right change the rider.".to_owned(),
-                7 => "Look for Zwift Click, Play, and Ride controllers.".to_owned(),
-                8 => dashboard_detail(snap),
+                7 => "Colours on that rider. Locked kits stay off this list.".to_owned(),
+                8 => "Look for Zwift Click, Play, and Ride controllers.".to_owned(),
+                9 => dashboard_detail(snap),
                 0 => "Open this to scan and connect. The ride keeps going.".to_owned(),
-                10 => "How loud the music is. Left and right change it immediately.".to_owned(),
-                11 => music_folder_detail(snap),
-                14 => "Show the folder of saved rides in the file manager.".to_owned(),
+                11 => "How loud the music is. Left and right change it immediately.".to_owned(),
+                12 => music_folder_detail(snap),
+                15 => "Show the folder of saved rides in the file manager.".to_owned(),
+                16 => "Fish to steer for, and the powerups they award.".to_owned(),
+                17 => "A pale rider on your best first lap.".to_owned(),
                 _ => String::new(),
             }
         };
@@ -557,12 +570,22 @@ pub fn rank(devices: &[Device]) -> Vec<Device> {
 fn toggled(mut settings: Settings, index: usize) -> Settings {
     match index {
         1 => settings.control_trainer = !settings.control_trainer,
-        7 => settings.zwift_controllers = !settings.zwift_controllers,
-        8 => settings.tv_dashboard_enabled = !settings.tv_dashboard_enabled,
-        9 => settings.fullscreen = !settings.fullscreen,
+        16 => settings.arcade = !settings.arcade,
+        17 => settings.ghost = !settings.ghost,
+        8 => settings.zwift_controllers = !settings.zwift_controllers,
+        9 => settings.tv_dashboard_enabled = !settings.tv_dashboard_enabled,
+        10 => settings.fullscreen = !settings.fullscreen,
         _ => {}
     }
     settings
+}
+
+fn kit_name(snap: &Snapshot) -> String {
+    snap.kits
+        .iter()
+        .find(|kit| kit.id == snap.settings.kit)
+        .map(|kit| kit.name.clone())
+        .unwrap_or_else(|| "Default".to_owned())
 }
 
 fn rider_name(snap: &Snapshot) -> String {
@@ -578,9 +601,10 @@ fn stepped(
     index: usize,
     increase: bool,
     riders: &[RiderOption],
+    kits: &[RiderOption],
 ) -> Option<Settings> {
     match index {
-        1 | 7 | 8 | 9 => Some(toggled(settings, index)),
+        1 | 8 | 9 | 10 | 16 | 17 => Some(toggled(settings, index)),
         2 => {
             settings.trainer_difficulty = step_f32(
                 settings.trainer_difficulty,
@@ -633,12 +657,28 @@ fn stepped(
             settings.rider = riders[next].id.clone();
             Some(settings)
         }
-        10 => {
+        7 => {
+            if kits.is_empty() {
+                return None;
+            }
+            let pos = kits
+                .iter()
+                .position(|kit| kit.id == settings.kit)
+                .unwrap_or(0);
+            let next = if increase {
+                (pos + 1) % kits.len()
+            } else {
+                (pos + kits.len() - 1) % kits.len()
+            };
+            settings.kit = kits[next].id.clone();
+            Some(settings)
+        }
+        11 => {
             let next = i32::from(settings.music_volume) + if increase { 5 } else { -5 };
             settings.music_volume = u8::try_from(next.clamp(0, 100)).unwrap_or(0);
             Some(settings)
         }
-        11 => {
+        12 => {
             if !increase {
                 settings.music_folder = None;
                 Some(settings)
@@ -764,6 +804,10 @@ mod tests {
                     name: "Sigrid".to_owned(),
                 },
             ],
+            kits: vec![RiderOption {
+                id: "default".to_owned(),
+                name: "Default".to_owned(),
+            }],
             devices: vec![
                 Device {
                     id: "FAKE:KICKR".to_owned(),
@@ -807,6 +851,25 @@ mod tests {
         next.settings = settings;
         let view = menu.view(&next);
         assert_eq!(view.lines[6], "Rider    ◀ Sigrid ▶");
+    }
+
+    #[test]
+    fn the_kit_row_lists_only_the_kits_it_was_given() {
+        let mut menu = MenuState::default();
+        menu.open_main();
+        let mut snap = snap();
+        snap.kits.push(RiderOption {
+            id: "kit-sunrise".to_owned(),
+            name: "Sunrise".to_owned(),
+        });
+        menu.index = 7;
+        let view = menu.view(&snap);
+        assert_eq!(view.lines[7], "Kit    ◀ Default ▶");
+        let Action::Apply(settings) = menu.handle(Command::Right, &snap) else {
+            panic!("kit");
+        };
+        assert_eq!(settings.kit, "kit-sunrise");
+        assert_eq!(settings.rider, "nils");
     }
 
     #[test]
@@ -868,7 +931,7 @@ mod tests {
     fn confirm_yes_quits_and_no_returns_and_bluetooth_has_a_plain_hint() {
         let mut menu = MenuState::default();
         menu.open_main();
-        menu.index = 13;
+        menu.index = 14;
         menu.handle(Command::Accept, &snap());
         assert_eq!(menu.page(), Page::ConfirmQuit);
         menu.handle(Command::Down, &snap());
@@ -877,7 +940,7 @@ mod tests {
             Action::None
         ));
         assert_eq!(menu.page(), Page::Main);
-        menu.index = 13;
+        menu.index = 14;
         menu.handle(Command::Accept, &snap());
         assert!(matches!(
             menu.handle(Command::Accept, &snap()),

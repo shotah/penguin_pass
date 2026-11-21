@@ -268,6 +268,16 @@ Three tiers, in the order they arrive:
 - [x] M12: save each ride as a FIT activity file for Strava and other
   sites (upload by hand; no upload has been tried yet)
 - [ ] M12: push rides to Strava with the rider's own API keys (no server)
+- [x] M13: fish to collect in the five lane positions, with a combo count
+- [x] M13: timed climb, sprint, and lap segments with a ghost of the
+  best first lap
+- [x] M13: powerups (Feather, Aero, Burst) earned from fish and segments
+- [x] M13: badges, a Progress screen, and three unlockable kits
+- [ ] M13: roadside landmarks. A village, a windmill, and one horizon
+  peak per theme are in; waterfalls, statues, and ruins are not yet
+  good enough to show
+- [ ] M13: all of the above ridden on the real trainer (so far only
+  with the simulated rider)
 - [ ] Later: Chromecast video, ANT+, riding a course in reverse
 
 ## Steam

@@ -26,6 +26,7 @@ mod course_sel;
 mod events;
 mod heart;
 mod link;
+mod play;
 mod readout;
 mod session;
 mod settings;
@@ -39,9 +40,15 @@ pub use course_sel::{CourseChoice, CourseOption, RidePhase};
 pub use events::{EVENT_QUEUE_CAP, RideEvent};
 pub use heart::{BleHeartRateFactory, HeartRateFactory, SensorEntry};
 pub use link::{BleTrainerFactory, TrainerFactory, TrainerLink};
+pub use play::{
+    ActivePowerup, ActiveSegment, BadgeView, FishView, GhostView, PlayView, ProfileView,
+    SegmentInfo,
+};
+pub use pp_arcade::PowerupKind;
 pub use pp_core::{RiderProfile, Telemetry};
 pub use pp_course::Course;
 pub use pp_routegen::TerrainPreset;
+pub use pp_segments::SegmentKind;
 pub use pp_trainer::{ConnectionState, DiscoveredTrainer, SessionMode, Trainer, TrainerError};
 pub use readout::{LiveReadout, MAX_POWER_WINDOW_S, POWER_AVERAGE_WINDOW_S};
 pub use session::{
@@ -59,5 +66,5 @@ pub use settings::{
 pub use signal::{
     SIGNAL_FAIR_DBM, SIGNAL_GOOD_DBM, SIGNAL_STRONG_DBM, SIGNAL_WEAK_DBM, signal_bars, signal_word,
 };
-pub use stats::{LapRecord, MOVING_SPEED_MPS, RideSummary};
+pub use stats::{LapRecord, MOVING_SPEED_MPS, RideSummary, SegmentResult};
 pub use zones::{PowerZone, power_zone};

@@ -46,6 +46,19 @@ impl LaneSpec {
         }
     }
 
+    /// Metres right of centre for a slot. 0 is the centre side.
+    #[must_use]
+    pub fn offset_for_slot(self, slot: u8) -> f32 {
+        self.offset(slot)
+    }
+
+    /// Arcade slot fraction, 0 at the centre side and 4 at the edge.
+    #[must_use]
+    pub fn slot_fraction(self, offset_m: f32) -> f32 {
+        let span = (self.outer_m - self.inner_m).max(0.001);
+        ((offset_m - self.inner_m) / span).clamp(0.0, 1.0) * f32::from(SLOTS - 1)
+    }
+
     fn offset(self, slot: u8) -> f32 {
         let last = SLOTS - 1;
         let t = f32::from(slot.min(last)) / f32::from(last);
@@ -124,6 +137,12 @@ impl Lane {
             lean_rad: lean,
             slot: self.slot,
         }
+    }
+
+    /// The lane the rider is easing across.
+    #[must_use]
+    pub fn spec(&self) -> LaneSpec {
+        self.spec
     }
 
     /// Metres right of centre, including a move that is still easing.

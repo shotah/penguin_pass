@@ -40,5 +40,14 @@
     {"kind": "tree", "ids": ["dead_tree_5", "dead_tree_4"], "density_per_ha": 8.0, "altitude": [-40.0, 500.0], "max_slope": 0.42, "min_road_m": 9.0, "max_road_m": 140.0, "scale": [0.75, 1.15], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.62, "cluster_frequency": 0.012, "seed": 13, "visibility_m": 400.0},
     {"kind": "rock", "ids": ["rock_medium_2", "rock_medium_3", "pebble_round_2"], "density_per_ha": 22.0, "altitude": [-20.0, 400.0], "max_slope": 0.85, "min_road_m": 7.0, "max_road_m": 70.0, "scale": [0.55, 1.35], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.45, "cluster_frequency": 0.02, "seed": 17, "visibility_m": 250.0},
     {"kind": "grass", "ids": ["grass_wispy_short", "grass_wispy_tall"], "density_per_ha": 36.0, "altitude": [-20.0, 180.0], "max_slope": 0.4, "min_road_m": 6.0, "max_road_m": 18.0, "scale": [0.45, 0.8], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.35, "cluster_frequency": 0.04, "seed": 23, "visibility_m": 50.0}
+  ],
+  "landmarks": [
+    {"id": "cactus", "enabled": false, "footprint_m": 14, "road_m": 28, "site": "straight", "rarity": 1.0},
+    {"id": "temple", "enabled": false, "footprint_m": 22, "road_m": 50, "site": "straight", "rarity": 1.0},
+    {"id": "ruin", "enabled": false, "footprint_m": 18, "road_m": 36, "site": "bend", "rarity": 1.0},
+    {"id": "tower", "enabled": false, "footprint_m": 10, "road_m": 40, "site": "crest", "rarity": 1.0},
+    {"id": "wreck", "enabled": false, "footprint_m": 8, "road_m": 22, "site": "bend", "rarity": 1.0},
+    {"id": "statue", "enabled": false, "footprint_m": 6, "road_m": 24, "site": "summit", "rarity": 1.0},
+    {"id": "bridge", "enabled": false, "footprint_m": 6, "road_m": 16, "site": "valley", "rarity": 1.0, "spans_road": true}
   ]
 }

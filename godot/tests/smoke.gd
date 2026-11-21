@@ -349,7 +349,7 @@ func _settings_hides(game: Node) -> bool:
 		_fail("settings panel did not show from the title")
 		return false
 	var quiet: float = game.debug_music_bus_db()
-	for _step in 10:
+	for _step in 11:
 		game.debug_menu_action("down")
 	game.debug_menu_action("right")
 	if abs(float(game.debug_music_bus_db()) - quiet) < 0.05:

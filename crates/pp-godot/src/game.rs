@@ -63,6 +63,13 @@ pub struct Game {
     pad_preview: bool,
     trainer_preview: Option<(String, String)>,
     ride_file: Option<pp_view::rides::RideFileNote>,
+    fish: Option<crate::fish::FishSchool>,
+    fish_preview: bool,
+    fish_count: u32,
+    fish_combo: u32,
+    banners: Option<crate::banners::Banners>,
+    ghost_rider: Option<Gd<Rider>>,
+    ghost_distance_m: f64,
     last: Telemetry,
     theme_name: String,
     theme_fallback: bool,
@@ -119,6 +126,13 @@ impl INode3D for Game {
             pad_preview: false,
             trainer_preview: None,
             ride_file: None,
+            fish: None,
+            fish_preview: false,
+            fish_count: 0,
+            fish_combo: 0,
+            banners: None,
+            ghost_rider: None,
+            ghost_distance_m: 0.0,
             last: Telemetry::default(),
             theme_name: String::new(),
             theme_fallback: false,
@@ -215,6 +229,22 @@ impl INode3D for Game {
         rider.set_name("Rider");
         rider.set_physics_interpolation_mode(PhysicsInterpolationMode::OFF);
         self.base_mut().add_child(&rider);
+        let school = {
+            let mut root = self.base_mut();
+            crate::fish::FishSchool::new(&mut root)
+        };
+        self.fish = Some(school);
+        let banners = {
+            let mut root = self.base_mut();
+            crate::banners::Banners::new(&mut root)
+        };
+        self.banners = Some(banners);
+        let mut ghost = Rider::new_alloc();
+        ghost.set_name("Ghost");
+        ghost.bind_mut().mark_ghost();
+        ghost.set_visible(false);
+        self.base_mut().add_child(&ghost);
+        self.ghost_rider = Some(ghost);
 
         let mut camera = CameraRig::new_alloc();
         camera.set_name("CameraRig");
@@ -308,6 +338,9 @@ impl INode3D for Game {
             if Input::singleton().is_action_just_pressed("lane_right") {
                 self.lane.nudge(true);
                 self.lane_moved = true;
+            }
+            if Input::singleton().is_action_just_pressed("activate_powerup") {
+                self.activate_powerup();
             }
             let watts = self.keys.target_power_w().round() as u16;
             self.session_mut().set_sim_power(watts);
@@ -521,6 +554,9 @@ impl Game {
     /// Power is the keyboard target used for every step.
     #[func]
     pub fn debug_seek(&mut self, distance_m: f64, power_w: f64, _elapsed_s: f64) {
+        if let Some(mut hud) = self.hud.clone() {
+            hud.bind_mut().clear_finish();
+        }
         self.debug_set_target_power(power_w);
         let target = distance_m.max(0.0);
         if self.session().telemetry().distance_m > target + 0.5 {
@@ -698,6 +734,7 @@ impl Game {
             Screen::ConfirmQuit => "confirm-quit",
             Screen::Summary => "summary",
             Screen::Course => "course",
+            Screen::Progress => "progress",
         };
         GString::from(name)
     }
@@ -712,6 +749,32 @@ impl Game {
             menu.close();
         }
         self.sync_music();
+    }
+
+    /// Wear this kit on the current rider. The id is saved with the settings.
+    #[func]
+    pub fn debug_set_kit(&mut self, id: GString) {
+        let mut settings = self.session().settings().clone();
+        settings.kit = id.to_string();
+        self.session_mut().apply_settings(settings);
+        self.sync_rider_preset();
+    }
+
+    /// Finish one fast lap so the next ride has a ghost and segment bests.
+    #[func]
+    pub fn debug_bank_best(&mut self) {
+        self.debug_start_ride();
+        self.debug_set_target_power(260.0);
+        self.debug_seek(5300.0, 260.0, 0.0);
+        self.session_mut().restart();
+        self.ghost_distance_m = 0.0;
+        self.shell = pp_view::shell::Shell::new(true);
+    }
+
+    /// Use the held powerup. No menu.
+    #[func]
+    pub fn debug_activate_powerup(&mut self) {
+        self.session_mut().activate_powerup();
     }
 
     /// Leave the title and start the ride.
@@ -836,6 +899,14 @@ impl Game {
         menu.hover(index as usize);
         menu.refresh(self.session_mut());
         self.menu = Some(menu);
+    }
+
+    /// Lay a pattern of fish ahead of the rider, for pictures. No session field.
+    #[func]
+    pub fn debug_show_fish(&mut self) {
+        self.fish_preview = true;
+        self.fish_count = 7;
+        self.fish_combo = 3;
     }
 
     /// Show a controller chip from [`pp_controllers::SimControllers`]. No radio.
@@ -1130,6 +1201,12 @@ impl Game {
             // Up for the opening of the ride, and until the first lane change.
             hud.set_lane_hint(!self.lane_moved);
             hud.set_pad_badge(self.pad_badge);
+            let fish_line = if self.session().settings().arcade {
+                pp_view::arcade::fish_counter(self.fish_count, self.fish_combo)
+            } else {
+                String::new()
+            };
+            hud.set_fish_text(&fish_line);
         }
         let distance = telemetry.lap_distance_m;
         let course = self.session().course().clone();
@@ -1137,6 +1214,55 @@ impl Game {
         let ahead = course.tangent_at(distance + 8.0);
         let turn = tangent.x * ahead[2] - tangent.z * ahead[0];
         let lane = self.lane.step(dt as f32);
+        let lane_spec = self.lane.spec();
+        let _slot = lane_spec.slot_fraction(lane.offset_m);
+        self.session_mut()
+            .set_lane_position(lane_spec.slot_fraction(lane.offset_m));
+        let play = self.session().play();
+        let arcade = self.session().settings().arcade;
+        self.fish_count = play.fish_count;
+        self.fish_combo = play.combo;
+        let spots = if self.fish_preview {
+            preview_fish(telemetry.distance_m)
+        } else if arcade {
+            play.fish_ahead
+                .iter()
+                .map(|fish| crate::fish::FishSpot {
+                    index: fish.index,
+                    distance_m: fish.total_distance_m,
+                    slot: fish.slot,
+                    golden: fish.golden,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let volume = f32::from(self.session().settings().music_volume) / 100.0;
+        if let Some(fish) = self.fish.as_mut() {
+            fish.sync(
+                &spots,
+                &course,
+                lane_spec,
+                dt as f32,
+                volume,
+                self.fish_combo,
+            );
+        }
+        if let Some(banners) = self.banners.as_mut() {
+            banners.sync(&play.segments, &course);
+        }
+        place_ghost(
+            &mut self.ghost_rider,
+            &mut self.ghost_distance_m,
+            &play,
+            &course,
+            lane.slot,
+            lane_spec,
+            dt,
+        );
+        if let Some(mut hud) = self.hud.clone() {
+            hud.bind_mut().set_chrome(ride_chrome(&play));
+        }
         let side = crate::road::flat_right(tangent);
         let position = position + side * lane.offset_m;
         let lean = (turn * telemetry.speed_mps * 0.18 + lane.lean_rad).clamp(-0.35, 0.35);
@@ -1317,6 +1443,21 @@ impl Game {
             facts.length_m / 1000.0,
             facts.total_ascent_m
         );
+        if self.shell.screen() == Screen::Progress {
+            let profile = self.session().profile();
+            let page = progress_page(&profile);
+            let rows = vec![
+                pp_view::shell::ShellRow {
+                    label: String::new(),
+                    detail: String::new(),
+                };
+                page.badges.len().max(1)
+            ];
+            self.shell.set_progress(rows, Vec::new());
+            if let Some(screens) = self.screens.as_mut() {
+                screens.set_progress_page(page);
+            }
+        }
         let cards = self.course_cards();
         let totals = self.session().summary();
         let summary_line = format!(
@@ -1420,11 +1561,13 @@ impl Game {
 
     fn sync_rider_preset(&mut self) {
         let id = self.session().settings().rider.clone();
+        let kit = self.session().settings().kit.clone();
         if let Some(rider) = self.rider.as_mut() {
             let mut rider = rider.bind_mut();
             if rider.preset_id() != id {
                 rider.set_preset(&id);
             }
+            rider.set_kit(&kit);
         }
     }
 
@@ -1563,6 +1706,7 @@ impl Game {
             PadAction::MenuRight => self.shell_command(Command::Right, true),
             PadAction::Accept => self.shell_command(Command::Accept, true),
             PadAction::Back => self.on_menu_key(),
+            PadAction::Activate => self.activate_powerup(),
         }
     }
 
@@ -1617,6 +1761,62 @@ impl Game {
                         continue;
                     }
                     (reason, 6.0)
+                }
+                pp_session::RideEvent::SegmentEntered { name } => (name, 2.5),
+                pp_session::RideEvent::SegmentFinished {
+                    name,
+                    time_s,
+                    previous_best_s,
+                    record,
+                } => {
+                    let clock = pp_view::arcade::segment_clock(time_s);
+                    let line = if record {
+                        "New record".to_owned()
+                    } else if let Some(best) = previous_best_s {
+                        let (text, ahead) = pp_view::arcade::split_text(Some(best - time_s));
+                        if ahead {
+                            format!("{text}  ahead of your best")
+                        } else {
+                            format!("{text}  behind your best")
+                        }
+                    } else {
+                        "First finish".to_owned()
+                    };
+                    if let Some(mut hud) = self.hud.clone() {
+                        hud.bind_mut()
+                            .show_finish(&format!("{name}  {clock}"), &line);
+                    }
+                    continue;
+                }
+                pp_session::RideEvent::FishCollected { combo, .. } => {
+                    let volume = f32::from(self.session().settings().music_volume) / 100.0;
+                    if let Some(fish) = self.fish.as_mut() {
+                        fish.blip(combo, volume);
+                    }
+                    continue;
+                }
+                pp_session::RideEvent::FishMissed => continue,
+                pp_session::RideEvent::PowerupAwarded { kind } => (
+                    format!(
+                        "{} ready",
+                        pp_view::arcade::powerup_name(&format!("{kind:?}"))
+                    ),
+                    2.0,
+                ),
+                pp_session::RideEvent::PowerupActivated { kind } => (
+                    format!("{} on", pp_view::arcade::powerup_name(&format!("{kind:?}"))),
+                    1.5,
+                ),
+                pp_session::RideEvent::PowerupExpired { kind } => (
+                    format!(
+                        "{} ended",
+                        pp_view::arcade::powerup_name(&format!("{kind:?}"))
+                    ),
+                    1.5,
+                ),
+                pp_session::RideEvent::BadgeEarned { name, .. } => (format!("Badge: {name}"), 4.0),
+                pp_session::RideEvent::GhostBeaten { .. } => {
+                    ("You beat your ghost".to_owned(), 4.0)
                 }
             };
             if let Some(screens) = self.screens.as_mut() {
@@ -1869,6 +2069,13 @@ impl Game {
         self.apply_music_settings();
     }
 
+    fn activate_powerup(&mut self) {
+        if self.shell.screen() != Screen::Riding {
+            return;
+        }
+        self.session_mut().activate_powerup();
+    }
+
     fn open_rides_folder(&mut self) {
         let dir = self.session().rides_dir();
         if let Err(err) = std::fs::create_dir_all(&dir) {
@@ -1928,6 +2135,7 @@ fn menu_snapshot(session: &Session) -> pp_view::menu::Snapshot {
         straps: Vec::new(),
         heart_line: String::new(),
         riders: Vec::new(),
+        kits: Vec::new(),
     }
 }
 
@@ -1942,7 +2150,7 @@ fn summary_figures(totals: &pp_session::RideSummary) -> Vec<(String, String)> {
         .iter()
         .map(|lap| (lap.lap, lap.time_s))
         .collect();
-    vec![
+    let mut figures = vec![
         (
             "Time".to_owned(),
             pp_view::format::format_clock(totals.elapsed_s),
@@ -1965,7 +2173,152 @@ fn summary_figures(totals: &pp_session::RideSummary) -> Vec<(String, String)> {
             "Laps".to_owned(),
             pp_view::format::format_summary_laps(&lap_times),
         ),
-    ]
+        ("Fish".to_owned(), totals.fish.to_string()),
+        ("Best combo".to_owned(), totals.best_combo.to_string()),
+    ];
+    for segment in &totals.segments {
+        let mark = if segment.record { "record" } else { "" };
+        figures.push((
+            segment.name.clone(),
+            format!("{}  {mark}", pp_view::arcade::segment_clock(segment.time_s)),
+        ));
+    }
+    figures
+}
+
+fn progress_page(profile: &pp_session::ProfileView) -> crate::screens::ProgressPage {
+    let streak = if profile.streak_days == 1 {
+        "1 day streak".to_owned()
+    } else {
+        format!("{} day streak", profile.streak_days)
+    };
+    let totals = format!(
+        "{} rides    {:.0} km    {:.0} m up\n{}    {} fish    {streak}",
+        profile.rides,
+        profile.distance_m / 1000.0,
+        profile.ascent_m,
+        pp_view::format::format_clock(profile.time_s),
+        profile.fish,
+    );
+    let badges = profile
+        .badges
+        .iter()
+        .map(|badge| {
+            let fraction = if badge.earned || badge.target <= 0.0 {
+                1.0
+            } else {
+                (badge.current / badge.target).clamp(0.0, 1.0) as f32
+            };
+            let kit = badge
+                .kit
+                .as_deref()
+                .map(|id| format!("Unlocks {} kit", pp_rider::Kit::get(id).name))
+                .unwrap_or_default();
+            crate::screens::ProgressBadge {
+                name: badge.name.clone(),
+                description: badge.description.clone(),
+                earned: badge.earned,
+                fraction,
+                kit,
+            }
+        })
+        .collect();
+    crate::screens::ProgressPage { totals, badges }
+}
+
+fn ride_chrome(play: &pp_session::PlayView) -> crate::hud::RideChrome {
+    let mut chrome = crate::hud::RideChrome::default();
+    if let Some(segment) = play
+        .active_segment
+        .as_ref()
+        .filter(|segment| segment.id != "lap")
+    {
+        let (split, ahead) = pp_view::arcade::split_text(segment.split_s);
+        chrome.segment_name.clone_from(&segment.name);
+        chrome.segment_time = pp_view::arcade::segment_clock(segment.elapsed_s);
+        chrome.segment_split = split;
+        chrome.segment_ahead = ahead;
+        chrome.segment_fraction = segment.fraction.clamp(0.0, 1.0);
+    }
+    if let Some(ghost) = &play.ghost
+        && ghost.gap_m.abs() <= 300.0
+    {
+        chrome.ghost = pp_view::arcade::ghost_chip(ghost.gap_m as f32, ghost.gap_s as f32);
+    }
+    if let Some(active) = play.powerup_active {
+        chrome.power_name = pp_view::arcade::powerup_name(&format!("{:?}", active.kind)).to_owned();
+        chrome.power_kind = power_code(active.kind);
+        chrome.power_active = true;
+        chrome.power_fill = if active.duration_s > 0.05 {
+            (active.remaining_s / active.duration_s).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+    } else if let Some(held) = play.powerup_held {
+        chrome.power_name = pp_view::arcade::powerup_name(&format!("{held:?}")).to_owned();
+        chrome.power_kind = power_code(held);
+    }
+    chrome
+}
+
+fn place_ghost(
+    ghost_rider: &mut Option<Gd<Rider>>,
+    ghost_distance_m: &mut f64,
+    play: &pp_session::PlayView,
+    course: &pp_course::Course,
+    slot: u8,
+    spec: pp_view::lane::LaneSpec,
+    dt: f64,
+) {
+    let Some(view) = play
+        .ghost
+        .as_ref()
+        .filter(|ghost| ghost.gap_m.abs() <= 300.0)
+    else {
+        if let Some(node) = ghost_rider.as_mut() {
+            node.set_visible(false);
+        }
+        return;
+    };
+    if *ghost_distance_m <= 0.0 {
+        *ghost_distance_m = view.total_distance_m;
+    }
+    let speed = if dt > 1.0e-3 {
+        ((view.total_distance_m - *ghost_distance_m) / dt).abs() as f32
+    } else {
+        6.0
+    };
+    *ghost_distance_m = view.total_distance_m;
+    let ghost_slot = if slot == 0 { 1 } else { slot.saturating_sub(1) };
+    let offset = spec.offset_for_slot(ghost_slot);
+    let (position, tangent) = pose(course, view.total_distance_m);
+    let origin = position + crate::road::flat_right(tangent) * offset;
+    let cadence = if speed < 0.8 {
+        75.0
+    } else {
+        (speed * 11.0).clamp(50.0, 110.0)
+    };
+    if let Some(node) = ghost_rider.as_mut() {
+        node.set_visible(true);
+        let mut ghost = node.bind_mut();
+        ghost.set_ride_state(160.0, 200.0, 0.0, speed.clamp(2.0, 20.0));
+        ghost.place(
+            origin,
+            tangent,
+            view.total_distance_m,
+            Some(cadence),
+            dt,
+            0.0,
+        );
+    }
+}
+
+fn power_code(kind: pp_session::PowerupKind) -> u8 {
+    match kind {
+        pp_session::PowerupKind::Feather => 1,
+        pp_session::PowerupKind::Aero => 2,
+        pp_session::PowerupKind::Burst => 3,
+    }
 }
 
 fn pad_badge(on: bool, state: Option<&pp_controllers::LinkState>) -> crate::hud::PadBadge {
@@ -1993,6 +2346,25 @@ fn zwift_word(state: &pp_controllers::LinkState) -> String {
         }
         _ => "scanning".to_owned(),
     }
+}
+
+fn preview_fish(distance_m: f64) -> Vec<crate::fish::FishSpot> {
+    let mut spots = Vec::new();
+    for slot in 0..5u8 {
+        spots.push(crate::fish::FishSpot {
+            index: u32::from(slot),
+            distance_m: distance_m + 22.0 + f64::from(slot) * 8.0,
+            slot,
+            golden: false,
+        });
+    }
+    spots.push(crate::fish::FishSpot {
+        index: 9,
+        distance_m: distance_m + 8.0,
+        slot: 2,
+        golden: true,
+    });
+    spots
 }
 
 fn pose(course: &Course, lap_distance_m: f64) -> (Vector3, Vector3) {

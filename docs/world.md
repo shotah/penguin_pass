@@ -14,3 +14,10 @@ Every open edge has a skirt that drops 40 m, so a gap cannot show sky.
 The terrain shader hazes the outer fifth of that reach fully. Inside that,
 colour still comes from the theme: meadow, forest, rock, and snow in the
 alpine theme, sand and rock in the desert, chosen by height and slope.
+
+Landmarks that pass a look at the rider's-eye frames are placed from CC0
+models. Trees, rocks, and tall grass are kept out of each footprint plus an
+8 m margin, and trees are thinned along the sight line from the reveal point
+on the road. A generated snow horn stands on the alpine horizon, in view from the start
+straight. The desert horizon is a sandstone mesa with darker strata and no
+snow. Neither has to be in view from the summit.

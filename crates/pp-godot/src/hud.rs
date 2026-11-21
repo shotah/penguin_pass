@@ -65,6 +65,9 @@ pub struct Hud {
     hint_base: Option<f32>,
     hint_hidden: bool,
     show_lane: bool,
+    fish_text: String,
+    chrome: RideChrome,
+    card_s: f32,
     pad: PadBadge,
     /// Compared in [`Self::present`] when the course picker swaps the route.
     course_name: String,
@@ -104,6 +107,9 @@ impl ICanvasLayer for Hud {
             hint_base: None,
             hint_hidden: false,
             show_lane: true,
+            fish_text: String::new(),
+            chrome: RideChrome::default(),
+            card_s: 0.0,
             pad: PadBadge::Off,
             course_name: String::new(),
             points: Vec::new(),
@@ -252,6 +258,14 @@ impl Hud {
     /// cadence is not overwritten by a live sample. `dt` advances the
     /// reconnecting spinner.
     pub fn present(&mut self, session: &Session, dt: f64) {
+        if self.card_s > 0.0 {
+            self.card_s = (self.card_s - dt as f32).max(0.0);
+            if self.card_s == 0.0 {
+                self.chrome.card_title.clear();
+                self.chrome.card_line.clear();
+            }
+            self.sync_board();
+        }
         self.note_course(session);
         let readout = session.readout();
         let telemetry = session.telemetry();
@@ -347,6 +361,45 @@ impl Hud {
     pub fn set_pad_badge(&mut self, badge: PadBadge) {
         if self.pad != badge {
             self.pad = badge;
+            self.sync_board();
+        }
+    }
+
+    /// Segment panel, ghost chip, powerup slot, and the finish card.
+    pub fn set_chrome(&mut self, chrome: RideChrome) {
+        let card_title = self.chrome.card_title.clone();
+        let card_line = self.chrome.card_line.clone();
+        let mut next = chrome;
+        if self.card_s > 0.0 {
+            next.card_title = card_title;
+            next.card_line = card_line;
+        }
+        if self.chrome != next {
+            self.chrome = next;
+            self.sync_board();
+        }
+    }
+
+    /// Drop the finish card. A seek should not keep the previous result up.
+    pub fn clear_finish(&mut self) {
+        self.card_s = 0.0;
+        self.chrome.card_title.clear();
+        self.chrome.card_line.clear();
+        self.sync_board();
+    }
+
+    /// Two-second result after a segment finish.
+    pub fn show_finish(&mut self, title: &str, line: &str) {
+        self.chrome.card_title = title.to_owned();
+        self.chrome.card_line = line.to_owned();
+        self.card_s = 2.0;
+        self.sync_board();
+    }
+
+    /// Fish counter. Empty hides it. `arcade` off passes an empty string.
+    pub fn set_fish_text(&mut self, text: &str) {
+        if self.fish_text != text {
+            self.fish_text = text.to_owned();
             self.sync_board();
         }
     }
@@ -473,6 +526,14 @@ impl Hud {
             board.show_lane = self.show_lane;
             redraw = true;
         }
+        if board.fish_text != self.fish_text {
+            board.fish_text.clone_from(&self.fish_text);
+            redraw = true;
+        }
+        if board.chrome != self.chrome {
+            board.chrome = self.chrome.clone();
+            redraw = true;
+        }
         if board.pad != self.pad {
             board.pad = self.pad;
             redraw = true;
@@ -578,6 +639,8 @@ struct ConsoleBoard {
     tv_visible: bool,
     show_hint: bool,
     show_lane: bool,
+    fish_text: String,
+    chrome: RideChrome,
     pad: PadBadge,
     tv_address: String,
     spin: f32,
@@ -608,6 +671,8 @@ impl IControl for ConsoleBoard {
             tv_visible: false,
             show_hint: true,
             show_lane: true,
+            fish_text: String::new(),
+            chrome: RideChrome::default(),
             pad: PadBadge::Off,
             tv_address: String::new(),
             spin: 0.0,
@@ -634,6 +699,7 @@ impl IControl for ConsoleBoard {
         paint_numbers(self, frame);
         paint_next(self, frame);
         paint_chips(self, frame);
+        paint_chrome(self, frame);
     }
 }
 
@@ -1133,7 +1199,11 @@ fn paint_chips(board: &mut ConsoleBoard, frame: DesignFrame) {
         hint_x += paint_hint(board, frame, hint_x) + gap;
     }
     if board.show_lane {
-        paint_lane_hint(board, frame, hint_x);
+        let lane_w = paint_lane_hint(board, frame, hint_x);
+        hint_x += lane_w + gap;
+    }
+    if !board.fish_text.is_empty() {
+        paint_fish_chip(board, frame, hint_x, &board.fish_text.clone());
     }
 }
 
@@ -1290,7 +1360,7 @@ fn paint_hint(board: &mut ConsoleBoard, frame: DesignFrame, x: f32) -> f32 {
     width
 }
 
-fn paint_lane_hint(board: &mut ConsoleBoard, frame: DesignFrame, x: f32) {
+fn paint_lane_hint(board: &mut ConsoleBoard, frame: DesignFrame, x: f32) -> f32 {
     let font = ui_style::font_text(Weight::SemiBold);
     let word = measure(&font, "Lane", frame.px(20.0));
     let width = frame.len(14.0) + frame.len(56.0) + frame.len(8.0) + word + frame.len(14.0);
@@ -1309,6 +1379,47 @@ fn paint_lane_hint(board: &mut ConsoleBoard, frame: DesignFrame, x: f32) {
         "Lane",
         frame.px(20.0),
         SNOW,
+    );
+    width
+}
+
+fn paint_fish_chip(board: &mut ConsoleBoard, frame: DesignFrame, x: f32, text: &str) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let word = measure(&font, text, frame.px(18.0));
+    let width = frame.len(14.0) + frame.len(22.0) + frame.len(8.0) + word + frame.len(14.0);
+    let y = frame.y(562.0);
+    paint_pill(board, frame, x, y, width, frame.len(40.0));
+    let mid = y + frame.len(20.0);
+    paint_fish_mark(board, frame, Vector2::new(x + frame.len(22.0), mid));
+    draw_text(
+        board,
+        &font,
+        Vector2::new(
+            x + frame.len(14.0) + frame.len(22.0) + frame.len(8.0),
+            mid + frame.len(18.0) * 0.35,
+        ),
+        text,
+        frame.px(18.0),
+        ui_style::SUN,
+    );
+}
+
+fn paint_fish_mark(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2) {
+    let mut body = PackedVector2Array::new();
+    body.push(center + Vector2::new(-frame.len(8.0), 0.0));
+    body.push(center + Vector2::new(frame.len(2.0), -frame.len(4.0)));
+    body.push(center + Vector2::new(frame.len(6.0), 0.0));
+    body.push(center + Vector2::new(frame.len(2.0), frame.len(4.0)));
+    board.base_mut().draw_colored_polygon(&body, ui_style::SUN);
+    board.base_mut().draw_line(
+        center + Vector2::new(frame.len(6.0), 0.0),
+        center + Vector2::new(frame.len(10.0), -frame.len(4.0)),
+        ui_style::SUN,
+    );
+    board.base_mut().draw_line(
+        center + Vector2::new(frame.len(6.0), 0.0),
+        center + Vector2::new(frame.len(10.0), frame.len(4.0)),
+        ui_style::SUN,
     );
 }
 
@@ -1728,5 +1839,293 @@ impl ElevationStrip {
     pub fn set_marker(&mut self, lap_distance_m: f64, grade_pct: f32) {
         self.marker_m = lap_distance_m;
         self.grade_pct = grade_pct;
+    }
+}
+
+/// Segment, ghost, and powerup readouts for one frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RideChrome {
+    /// Empty hides the segment panel.
+    pub segment_name: String,
+    /// Running clock, already formatted.
+    pub segment_time: String,
+    /// Split text, already formatted.
+    pub segment_split: String,
+    /// True when the split is ahead of the best, or there is no best yet.
+    pub segment_ahead: bool,
+    /// 0 at the start line, 1 at the finish.
+    pub segment_fraction: f32,
+    /// Empty hides the ghost chip.
+    pub ghost: String,
+    /// Empty hides the powerup slot.
+    pub power_name: String,
+    /// 1 feather, 2 aero, 3 burst, 0 none.
+    pub power_kind: u8,
+    /// The effect is running, so the ring drains and the edges tint.
+    pub power_active: bool,
+    /// Remaining time over the full duration, 1 full and 0 empty.
+    pub power_fill: f32,
+    /// Empty hides the finish card.
+    pub card_title: String,
+    /// Second line of the finish card.
+    pub card_line: String,
+}
+
+impl Default for RideChrome {
+    fn default() -> Self {
+        Self {
+            segment_name: String::new(),
+            segment_time: String::new(),
+            segment_split: String::new(),
+            segment_ahead: true,
+            segment_fraction: 0.0,
+            ghost: String::new(),
+            power_name: String::new(),
+            power_kind: 0,
+            power_active: false,
+            power_fill: 1.0,
+            card_title: String::new(),
+            card_line: String::new(),
+        }
+    }
+}
+
+fn paint_chrome(board: &mut ConsoleBoard, frame: DesignFrame) {
+    if board.chrome.power_active {
+        paint_power_tint(board, frame, board.chrome.power_kind);
+    }
+    if !board.chrome.segment_name.is_empty() {
+        let name = board.chrome.segment_name.clone();
+        let time = board.chrome.segment_time.clone();
+        let split = board.chrome.segment_split.clone();
+        let ahead = board.chrome.segment_ahead;
+        let fraction = board.chrome.segment_fraction;
+        paint_segment(board, frame, &name, &time, &split, ahead, fraction);
+    }
+    if !board.chrome.ghost.is_empty() {
+        let text = board.chrome.ghost.clone();
+        paint_ghost_chip(board, frame, &text);
+    }
+    if !board.chrome.power_name.is_empty() {
+        let name = board.chrome.power_name.clone();
+        let kind = board.chrome.power_kind;
+        let active = board.chrome.power_active;
+        let fill = board.chrome.power_fill;
+        paint_power_slot(board, frame, &name, kind, active, fill);
+    }
+    if !board.chrome.card_title.is_empty() {
+        let title = board.chrome.card_title.clone();
+        let line = board.chrome.card_line.clone();
+        paint_finish_card(board, frame, &title, &line);
+    }
+}
+
+fn paint_segment(
+    board: &mut ConsoleBoard,
+    frame: DesignFrame,
+    name: &str,
+    time: &str,
+    split: &str,
+    ahead: bool,
+    fraction: f32,
+) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let width = frame.len(420.0);
+    let height = frame.len(64.0);
+    let x = (board.base().get_size().x - width) * 0.5;
+    let y = frame.y(78.0);
+    paint_pill(board, frame, x, y, width, height);
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(16.0), y + frame.len(26.0)),
+        name,
+        frame.px(18.0),
+        SNOW,
+    );
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(250.0), y + frame.len(26.0)),
+        time,
+        frame.px(18.0),
+        SNOW,
+    );
+    let split_color = if ahead { GOOD } else { BAD };
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(330.0), y + frame.len(26.0)),
+        split,
+        frame.px(18.0),
+        split_color,
+    );
+    let bar_x = x + frame.len(16.0);
+    let bar_y = y + frame.len(40.0);
+    let bar_w = width - frame.len(32.0);
+    let bar_h = frame.len(8.0);
+    board.base_mut().draw_rect(
+        Rect2::new(Vector2::new(bar_x, bar_y), Vector2::new(bar_w, bar_h)),
+        ui_style::with_alpha(SNOW, 0.25),
+    );
+    board.base_mut().draw_rect(
+        Rect2::new(
+            Vector2::new(bar_x, bar_y),
+            Vector2::new(bar_w * fraction.clamp(0.0, 1.0), bar_h),
+        ),
+        ui_style::SUN,
+    );
+}
+
+fn paint_ghost_chip(board: &mut ConsoleBoard, frame: DesignFrame, text: &str) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let word = measure(&font, text, frame.px(16.0));
+    let width = word + frame.len(28.0);
+    let x = (board.base().get_size().x - width) * 0.5;
+    let y = frame.y(28.0);
+    paint_pill(board, frame, x, y, width, frame.len(32.0));
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(14.0), y + frame.len(22.0)),
+        text,
+        frame.px(16.0),
+        Color::from_rgb(0.7, 0.86, 1.0),
+    );
+}
+
+fn paint_power_slot(
+    board: &mut ConsoleBoard,
+    frame: DesignFrame,
+    name: &str,
+    kind: u8,
+    active: bool,
+    fill: f32,
+) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let x = frame.x(980.0);
+    let y = frame.y(500.0);
+    let width = frame.len(220.0);
+    paint_pill(board, frame, x, y, width, frame.len(52.0));
+    let center = Vector2::new(x + frame.len(28.0), y + frame.len(26.0));
+    paint_power_icon(board, frame, center, kind);
+    if active {
+        board.base_mut().draw_arc(
+            center,
+            frame.len(16.0),
+            -std::f32::consts::FRAC_PI_2,
+            -std::f32::consts::FRAC_PI_2 + TAU * fill.clamp(0.0, 1.0),
+            24,
+            ui_style::SUN,
+        );
+    }
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(52.0), y + frame.len(32.0)),
+        name,
+        frame.px(18.0),
+        SNOW,
+    );
+}
+
+fn paint_power_icon(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2, kind: u8) {
+    let color = ui_style::SUN;
+    let s = frame.len(10.0);
+    match kind {
+        1 => {
+            board.base_mut().draw_line(
+                center + Vector2::new(-s, s),
+                center + Vector2::new(s * 0.2, -s),
+                color,
+            );
+            board.base_mut().draw_line(
+                center + Vector2::new(-s * 0.2, s * 0.2),
+                center + Vector2::new(s * 0.8, -s * 0.4),
+                color,
+            );
+        }
+        2 => {
+            let mut wing = PackedVector2Array::new();
+            wing.push(center + Vector2::new(-s, 0.0));
+            wing.push(center + Vector2::new(s, -s * 0.45));
+            wing.push(center + Vector2::new(s * 0.2, 0.0));
+            wing.push(center + Vector2::new(s, s * 0.45));
+            board.base_mut().draw_colored_polygon(&wing, color);
+        }
+        _ => {
+            let mut bolt = PackedVector2Array::new();
+            bolt.push(center + Vector2::new(-s * 0.2, -s));
+            bolt.push(center + Vector2::new(s * 0.55, -s));
+            bolt.push(center + Vector2::new(-s * 0.1, s * 0.05));
+            bolt.push(center + Vector2::new(s * 0.35, s * 0.05));
+            bolt.push(center + Vector2::new(-s * 0.45, s));
+            bolt.push(center + Vector2::new(-s * 0.05, -s * 0.05));
+            bolt.push(center + Vector2::new(-s * 0.55, -s * 0.05));
+            board.base_mut().draw_colored_polygon(&bolt, color);
+        }
+    }
+}
+
+fn paint_finish_card(board: &mut ConsoleBoard, frame: DesignFrame, title: &str, line: &str) {
+    let font = ui_style::font_text(Weight::SemiBold);
+    let width = frame.len(460.0);
+    let height = frame.len(88.0);
+    let x = (board.base().get_size().x - width) * 0.5;
+    let y = frame.y(180.0);
+    paint_pill(board, frame, x, y, width, height);
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(20.0), y + frame.len(36.0)),
+        title,
+        frame.px(22.0),
+        SNOW,
+    );
+    draw_text(
+        board,
+        &font,
+        Vector2::new(x + frame.len(20.0), y + frame.len(66.0)),
+        line,
+        frame.px(18.0),
+        if line.starts_with('+') { BAD } else { GOOD },
+    );
+}
+
+fn paint_power_tint(board: &mut ConsoleBoard, frame: DesignFrame, kind: u8) {
+    let color = match kind {
+        1 => ui_style::with_alpha(GOOD, 0.22),
+        2 => ui_style::with_alpha(Color::from_rgb(0.45, 0.75, 1.0), 0.22),
+        _ => ui_style::with_alpha(ui_style::SUN, 0.24),
+    };
+    let band = frame.len(28.0);
+    let size = board.base().get_size();
+    board
+        .base_mut()
+        .draw_rect(Rect2::new(Vector2::ZERO, Vector2::new(size.x, band)), color);
+    board
+        .base_mut()
+        .draw_rect(Rect2::new(Vector2::ZERO, Vector2::new(band, size.y)), color);
+    board.base_mut().draw_rect(
+        Rect2::new(Vector2::new(0.0, size.y - band), Vector2::new(size.x, band)),
+        color,
+    );
+    board.base_mut().draw_rect(
+        Rect2::new(Vector2::new(size.x - band, 0.0), Vector2::new(band, size.y)),
+        color,
+    );
+    let line = ui_style::with_alpha(SNOW, 0.35);
+    for index in 0..5 {
+        let y = frame.y(160.0 + index as f32 * 28.0);
+        board.base_mut().draw_line(
+            Vector2::new(frame.x(40.0), y),
+            Vector2::new(frame.x(160.0), y),
+            line,
+        );
+        board.base_mut().draw_line(
+            Vector2::new(frame.x(1120.0), y),
+            Vector2::new(frame.x(1240.0), y),
+            line,
+        );
     }
 }

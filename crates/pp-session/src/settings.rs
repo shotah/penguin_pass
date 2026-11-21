@@ -76,6 +76,9 @@ const HEADER: &str = "\
 # heart_rate_id and heart_rate_name remember a heart-rate strap. Delete them to forget it.
 # rides_folder is where FIT ride files are written. Delete it to use a rides folder
 # next to the settings file.
+# arcade: when true (the default), the ride has fish and powerups.
+# ghost: when true (the default), the ride shows the stored ghost. Recording continues either way.
+# kit is default, or a kit id such as kit-sunrise. Missing or blank loads as default.
 ";
 
 /// Rider, trainer, and display preferences.
@@ -192,6 +195,22 @@ pub struct Settings {
     /// directory is created on the first save. Blank text is stored as `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rides_folder: Option<PathBuf>,
+    /// Fish and powerups.
+    ///
+    /// Missing from older files, which load as `true`.
+    #[serde(default = "default_true")]
+    pub arcade: bool,
+    /// Show the stored ghost while recording still runs.
+    ///
+    /// Missing from older files, which load as `true`. `false` hides the ghost
+    /// and still records one.
+    #[serde(default = "default_true")]
+    pub ghost: bool,
+    /// Kit laid over the chosen rider. `default` keeps that rider's colours.
+    ///
+    /// Missing from older files, which load as `default`.
+    #[serde(default = "default_kit")]
+    pub kit: String,
 }
 
 impl Default for Settings {
@@ -214,6 +233,9 @@ impl Default for Settings {
             heart_rate_id: None,
             heart_rate_name: None,
             rides_folder: None,
+            arcade: default_true(),
+            ghost: default_true(),
+            kit: default_kit(),
         }
     }
 }
@@ -244,6 +266,10 @@ const fn default_true() -> bool {
 
 const fn default_music_volume() -> u8 {
     DEFAULT_MUSIC_VOLUME
+}
+
+fn default_kit() -> String {
+    "default".to_owned()
 }
 
 fn default_rider_name() -> String {
@@ -310,6 +336,9 @@ impl Settings {
         }
         if settings.rider.trim().is_empty() {
             settings.rider = default_rider_name();
+        }
+        if settings.kit.trim().is_empty() {
+            settings.kit = default_kit();
         }
         if settings
             .heart_rate_id
@@ -524,7 +553,9 @@ fn notes_from(value: &toml::Value) -> Result<Vec<String>, String> {
                 MIN_DASHBOARD_PORT,
                 MAX_DASHBOARD_PORT,
             )?,
-            "tv_dashboard_enabled" | "fullscreen" | "control_trainer" => expect_bool(key, item)?,
+            "tv_dashboard_enabled" | "fullscreen" | "control_trainer" | "arcade" | "ghost" => {
+                expect_bool(key, item)?;
+            }
             "last_trainer_id" => expect_string(key, item)?,
             "course" if CourseChoice::from_toml(item).is_none() => {
                 notes.push("course could not be read; using Penguin Pass".to_owned());
@@ -992,6 +1023,8 @@ mod tests {
         assert_eq!(settings.heart_rate_id, None);
         assert_eq!(settings.heart_rate_name, None);
         assert_eq!(settings.rides_folder, None);
+        assert!(settings.arcade);
+        assert!(settings.ghost);
 
         let profile = settings.rider_profile();
         let defaults = RiderProfile::default();
@@ -1028,6 +1061,9 @@ mod tests {
             heart_rate_id: Some("AA:BB:CC:DD:EE:FF".to_owned()),
             heart_rate_name: Some("HRM-Dual".to_owned()),
             rides_folder: Some(PathBuf::from("/tmp/penguin-rides")),
+            arcade: false,
+            ghost: false,
+            kit: "kit-sunrise".to_owned(),
         };
 
         settings.save(&path).expect("save");
@@ -1042,11 +1078,38 @@ mod tests {
         assert!(text.contains("sigrid"), "{text}");
         assert!(text.contains("zwift_controllers"), "{text}");
         assert!(text.contains("heart_rate_id"), "{text}");
+        assert!(text.contains("arcade"), "{text}");
+        assert!(text.contains("ghost"), "{text}");
+        assert!(text.contains("kit-sunrise"), "{text}");
         assert!(tmp_files(path.parent().expect("parent")).is_empty());
 
         let loaded = Settings::load(&path);
         assert_eq!(loaded.warning, None);
         assert_eq!(loaded.settings, settings.normalized());
+    }
+
+    #[test]
+    fn a_missing_kit_loads_as_default_and_a_chosen_kit_round_trips() {
+        let dir = TempDir::new();
+        let older = dir.path().join("older.toml");
+        fs::write(&older, "rider = \"nils\"\n").expect("write");
+        let loaded = Settings::load(&older);
+        assert_eq!(loaded.settings.kit, "default");
+
+        let settings = Settings {
+            kit: "kit-glacier".to_owned(),
+            ..Settings::default()
+        };
+        let path = dir.path().join("kit.toml");
+        settings.save(&path).expect("save");
+        let again = Settings::load(&path);
+        assert_eq!(again.settings.kit, "kit-glacier");
+
+        let blank = Settings {
+            kit: "  ".to_owned(),
+            ..Settings::default()
+        };
+        assert_eq!(blank.normalized().kit, "default");
     }
 
     #[test]
@@ -1117,6 +1180,8 @@ mod tests {
         assert_eq!(loaded.settings.heart_rate_id, None);
         assert_eq!(loaded.settings.heart_rate_name, None);
         assert_eq!(loaded.settings.rides_folder, None);
+        assert!(loaded.settings.arcade);
+        assert!(loaded.settings.ghost);
         assert!(loaded.settings.missing_music_folder().is_none());
     }
 

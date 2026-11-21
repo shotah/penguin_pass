@@ -13,6 +13,7 @@ use godot::classes::{
 use godot::obj::Gd;
 use godot::prelude::*;
 use pp_course::Course;
+use pp_world::{PlacedLandmark, ScatterSite, keeps_scatter};
 
 use crate::assets::{Catalog, ScatterProp};
 use crate::mesh_util::{add_box, standard_material};
@@ -47,8 +48,10 @@ pub fn build(
     field: &Field,
     theme: &Theme,
     catalog: &Catalog,
+    placed: &[PlacedLandmark],
 ) -> ScatterReport {
-    let report = scatter_world(parent, field, theme, catalog);
+    let sites = scatter_sites(placed);
+    let report = scatter_world(parent, field, theme, catalog, &sites);
     add_furniture(parent, course, field);
     add_arch(parent, course);
     add_posts(parent, course);
@@ -56,13 +59,18 @@ pub fn build(
 }
 
 /// Plan every chunk again and checksum it. Used to prove the seed is stable.
-pub fn recompute_checksum(field: &Field, theme: &Theme) -> (i32, i64, i32) {
+pub fn recompute_checksum(
+    field: &Field,
+    theme: &Theme,
+    placed: &[PlacedLandmark],
+) -> (i32, i64, i32) {
+    let sites = scatter_sites(placed);
     let mut count = 0;
     let mut checksum = 0_i64;
     let mut violations = 0;
     for layer in &theme.scatter {
         visit_chunks(field, layer.max_road_m, |cx, cz| {
-            for instance in plan_chunk(field, theme, layer, cx, cz) {
+            for instance in plan_chunk(field, theme, layer, cx, cz, &sites) {
                 count += 1;
                 checksum = checksum.wrapping_add(instance_hash(layer, &instance));
                 if field.road(instance.position.x, instance.position.z).0 < ROAD_KEEP_OUT_M {
@@ -74,11 +82,25 @@ pub fn recompute_checksum(field: &Field, theme: &Theme) -> (i32, i64, i32) {
     (count, checksum, violations)
 }
 
+fn scatter_sites(placed: &[PlacedLandmark]) -> Vec<ScatterSite> {
+    placed
+        .iter()
+        .map(|site| ScatterSite {
+            x: site.x,
+            z: site.z,
+            footprint_m: site.footprint_m,
+            reveal_x: site.reveal_x,
+            reveal_z: site.reveal_z,
+        })
+        .collect()
+}
+
 fn scatter_world(
     parent: &mut Gd<Node3D>,
     field: &Field,
     theme: &Theme,
     catalog: &Catalog,
+    sites: &[ScatterSite],
 ) -> ScatterReport {
     let meshes = placeholder_meshes();
     let mut count = 0;
@@ -103,7 +125,7 @@ fn scatter_world(
             continue;
         }
         visit_chunks(field, layer.max_road_m, |cx, cz| {
-            let planned = plan_chunk(field, theme, layer, cx, cz);
+            let planned = plan_chunk(field, theme, layer, cx, cz, sites);
             if planned.is_empty() {
                 return;
             }
@@ -165,6 +187,7 @@ pub fn plan_chunk(
     layer: &ScatterLayer,
     cx: i32,
     cz: i32,
+    sites: &[ScatterSite],
 ) -> Vec<Instance> {
     pp_view::scatter::plan_chunk(theme.seed, layer, cx, cz, |x, z| pp_view::scatter::Ground {
         road_m: field.road(x, z).0,
@@ -172,6 +195,7 @@ pub fn plan_chunk(
         slope: slope_at(field, x, z),
     })
     .into_iter()
+    .filter(|placed| keeps_scatter(&layer.kind, placed.x, placed.z, sites))
     .map(|placed| Instance {
         position: Vector3::new(placed.x, placed.y, placed.z),
         yaw: placed.yaw,

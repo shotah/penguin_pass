@@ -19,6 +19,7 @@ use crate::course_sel::{self, CourseChoice, CourseOption, RidePhase};
 use crate::events::{EventQueue, RideEvent};
 use crate::heart::{self, HeartRateFactory, SensorEntry};
 use crate::link::{BleTrainerFactory, TrainerFactory, TrainerLink};
+use crate::play::Play;
 use crate::readout::{LiveReadout, PowerWindow};
 use crate::settings::{LoadedSettings, Settings};
 use crate::stats::RideStats;
@@ -246,6 +247,7 @@ pub struct Session {
     settings_path: Option<PathBuf>,
     last_saved_ride: Option<PathBuf>,
     utc_offset_s: i32,
+    play_state: Play,
 }
 
 impl Session {
@@ -321,11 +323,13 @@ impl Session {
             settings_path: None,
             last_saved_ride: None,
             utc_offset_s: 0,
+            play_state: Play::new(),
         };
         if let Some(detail) = fallback {
             session.events.push(RideEvent::CourseUnavailable { detail });
         }
         session.start_dashboard();
+        session.attach_files();
         session.start_recording();
         session
     }
@@ -355,6 +359,7 @@ impl Session {
     /// without [`Self::set_settings_path`], ending a ride writes nothing.
     pub fn set_rides_dir(&mut self, dir: Option<PathBuf>) {
         self.rides_dir_override = dir;
+        self.attach_files();
     }
 
     /// Local time minus UTC, in minutes, for ride file names started afterwards.
@@ -368,6 +373,7 @@ impl Session {
     /// Remember the settings file so rides default to `<its folder>/rides`.
     pub fn set_settings_path(&mut self, path: impl Into<PathBuf>) {
         self.settings_path = Some(path.into());
+        self.attach_files();
     }
 
     /// Write each later tick to `dir/ride.csv`, or stop when `dir` is `None`.
@@ -529,7 +535,7 @@ impl Session {
         let dt = accepted_dt(dt_s);
         self.clock_s += dt;
         let observed = self.observe_power();
-        let telemetry = self.ride.step(dt_s, &observed.physics);
+        let telemetry = self.step_physics(dt_s, &observed.physics);
         self.power.record(self.clock_s, dt, observed.power_w);
         if let Some(event) = self.stats.record(
             dt,
@@ -539,6 +545,12 @@ impl Session {
             observed.heart_rate_bpm,
             self.power.average_1s_full(self.clock_s),
         ) {
+            self.events.push(event);
+        }
+        for event in self
+            .play_state
+            .after_step(&telemetry, dt, self.settings.arcade)
+        {
             self.events.push(event);
         }
         self.record_sample(&telemetry);
@@ -898,6 +910,11 @@ impl Session {
     /// does not fail.
     pub fn set_course(&mut self, choice: CourseChoice) -> Result<(), String> {
         let course = course_sel::build_course(&choice)?;
+        let riding = self.phase == RidePhase::Riding;
+        if riding {
+            self.finish_play();
+            self.save_ride();
+        }
         let (steepest_up_pct, steepest_down_pct) = grade_extremes(&course);
         self.ride = Ride::new(course, self.settings.rider_profile());
         self.steepest_up_pct = steepest_up_pct;
@@ -909,9 +926,10 @@ impl Session {
         let name = self.ride.course().name().to_owned();
         self.events.push(RideEvent::CourseSelected { name });
         self.push_dashboard_course();
-        if self.phase == RidePhase::Riding {
-            self.save_ride();
+        if riding {
             self.start_recording();
+        } else {
+            self.open_play();
         }
         Ok(())
     }
@@ -933,6 +951,7 @@ impl Session {
     /// trainer connection are left as they are. A ride ended with
     /// [`Session::end_ride`] runs again.
     pub fn restart(&mut self) {
+        self.finish_play();
         self.phase = RidePhase::Riding;
         self.ride_ended = false;
         self.stats.clear();
@@ -1028,7 +1047,50 @@ impl Session {
     /// Totals so far. After [`Session::end_ride`] these no longer change.
     #[must_use]
     pub fn summary(&self) -> crate::stats::RideSummary {
-        self.stats.summary(&self.ride.telemetry())
+        let mut summary = self.stats.summary(&self.ride.telemetry());
+        let (fish, best_combo, segments) = self.play_state.summary_bits();
+        summary.fish = fish;
+        summary.best_combo = best_combo;
+        summary.segments = segments;
+        summary
+    }
+
+    /// Segments, the ghost, fish, and the powerup slot for this frame.
+    #[must_use]
+    pub fn play(&self) -> crate::play::PlayView {
+        self.play_state.view(
+            self.settings.arcade,
+            self.settings.ghost,
+            &self.ride.telemetry(),
+        )
+    }
+
+    /// Lane the rider is in, from `0.0` to `4.0`. The game calls this every frame.
+    ///
+    /// A fish is collected when this value is within half a slot of the fish.
+    /// Non-finite values are ignored.
+    pub fn set_lane_position(&mut self, slot: f32) {
+        self.play_state.set_lane(slot);
+    }
+
+    /// Start the powerup held in the slot.
+    ///
+    /// Does nothing when the slot is empty or arcade mode is off. The effect
+    /// changes the physics for its duration and does not change trainer grade,
+    /// recorded watts, or the FIT power channel.
+    pub fn activate_powerup(&mut self) {
+        if !self.settings.arcade {
+            return;
+        }
+        if let Some(kind) = self.play_state.activate() {
+            self.events.push(RideEvent::PowerupActivated { kind });
+        }
+    }
+
+    /// Lifetime rides, badges, and unlocked kits.
+    #[must_use]
+    pub fn profile(&self) -> crate::play::ProfileView {
+        self.play_state.profile_view()
     }
 
     /// Freeze the ride and the summary, and ease a controlled trainer to flat.
@@ -1040,6 +1102,7 @@ impl Session {
             return;
         }
         self.stats.finish();
+        self.finish_play();
         self.ride_ended = true;
         self.phase = RidePhase::Ended;
         self.send_flat_grade();
@@ -1653,10 +1716,73 @@ impl Session {
         })
     }
 
+    fn bundle_dir(&self) -> Option<PathBuf> {
+        if let Some(path) = &self.settings_path {
+            return path.parent().and_then(|parent| {
+                if parent.as_os_str().is_empty() {
+                    None
+                } else {
+                    Some(parent.to_path_buf())
+                }
+            });
+        }
+        if let Some(dir) = &self.rides_dir_override {
+            return Some(dir.clone());
+        }
+        self.settings.rides_folder.clone()
+    }
+
+    fn attach_files(&mut self) {
+        let Some(dir) = self.bundle_dir() else {
+            return;
+        };
+        if self.play_state.has_dir() && self.ride.telemetry().distance_m > 1.0 {
+            return;
+        }
+        let choice = self.choice.clone();
+        let arcade = self.settings.arcade;
+        self.play_state
+            .attach(dir, self.ride.course(), &choice, arcade);
+    }
+
+    fn open_play(&mut self) {
+        let choice = self.choice.clone();
+        let arcade = self.settings.arcade;
+        self.play_state.open(self.ride.course(), &choice, arcade);
+    }
+
+    fn finish_play(&mut self) {
+        if self.phase == RidePhase::Ready {
+            return;
+        }
+        let ascent_m = self.stats.summary(&self.ride.telemetry()).ascent_m;
+        let frame = self.ride.telemetry();
+        let offset_s = self.utc_offset_s;
+        for event in self.play_state.finish(&frame, ascent_m, offset_s) {
+            self.events.push(event);
+        }
+    }
+
+    fn step_physics(&mut self, dt_s: f64, sample: &TrainerSample) -> Telemetry {
+        let base = self.settings.rider_profile();
+        let modifiers = self.play_state.modifiers();
+        let assisted = self.settings.arcade && modifiers != pp_arcade::PhysicsModifiers::IDENTITY;
+        if assisted {
+            self.ride.set_rider(modifiers.apply(base));
+        }
+        let frame = self.ride.step(dt_s, sample);
+        if assisted {
+            self.ride.set_rider(base);
+        }
+        self.play_state.set_assisted(assisted);
+        frame
+    }
+
     fn start_recording(&mut self) {
         if self.phase != RidePhase::Riding {
             return;
         }
+        self.open_play();
         let rider = self.rider();
         let trainer_name = if self.using_trainer {
             self.trainer_name().filter(|name| !name.is_empty())
@@ -1982,6 +2108,7 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         self.trace.flush();
+        self.finish_play();
         self.save_ride();
         if let Some(trainer) = self.trainer.take() {
             self.defer_drop(trainer);
@@ -3439,8 +3566,12 @@ mod tests {
         let mut session = Session::new(offline());
         session.set_sim_power(1_500);
         let mut guard = 0;
+        let mut saw_lap = false;
         while session.telemetry().lap < 2 && guard < 800 {
             session.tick(1.0);
+            saw_lap |= session.drain_events().iter().any(|event| {
+                matches!(event, RideEvent::LapCompleted { lap: 1, time_s } if *time_s > 1.0)
+            });
             guard += 1;
         }
         assert!(session.telemetry().lap >= 2, "did not finish a lap");
@@ -3452,10 +3583,7 @@ mod tests {
                 .iter()
                 .any(|lap| lap.lap == 1 && lap.time_s > 1.0)
         );
-        assert!(session.drain_events().iter().any(|event| matches!(
-            event,
-            RideEvent::LapCompleted { lap: 1, time_s } if *time_s > 1.0
-        )));
+        assert!(saw_lap, "lap event was not queued");
     }
 
     #[test]

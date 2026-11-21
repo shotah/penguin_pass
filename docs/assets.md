@@ -13,6 +13,10 @@ credits and the Steam page.
 | Pack | Author | Licence | Source | Used for |
 | --- | --- | --- | --- | --- |
 | Stylized Nature MegaKit, standard edition | Quaternius | CC0 1.0 | https://quaternius.com/packs/stylizednaturemegakit.html | Pines, broadleaf trees, dead trees, bush, fern, grass, flowers, rocks |
+| LowPoly Medieval Village Pack, December 2020 | Quaternius | CC0 1.0 | https://opengameart.org/content/lowpoly-medieval-village-pack | Houses, inn, mill, bell tower, stable, blacksmith, fence, hay, well, barrel, cart |
+| Farm Animals | Quaternius | CC0 1.0 | https://opengameart.org/content/lowpoly-farm-animal-pack | Sheep and cow |
+| Nature Kit 2.1 | Kenney | CC0 1.0 | https://kenney.nl/assets/nature-kit | Wooden bridge, cacti, tents, campfire, statue pieces, waterfall cliffs |
+| Castle Kit | Kenney | CC0 1.0 | https://kenney.nl/assets/castle-kit | Watchtower, gate, wall, flag, rocks |
 | Grass 001 | ambientCG | CC0 1.0 | https://ambientcg.com/a/Grass001 | Meadow grass texture |
 | Asphalt 01 | Dario Barresi and Charlotte Baglioni, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/asphalt_01 | Road |
 | Forest Ground 06 | Charlotte Baglioni, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/forest_ground_06 | Forest floor |
@@ -47,6 +51,20 @@ The one exception is the interface font in
 1.1. It may ship inside a commercial build; `OFL.txt` must ship with it, and
 the font files may not be sold on their own. No other licence is in the
 library.
+
+## Landmarks
+
+These were confirmed CC0 on each pack's own page, then fetched on 2026-11-21.
+Only the models the game places were kept. The village OBJ files were turned
+into glTF using the author's material colours. Kenney files are the pack's
+own glTF. Added size is about 5.8 MB.
+
+The box-built stand-ins (the grey gate, the white church block, the horn made
+of cubes) are not used. A kind is placed only when its rider's-eye frames
+looked like something to leave in the ride: the village, the mill, the wooden
+bridge, the sheep and cow, the cactus group, and the small desert ruin.
+The waterfall had no steep face on the built-in loop. The horizon rocks
+floated and did not read as a peak, so they are not placed.
 
 ## What is in the library
 

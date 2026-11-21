@@ -111,6 +111,13 @@ pub fn install() {
     map.action_add_event("lane_right", &lane_stick_right);
     bind_keys(
         &mut map,
+        "activate_powerup",
+        &[Key::SPACE, Key::E],
+        &[JoyButton::X],
+        None,
+    );
+    bind_keys(
+        &mut map,
         "music_next",
         &[Key::N],
         &[JoyButton::RIGHT_SHOULDER],

@@ -24,6 +24,8 @@ pub enum Screen {
     Summary,
     /// Pick a course. The list comes from the session.
     Course,
+    /// Lifetime totals and badges.
+    Progress,
 }
 
 /// What the game should do.
@@ -101,6 +103,9 @@ pub struct Shell {
     summary_index: usize,
     course_index: usize,
     confirm_index: usize,
+    progress_index: usize,
+    progress_rows: Vec<ShellRow>,
+    progress_blurbs: Vec<String>,
     /// Settings was opened from the title, so Back returns there.
     settings_from_title: bool,
     menu: MenuState,
@@ -115,6 +120,9 @@ impl Default for Shell {
             summary_index: 0,
             course_index: 0,
             confirm_index: 0,
+            progress_index: 0,
+            progress_rows: Vec::new(),
+            progress_blurbs: Vec::new(),
             settings_from_title: false,
             menu: MenuState::default(),
         }
@@ -144,8 +152,9 @@ impl Shell {
     /// Move the highlight when the pointer is over a row.
     pub fn hover(&mut self, index: usize) {
         match self.screen {
-            Screen::Title => self.title_index = index.min(5),
-            Screen::Pause => self.pause_index = index.min(4),
+            Screen::Title => self.title_index = index.min(6),
+            Screen::Pause => self.pause_index = index.min(5),
+            Screen::Progress => self.progress_index = index,
             Screen::Summary => self.summary_index = index.min(2),
             Screen::ConfirmEnd | Screen::ConfirmQuit => {
                 self.confirm_index = index.min(1);
@@ -160,7 +169,13 @@ impl Shell {
         matches!(
             self.screen,
             Screen::Title | Screen::Summary | Screen::Course | Screen::ConfirmQuit
-        )
+        ) || (self.screen == Screen::Progress && self.settings_from_title)
+    }
+
+    /// Badge lines for the Progress screen. `blurbs` is the focused row's sentence.
+    pub fn set_progress(&mut self, rows: Vec<ShellRow>, blurbs: Vec<String>) {
+        self.progress_rows = rows;
+        self.progress_blurbs = blurbs;
     }
 
     /// Settings menu, when that page is up.
@@ -188,6 +203,14 @@ impl Shell {
     /// Close every menu and ride.
     pub fn close_menus(&mut self) {
         self.menu.close();
+        if self.screen == Screen::Progress {
+            self.screen = if self.settings_from_title {
+                Screen::Title
+            } else {
+                Screen::Pause
+            };
+            return;
+        }
         if self.screen != Screen::Title && self.screen != Screen::Summary {
             self.screen = Screen::Riding;
         }
@@ -219,6 +242,7 @@ impl Shell {
             Screen::ConfirmQuit => self.confirm(command, false),
             Screen::Summary => self.summary_command(command, fresh),
             Screen::Course => self.course_command(command, fresh, courses),
+            Screen::Progress => self.progress_command(command, fresh),
         }
     }
 
@@ -296,6 +320,18 @@ impl Shell {
                 };
                 list_view(Screen::Course, "Course", &rows, self.course_index, &detail)
             }
+            Screen::Progress => {
+                let count = self.progress_rows.len().max(1);
+                let index = self.progress_index.min(count - 1);
+                let blurb = self.progress_blurbs.get(index).cloned().unwrap_or_default();
+                list_view(
+                    Screen::Progress,
+                    "Progress",
+                    &self.progress_rows,
+                    index,
+                    &blurb,
+                )
+            }
             Screen::Riding | Screen::Settings => ShellView {
                 screen: self.screen,
                 title: String::new(),
@@ -307,7 +343,7 @@ impl Shell {
     }
 
     fn title_command(&mut self, command: Command, fresh: bool, _courses: usize) -> ShellEffect {
-        const N: usize = 6;
+        const N: usize = 7;
         match command {
             Command::Up => move_focus(&mut self.title_index, N, false, fresh),
             Command::Down => move_focus(&mut self.title_index, N, true, fresh),
@@ -337,9 +373,14 @@ impl Shell {
                     self.screen = Screen::Settings;
                     self.menu.open_main();
                 }
-                _ => {
+                5 => {
                     self.screen = Screen::ConfirmQuit;
                     self.confirm_index = 0;
+                }
+                _ => {
+                    self.settings_from_title = true;
+                    self.progress_index = 0;
+                    self.screen = Screen::Progress;
                 }
             },
             Command::Back | Command::Left | Command::Right => {}
@@ -348,7 +389,7 @@ impl Shell {
     }
 
     fn pause_command(&mut self, command: Command, fresh: bool) -> ShellEffect {
-        const N: usize = 5;
+        const N: usize = 6;
         match command {
             Command::Up => move_focus(&mut self.pause_index, N, false, fresh),
             Command::Down => move_focus(&mut self.pause_index, N, true, fresh),
@@ -378,9 +419,14 @@ impl Shell {
                     self.screen = Screen::Settings;
                     self.menu.open_main();
                 }
-                _ => {
+                4 => {
                     self.screen = Screen::ConfirmEnd;
                     self.confirm_index = 0;
+                }
+                _ => {
+                    self.settings_from_title = false;
+                    self.progress_index = 0;
+                    self.screen = Screen::Progress;
                 }
             },
             Command::Left | Command::Right => {}
@@ -441,6 +487,23 @@ impl Shell {
         ShellEffect::None
     }
 
+    fn progress_command(&mut self, command: Command, fresh: bool) -> ShellEffect {
+        let count = self.progress_rows.len().max(1);
+        match command {
+            Command::Up => move_focus(&mut self.progress_index, count, false, fresh),
+            Command::Down => move_focus(&mut self.progress_index, count, true, fresh),
+            Command::Back | Command::Accept => {
+                self.screen = if self.settings_from_title {
+                    Screen::Title
+                } else {
+                    Screen::Pause
+                };
+            }
+            Command::Left | Command::Right => {}
+        }
+        ShellEffect::None
+    }
+
     fn summary_command(&mut self, command: Command, fresh: bool) -> ShellEffect {
         const N: usize = 3;
         match command {
@@ -496,6 +559,7 @@ fn title_rows(course: &str, trainer: &str, heart: &str) -> Vec<ShellRow> {
         row("Heart rate", heart),
         row("Settings", ""),
         row("Quit", ""),
+        row("Progress", ""),
     ]
 }
 
@@ -506,6 +570,7 @@ fn pause_rows(heart: &str) -> Vec<ShellRow> {
         row("Heart rate", heart),
         row("Settings", ""),
         row("End ride", ""),
+        row("Progress", ""),
     ]
 }
 
@@ -575,6 +640,7 @@ mod tests {
             straps: Vec::new(),
             heart_line: String::new(),
             riders: Vec::new(),
+            kits: Vec::new(),
         }
     }
 
@@ -620,12 +686,12 @@ mod tests {
     #[test]
     fn a_fresh_press_wraps_and_a_hold_stops() {
         let mut shell = Shell::new(false);
-        shell.title_index = 5;
+        shell.title_index = 6;
         shell.handle(Command::Down, true, &snap(), 1);
         assert_eq!(shell.title_index, 0);
-        shell.title_index = 5;
+        shell.title_index = 6;
         shell.handle(Command::Down, false, &snap(), 1);
-        assert_eq!(shell.title_index, 5);
+        assert_eq!(shell.title_index, 6);
     }
 
     #[test]

@@ -1209,6 +1209,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pp-arcade"
+version = "0.1.0"
+dependencies = [
+ "pp-core",
+ "pp-course",
+ "serde",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "pp-cast"
 version = "0.1.0"
 dependencies = [
@@ -1305,15 +1316,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "pp-segments"
+version = "0.1.0"
+dependencies = [
+ "pp-course",
+ "pp-routegen",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "pp-session"
 version = "0.1.0"
 dependencies = [
  "fitparser",
+ "pp-arcade",
  "pp-cast",
  "pp-core",
  "pp-course",
  "pp-record",
  "pp-routegen",
+ "pp-segments",
  "pp-trainer",
  "reqwest",
  "serde",

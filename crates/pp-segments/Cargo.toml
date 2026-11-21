@@ -1,0 +1,17 @@
+[package]
+name = "pp-segments"
+description = "Timed segments, personal records, and a best-lap ghost for Penguin Pass"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+pp-course = { path = "../pp-course" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+pp-routegen = { path = "../pp-routegen" }
+
+[lints]
+workspace = true

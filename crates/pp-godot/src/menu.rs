@@ -19,7 +19,7 @@ use godot::prelude::*;
 use pp_session::{Session, Settings};
 use pp_view::menu::{Action, Device, MenuState, MenuView, Snapshot};
 
-const ROW_COUNT: usize = 15;
+const ROW_COUNT: usize = 18;
 
 /// What the player just pressed.
 pub use pp_view::menu::Command;
@@ -390,6 +390,24 @@ fn heart_line(session: &Session) -> String {
     }
 }
 
+fn kit_options(session: &Session) -> Vec<pp_view::menu::RiderOption> {
+    let mut kits = vec![pp_view::menu::RiderOption {
+        id: "default".to_owned(),
+        name: pp_rider::Kit::get("default").name.to_owned(),
+    }];
+    for id in session.profile().unlocked_kits {
+        let kit = pp_rider::Kit::get(&id);
+        if kit.id == "default" {
+            continue;
+        }
+        kits.push(pp_view::menu::RiderOption {
+            id,
+            name: kit.name.to_owned(),
+        });
+    }
+    kits
+}
+
 fn snapshot(session: &mut Session, music_report: &str, controller_status: &str) -> Snapshot {
     let status = session.status();
     let connection = session.connection();
@@ -428,6 +446,7 @@ fn snapshot(session: &mut Session, music_report: &str, controller_status: &str) 
                 name: preset.name.to_owned(),
             })
             .collect(),
+        kits: kit_options(session),
         devices: session
             .pairing()
             .into_iter()

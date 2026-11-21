@@ -22,6 +22,11 @@ var _menus := false
 var _lanes := false
 var _polish := false
 var _saved := false
+var _title := false
+var _fish := false
+var _arcade := false
+var _follow := false
+var _banked := false
 var _dir := ""
 var _view := 0
 var _settle := 0
@@ -97,6 +102,10 @@ func _read_args() -> void:
 	_lanes = args.has("--lanes")
 	_polish = args.has("--polish")
 	_saved = args.has("--saved")
+	_title = args.has("--title")
+	_fish = args.has("--fish")
+	_arcade = args.has("--arcade")
+	_follow = args.has("--follow")
 	_dir = _arg(args, "--dir", "")
 	if _bench:
 		_frames = max(_frames, 240)
@@ -132,6 +141,42 @@ func _on_drawn() -> void:
 
 
 func _views() -> Array:
+	if _follow:
+		return [
+			["kit-sunrise", 40.0, false, 1280, 800, "kit"],
+			["kit-glacier", 40.0, false, 1280, 800, "kit"],
+			["kit-kom-dots", 40.0, false, 1280, 800, "kit"],
+			["progress", 8.0, false, 1280, 800, "progress"],
+			["banner-240", 240.0, false, 1280, 800, "banner"],
+			["banner-258", 258.0, false, 1280, 800, "banner"],
+			["banner-270", 270.0, false, 1280, 800, "banner"],
+		]
+	if _fish or _arcade:
+		var views := [
+			["fish-chase", 90.0, false, 1280, 800, "fish"],
+			["fish-handlebar", 90.0, true, 1280, 800, "fish"],
+			["fish-close", 93.0, false, 1280, 800, "fish-close"],
+			["fish-golden", 4588.0, false, 1280, 800, "fish-golden"],
+			["fish-collect", 113.6, false, 1280, 800, "fish-collect"],
+		]
+		if _arcade:
+			views.append_array([
+				["segment-start", 252.0, false, 1280, 800, "segment-start"],
+				["segment-finish", 2610.0, false, 1280, 800, "segment-finish"],
+				["ghost-ahead", 400.0, false, 1280, 800, "ghost-ahead"],
+				["ghost-beside", 400.0, false, 1280, 800, "ghost-beside"],
+				["power-held", 2625.0, false, 1280, 800, "power-held"],
+				["power-active", 2625.0, false, 1280, 800, "power-active"],
+				["arcade-all", 500.0, false, 1280, 800, "arcade-all"],
+				["summary-segments", 8.0, false, 1280, 800, "summary-arcade"],
+				["progress", 8.0, false, 1280, 800, "progress"],
+			])
+		return views
+	if _title:
+		return [
+			["title-alpine-1280", 8.0, false, 1280, 800, "title"],
+			["title-alpine-1920", 8.0, false, 1920, 1080, "title"],
+		]
 	if _saved:
 		return [
 			["summary-saved", 8.0, false, 1280, 800, "saved"],
@@ -204,6 +249,14 @@ func _views() -> Array:
 	]
 
 
+func _bank() -> void:
+	if _banked:
+		return
+	_banked = true
+	_game.debug_show_title()
+	_game.debug_bank_best()
+
+
 func _pose(kind: String) -> void:
 	if kind == "title" or kind == "course":
 		_game.debug_show_title()
@@ -216,6 +269,63 @@ func _pose(kind: String) -> void:
 		_game.debug_menu_open()
 	elif kind == "pause":
 		_game.debug_menu_action("back")
+	elif kind == "fish" or kind == "fish-close" or kind == "fish-golden" or kind == "fish-collect":
+		_bank()
+		var dist := 90.0
+		if kind == "fish-close":
+			dist = 93.0
+		elif kind == "fish-golden":
+			dist = 4588.0
+		elif kind == "fish-collect":
+			dist = 113.6
+		_game.debug_seek(dist, 180.0, 0.0)
+		if kind == "fish-collect":
+			_game.debug_advance(0.3)
+	elif kind == "segment-start":
+		_bank()
+		_game.debug_seek(252.0, 220.0, 0.0)
+	elif kind == "segment-finish":
+		_bank()
+		_game.debug_seek(2610.0, 200.0, 0.0)
+		_game.debug_advance(12.0)
+	elif kind == "ghost-ahead":
+		_bank()
+		_game.debug_seek(180.0, 70.0, 0.0)
+	elif kind == "ghost-beside":
+		_bank()
+		_game.debug_seek(350.0, 250.0, 0.0)
+	elif kind == "power-held":
+		_bank()
+		_game.debug_seek(2625.0, 200.0, 0.0)
+	elif kind == "power-active" or kind == "arcade-all":
+		_bank()
+		var at := 2625.0 if kind == "power-active" else 500.0
+		_game.debug_seek(at, 200.0, 0.0)
+		_game.debug_activate_powerup()
+	elif kind == "summary-arcade":
+		_bank()
+		_game.debug_start_ride()
+		_game.debug_seek(2625.0, 220.0, 0.0)
+		_game.debug_press_back()
+		for _step in 4:
+			_game.debug_menu_action("down")
+		_game.debug_menu_action("accept")
+		_game.debug_menu_action("right")
+		_game.debug_menu_action("accept")
+	elif kind == "kit":
+		_game.debug_show_title()
+		_game.debug_set_kit(str(_views()[_view][0]))
+		_game.debug_start_ride()
+		_game.debug_seek(40.0, 160.0, 0.0)
+	elif kind == "banner":
+		_game.debug_show_title()
+		_game.debug_start_ride()
+		_game.debug_seek(float(_views()[_view][1]), 180.0, 0.0)
+	elif kind == "progress":
+		_game.debug_show_title()
+		for _step in 6:
+			_game.debug_menu_action("down")
+		_game.debug_menu_action("accept")
 	elif kind == "saved" or kind == "unsaved":
 		_game.debug_show_title()
 		_game.debug_start_ride()

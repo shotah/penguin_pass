@@ -190,3 +190,17 @@ The HUD refreshes numbers a few times a second. `tick` still runs every frame. T
 **Music.** `settings().music_volume` is 0 to 100, default 60. `settings().music_folder` is the rider's folder, or absent. `missing_music_folder` is that path when it is not on disk.
 
 **Power hint.** `SIM_POWER_STEP_W` is 25 W. The simulated-rider mockup still draws ±10 W.
+
+## Segments, ghost, fish, and badges
+
+`play` is the per-frame snapshot: one lap of segments, the open segment, the ghost, fish within about 150 m, the combo, and the powerup slot. `set_lane_position` takes a slot from 0.0 to 4.0 and is what collects a fish. The game calls it every frame. `activate_powerup` starts the held powerup. `profile` is the lifetime screen.
+
+`settings.arcade` (default true) turns fish and powerups on. `settings.ghost` (default true) shows the stored ghost. With ghost display off, the ghost is still recorded. Both keys are missing from older settings files, which load as true.
+
+`records.toml` and `arcade.toml` sit next to the settings file. They are read and written only when a settings path, a rides directory, or `rides_folder` was given, so a test that sets none of those never touches a folder. A file that does not parse does not stop the ride. A failed save is one warning line.
+
+The built-in loop's record key is `penguin_pass`. A generated route's record key is the terrain name, the distance in kilometres, and the seed, so two deserts do not share records. The badge for riding every course uses the terrain name alone (`flat`, `rolling`, `mountain`, `desert`) or `penguin_pass`. Fish on the built-in loop use seed 1. A generated route uses its own seed.
+
+Segments and the ghost advance only while the phase is `Riding`. The ghost replays from the start of the ride. `GhostBeaten` fires when the first lap beats the stored lap. A powerup changes the rider profile used for that frame's physics only. Trainer grade, recorded watts, and the FIT power channel stay as measured. `pp-segments` has no assisted flag, so a segment or a first lap ridden while a powerup was active is shown, and it is not stored as a best or as the ghost.
+
+At the end of a ride the session adds the distance, ascent, time, fish, best combo, course, Penguin Pass laps, and whether a clean segment record fell to the profile, using the local date from `set_utc_offset_minutes`. Each new badge is a `BadgeEarned` event. Simulated rides count. The ride summary includes the fish count, the best combo, and each segment finish (name, time, and whether it was stored).

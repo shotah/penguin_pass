@@ -5,6 +5,7 @@
 //! tested without the engine. `pp-godot` draws the results and owns every
 //! `Gd` handle.
 
+pub mod arcade;
 pub mod console;
 pub mod controllers;
 pub mod elevation;

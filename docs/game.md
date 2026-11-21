@@ -46,6 +46,7 @@ corner. Vsync is on. The ride does not pause while the menu is open.
 | Raise simulated power | Up, W | D-pad up, right trigger |
 | Lower simulated power | Down, S | D-pad down, left trigger |
 | Move one lane slot | Left, A / Right, D | D-pad left / right, left stick |
+| Use a powerup | Space, E | X |
 | Chase / handlebar camera | C | Y |
 | Full screen | F11 | |
 | Open or close the menu | Esc | Start |
@@ -56,7 +57,11 @@ corner. Vsync is on. The ride does not pause while the menu is open.
 
 Hold a direction and the step repeats. Simulated power stays in 0..1500 W
 and only changes while the simulated rider is the source. C switches between
-the chase camera and a handlebar view.
+the chase camera and a handlebar view. Fish sit in the five lane slots.
+Steer into one to collect it. The counter is beside the lane hint, and a
+collect plays a short blip at the music volume. Settings has `Fish and
+powerups`. Off hides the fish and ignores the powerup button. `Ghost` draws a pale rider from your best first lap.
+`Progress` on the title and pause menus lists lifetime totals and badges.
 
 The bottom line is the session status: the simulated rider and the Up/Down
 hint, or the trainer's name and whether resistance follows the road. Until a

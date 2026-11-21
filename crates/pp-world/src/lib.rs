@@ -30,6 +30,7 @@ mod error;
 mod grid;
 mod ground;
 mod heightfield;
+mod landmarks;
 mod planner;
 mod route;
 mod seed;
@@ -38,6 +39,10 @@ pub use error::WorldError;
 pub use grid::{ChunkBounds, ChunkCoord, ChunkGrid};
 pub use ground::{GroundPlan, GroundVertex, PlannedChunk, PlannedFar, SKIRT_M, Skirt, plan};
 pub use heightfield::Field;
+pub use landmarks::{
+    GroundQuery, LandmarkRequest, PlacedLandmark, ScatterSite, SiteKind, horizon_anchor,
+    horizon_bearing, horizon_in_view, keeps_scatter, place_landmarks,
+};
 pub use planner::{ChunkDelta, ChunkPlanner, PlannerConfig};
 pub use route::{Route, StraightRoute};
 pub use seed::chunk_seed;

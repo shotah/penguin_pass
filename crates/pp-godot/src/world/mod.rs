@@ -14,6 +14,7 @@ use godot::classes::{
 use godot::obj::Gd;
 use godot::prelude::*;
 
+pub(crate) mod landmarks;
 pub(crate) mod scenery;
 pub(crate) mod terrain;
 
@@ -102,7 +103,8 @@ pub fn scatter_checksum(course: &Course, theme: &Theme) -> i64 {
         .collect();
     let mut field = terrain::Field::new(&raw, theme.seed as i32);
     field.use_relief(theme.relief.clone(), theme.seed);
-    scenery::recompute_checksum(&field, theme).1
+    let placed = landmarks::prepare(course, &mut field, theme);
+    scenery::recompute_checksum(&field, theme, &placed).1
 }
 
 /// Road, terrain, trees, the start arch, and the kilometer posts.
@@ -112,9 +114,9 @@ pub fn build_course(
     theme: &Theme,
     catalog: &Catalog,
 ) -> ScatterReport {
-    let (samples, field) = terrain::build(parent, course, theme, catalog);
+    let (samples, field, placed) = terrain::build(parent, course, theme, catalog);
     add_road(parent, &samples, catalog);
-    scenery::build(parent, course, &field, theme, catalog)
+    scenery::build(parent, course, &field, theme, catalog, &placed)
 }
 
 fn add_road(parent: &mut Gd<Node3D>, samples: &[CenterSample], catalog: &Catalog) {

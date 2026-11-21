@@ -3,6 +3,8 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
+use pp_arcade::PowerupKind;
+
 /// How many events are kept when the game does not drain them.
 pub const EVENT_QUEUE_CAP: usize = 32;
 
@@ -77,6 +79,62 @@ pub enum RideEvent {
     RideNotSaved {
         /// One sentence for a toast.
         reason: String,
+    },
+    /// The rider crossed a segment start line.
+    SegmentEntered {
+        /// Segment name, for a banner.
+        name: String,
+    },
+    /// The rider finished a segment they had entered.
+    SegmentFinished {
+        /// Segment name.
+        name: String,
+        /// Finish time, in seconds.
+        time_s: f64,
+        /// Best time before this finish. `None` on the first effort.
+        previous_best_s: Option<f64>,
+        /// `true` when this finish is strictly faster than the stored best.
+        ///
+        /// A finish ridden while a powerup effect was active is not a record.
+        record: bool,
+    },
+    /// The rider collected a fish.
+    FishCollected {
+        /// The fish is golden.
+        golden: bool,
+        /// Consecutive collects, including this one.
+        combo: u32,
+    },
+    /// The rider passed a fish outside its slot. The combo resets.
+    FishMissed,
+    /// An empty slot received a powerup.
+    PowerupAwarded {
+        /// What is now held.
+        kind: PowerupKind,
+    },
+    /// The rider started the held powerup.
+    PowerupActivated {
+        /// What started running.
+        kind: PowerupKind,
+    },
+    /// A running powerup reached the end of its time.
+    PowerupExpired {
+        /// What ended.
+        kind: PowerupKind,
+    },
+    /// This ride earned a badge the profile did not already have.
+    BadgeEarned {
+        /// Badge name.
+        name: String,
+        /// Kit unlocked with the badge, when it has one.
+        kit: Option<String>,
+    },
+    /// The first lap beat the stored ghost.
+    GhostBeaten {
+        /// This lap, in seconds.
+        time_s: f64,
+        /// The stored ghost's lap, in seconds.
+        previous_s: Option<f64>,
     },
 }
 

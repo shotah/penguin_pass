@@ -34,6 +34,8 @@ pub enum PadAction {
     Accept,
     /// Leave the current menu.
     Back,
+    /// Use the held powerup.
+    Activate,
 }
 
 /// Map one controller event.
@@ -116,7 +118,8 @@ fn map_button(button: Button, riding: bool) -> Option<PadAction> {
             | Button::ShiftDownLeft
             | Button::ShiftUpLeft
             | Button::PowerUpLeft => PadAction::PowerDown,
-            Button::A | Button::B => return None,
+            Button::A => PadAction::Activate,
+            Button::B => return None,
         });
     }
     Some(match button {
@@ -162,7 +165,10 @@ mod tests {
             map_event(&press(Button::A), false, false),
             Some(PadAction::Accept)
         );
-        assert_eq!(map_event(&press(Button::A), true, false), None);
+        assert_eq!(
+            map_event(&press(Button::A), true, false),
+            Some(PadAction::Activate)
+        );
         assert_eq!(
             map_event(&press(Button::OnOff), true, false),
             Some(PadAction::Pause)

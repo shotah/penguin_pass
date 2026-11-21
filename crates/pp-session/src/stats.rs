@@ -65,6 +65,25 @@ pub struct RideSummary {
     pub max_heart_rate_bpm: Option<u8>,
     /// Lap records, including the lap in progress when the ride has not ended.
     pub laps: Vec<LapRecord>,
+    /// Fish collected on this ride.
+    pub fish: u32,
+    /// Longest run of fish collected without a miss.
+    pub best_combo: u32,
+    /// Segments finished on this ride, in the order they finished.
+    pub segments: Vec<SegmentResult>,
+}
+
+/// One segment finish from the current ride, for the summary screen.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SegmentResult {
+    /// Segment name.
+    pub name: String,
+    /// Finish time, in seconds.
+    pub time_s: f64,
+    /// `true` when this finish was stored as the best.
+    ///
+    /// A finish ridden while a powerup effect was active is not stored.
+    pub record: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -202,6 +221,9 @@ impl RideStats {
             average_heart_rate_bpm: heart_ok.then(|| (self.heart_sum / self.heart_time) as f32),
             max_heart_rate_bpm: heart_ok.then_some(self.max_heart).flatten(),
             laps,
+            fish: 0,
+            best_combo: 0,
+            segments: Vec::new(),
         }
     }
 

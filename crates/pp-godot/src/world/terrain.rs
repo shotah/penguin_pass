@@ -87,7 +87,7 @@ pub fn build(
     course: &Course,
     theme: &Theme,
     catalog: &Catalog,
-) -> (Vec<CenterSample>, Field) {
+) -> (Vec<CenterSample>, Field, Vec<pp_world::PlacedLandmark>) {
     let samples = sample_centerline(course);
     let raw: Vec<[f32; 3]> = samples
         .iter()
@@ -96,6 +96,7 @@ pub fn build(
     let started = godot::classes::Time::singleton().get_ticks_msec();
     let mut field = Field::new(&raw, theme.seed as i32);
     field.use_relief(theme.relief.clone(), theme.seed);
+    let placed = crate::world::landmarks::prepare(course, &mut field, theme);
     let plan = plan(&field);
     let mut material = terrain_material();
     let haze = Vector3::new(theme.fog.color[0], theme.fog.color[1], theme.fog.color[2]);
@@ -113,8 +114,10 @@ pub fn build(
         chunks += 1;
     }
     let backdrop_tris = emit_far(&mut group, &field, theme, &material, &plan.far, textured);
+    emit_horizon(&mut group, course, &field, theme, &material);
     let fill_tris = 0;
     parent.add_child(&group);
+    crate::world::landmarks::spawn(parent, course, &field, theme, &placed);
     let elapsed = godot::classes::Time::singleton().get_ticks_msec() - started;
     let road_tris = samples.len().saturating_sub(1) * 2;
     godot_print!(
@@ -127,7 +130,7 @@ pub fn build(
         road_tris,
         samples.len()
     );
-    (samples, field)
+    (samples, field, placed)
 }
 
 fn emit_chunk(
@@ -312,6 +315,111 @@ fn add_skirt(
     tool.add_index(b);
     tool.add_index(b + 3);
     tool.add_index(b + 2);
+}
+
+fn emit_horizon(
+    parent: &mut Gd<Node3D>,
+    course: &Course,
+    field: &Field,
+    theme: &Theme,
+    shared: &Gd<ShaderMaterial>,
+) {
+    let (anchor_x, anchor_z) = pp_world::horizon_in_view(course);
+    let desert = theme.name == "desert";
+    let peak_h = if desert { 620.0 } else { 1_250.0 };
+    let base_r = if desert { 1_600.0 } else { 720.0 };
+    let rings = 26_i32;
+    let sectors = 40_i32;
+    let mut tool = SurfaceTool::new_gd();
+    tool.begin(PrimitiveType::TRIANGLES);
+    let mut grid: Vec<Vector3> = Vec::with_capacity(((rings + 1) * (sectors + 1)) as usize);
+    for ir in 0..=rings {
+        let radial = ir as f32 / rings as f32;
+        for ia in 0..=sectors {
+            let angle = ia as f32 / sectors as f32 * std::f32::consts::TAU;
+            let shoulder = (angle * 3.0).sin() * 0.16 + (angle * 5.0).cos() * 0.07;
+            let noise = peak_hash(angle, radial) * 0.08;
+            let (r, h) = if desert {
+                // Flat sandstone top, then a steep rim. No snow.
+                let drop = smoothstep(0.64, 0.90, radial);
+                (
+                    base_r * radial * (1.0 + shoulder * 0.08),
+                    peak_h * (1.0 - drop),
+                )
+            } else {
+                let cone = (1.0 - radial).powf(1.28);
+                (
+                    base_r * radial.powf(0.82) * (1.0 + shoulder * (0.35 + radial)),
+                    peak_h * cone * (1.0 + noise + shoulder * 0.12 * radial),
+                )
+            };
+            let x = anchor_x + angle.cos() * r;
+            let z = anchor_z + angle.sin() * r;
+            let ground = field.height(x, z);
+            let skirt = smoothstep(0.82, 1.0, radial);
+            let y = ground + h * (1.0 - skirt);
+            grid.push(Vector3::new(x, y.max(ground), z));
+        }
+    }
+    let cols = sectors + 1;
+    for ir in 0..rings {
+        for ia in 0..sectors {
+            let i00 = (ir * cols + ia) as usize;
+            let i10 = i00 + 1;
+            let i01 = i00 + cols as usize;
+            let i11 = i01 + 1;
+            let height = grid[i00].y - field.height(grid[i00].x, grid[i00].z);
+            let color = if desert {
+                let band = ((height / peak_h) * 6.0).floor() as i32;
+                if band % 2 == 0 {
+                    Color::from_rgb(0.40, 0.28, 0.18)
+                } else {
+                    Color::from_rgb(0.62, 0.45, 0.28)
+                }
+            } else {
+                let snow = smoothstep(peak_h * 0.58, peak_h * 0.78, height);
+                let rock = Color::from_rgb(0.40, 0.36, 0.32);
+                let cap = Color::from_rgb(0.94, 0.96, 0.98);
+                rock.lerp(cap, f64::from(snow))
+            };
+            for (a, b, c) in [(i00, i11, i10), (i00, i01, i11)] {
+                for index in [a, b, c] {
+                    tool.set_color(color);
+                    tool.add_vertex(grid[index]);
+                }
+            }
+        }
+    }
+    tool.generate_normals();
+    let mesh = tool.commit().unwrap_or_else(ArrayMesh::new_gd);
+    let mut material = ShaderMaterial::new_gd();
+    let code = TERRAIN_SHADER.replacen(
+        "render_mode diffuse_burley, specular_disabled;",
+        "render_mode diffuse_burley, specular_disabled, cull_disabled;",
+        1,
+    );
+    let mut shader = Shader::new_gd();
+    shader.set_code(&code);
+    material.set_shader(&shader);
+    copy_haze(&mut material, shared);
+    material.set_shader_parameter("textured", &0.0_f32.to_variant());
+    let mut node = MeshInstance3D::new_alloc();
+    node.set_name("HorizonPeak");
+    node.set_mesh(&mesh);
+    node.set_surface_override_material(0, &material);
+    parent.add_child(&node);
+}
+
+fn copy_haze(into: &mut Gd<ShaderMaterial>, from: &Gd<ShaderMaterial>) {
+    for name in ["haze_color", "haze_start", "haze_end"] {
+        into.set_shader_parameter(name, &from.get_shader_parameter(name));
+    }
+}
+
+fn peak_hash(angle: f32, radial: f32) -> f32 {
+    let n =
+        angle.to_bits().wrapping_mul(1_597_334_677) ^ radial.to_bits().wrapping_mul(3_812_015_801);
+    (n >> 8) as f32 / 16_777_216.0 * 2.0 - 1.0
 }
 
 fn terrain_material() -> Gd<ShaderMaterial> {

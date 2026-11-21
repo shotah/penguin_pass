@@ -56,8 +56,12 @@ pub struct Rider {
     eye_forward: Vector3,
     hidden_from_camera: bool,
     built: bool,
+    /// Pale blue, no shadow. Set before the node enters the tree.
+    ghost: bool,
     /// [`RiderPreset::id`] of the meshes in the tree. `nils` until a preset is chosen.
     preset_id: String,
+    /// Kit id. `default` keeps the preset's own colours.
+    kit_id: String,
 }
 
 #[godot_api]
@@ -75,7 +79,9 @@ impl INode3D for Rider {
             eye_forward: Vector3::FORWARD,
             hidden_from_camera: false,
             built: false,
+            ghost: false,
             preset_id: String::from(RiderPreset::nils().id),
+            kit_id: String::from("default"),
         }
     }
 
@@ -184,6 +190,17 @@ impl Rider {
     #[func(rename = set_preset)]
     pub fn set_preset_gd(&mut self, id: GString) -> bool {
         self.set_preset(&id.to_string())
+    }
+
+    /// Draw this rider as the ghost: pale blue, see-through, no shadow.
+    ///
+    /// Call it before the node is added to the tree.
+    #[func]
+    pub fn mark_ghost(&mut self) {
+        self.ghost = true;
+        if self.built {
+            self.apply_ghost();
+        }
     }
 
     /// Id of the preset currently shown.
@@ -310,6 +327,23 @@ impl Rider {
         true
     }
 
+    /// Lay `kit_id` over the current rider. Unknown ids keep the rider's colours.
+    pub fn set_kit(&mut self, kit_id: &str) {
+        let kit_id = if kit_id.trim().is_empty() {
+            "default"
+        } else {
+            kit_id
+        };
+        if self.kit_id == kit_id && self.model.is_some() {
+            return;
+        }
+        self.kit_id = kit_id.to_owned();
+        if self.built {
+            self.discard_meshes();
+            self.assemble();
+        }
+    }
+
     /// Drop the part nodes so a new preset can take their place.
     ///
     /// `free` releases the node now. The mesh and its materials go with it,
@@ -326,7 +360,8 @@ impl Rider {
     /// Build one mesh node per part. Surfaces that share a look share a material.
     fn assemble(&mut self) {
         let preset = RiderPreset::get(&self.preset_id).unwrap_or_else(RiderPreset::nils);
-        let model = RiderModel::build_preset(&preset);
+        let style = pp_rider::Kit::get(&self.kit_id).paint(preset.style);
+        let model = RiderModel::build_with(&style, &preset.build);
         let mut materials: Vec<(pp_rider::Material, Gd<StandardMaterial3D>)> = Vec::new();
         for part in model.parts() {
             let mut node = MeshInstance3D::new_alloc();
@@ -338,6 +373,29 @@ impl Rider {
         }
         self.model = Some(model);
         self.pose_parts();
+        if self.ghost {
+            self.apply_ghost();
+        }
+    }
+
+    fn apply_ghost(&mut self) {
+        let mut material = StandardMaterial3D::new_gd();
+        material.set_albedo(Color::from_rgba(0.55, 0.82, 1.0, 0.72));
+        material.set_transparency(godot::classes::base_material_3d::Transparency::ALPHA);
+        material.set_shading_mode(godot::classes::base_material_3d::ShadingMode::UNSHADED);
+        material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let override_material = material.upcast::<godot::classes::Material>();
+        for node in &mut self.parts {
+            let surfaces = node
+                .get_mesh()
+                .map(|mesh| mesh.get_surface_count())
+                .unwrap_or(1)
+                .max(1);
+            for surface in 0..surfaces {
+                node.set_surface_override_material(surface, &override_material);
+            }
+            node.set_cast_shadows_setting(ShadowCastingSetting::OFF);
+        }
     }
 }
 

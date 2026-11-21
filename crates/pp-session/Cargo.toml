@@ -9,8 +9,10 @@ publish.workspace = true
 pp-cast = { path = "../pp-cast" }
 pp-core = { path = "../pp-core" }
 pp-course = { path = "../pp-course" }
+pp-arcade = { path = "../pp-arcade" }
 pp-record = { path = "../pp-record" }
 pp-routegen = { path = "../pp-routegen" }
+pp-segments = { path = "../pp-segments" }
 pp-trainer = { path = "../pp-trainer" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"

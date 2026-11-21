@@ -5,8 +5,10 @@
 //! test can prove the library loaded.
 
 mod assets;
+mod banners;
 mod camera;
 mod fake_trainer;
+mod fish;
 mod format;
 mod game;
 mod hud;
