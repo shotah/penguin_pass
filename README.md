@@ -9,19 +9,21 @@ Godot 4, and it runs on SteamOS. No Wine.
 Course, Trainer, Settings, and Quit. With no trainer, Up and Down change
 power in 25 W steps.
 
-The game speaks Bluetooth FTMS and Tacx FE-C. A scan finds a real
-Tacx Neo 2T. Connecting and resistance control have not yet been
-confirmed on a real trainer.
+The game speaks Bluetooth FTMS and Tacx FE-C. It connects to a real
+Tacx Neo 2T over FE-C, reads power, and takes control of resistance.
+Whether the resistance tracks the hills correctly has not been measured
+yet.
 
 ## Status
 
 Playable on the desktop. Automated tests pass, and the owner has ridden
-it. It is not on Steam. Menus are being restyled, and the far mountains
-are being reworked. See [Roadmap](#roadmap).
+it on a real trainer. Each ride is saved as a FIT file. It is not on
+Steam, and no release has been published yet. The far mountains are
+still being reworked. See [Roadmap](#roadmap).
 
 ## Screenshots
 
-The title screen and menus are a first pass and are being restyled.
+Some of these were taken before the latest menu restyle and terrain work.
 
 <table>
 <tr>
@@ -228,9 +230,10 @@ Three tiers, in the order they arrive:
 - [x] M0: workspace, build container, Godot loads the Rust extension
 - [x] M1: FTMS codec, course data, bike physics, all with tests
 - [x] M2: simulated trainer
-- [ ] M2: BLE trainer connection, over FTMS or Tacx FE-C. The scan finds
-  a real Neo 2T. Connecting and resistance are built but not yet
-  confirmed on it
+- [x] M2: BLE trainer connection, over FTMS or Tacx FE-C. A real Neo 2T
+  connects over FE-C, sends power, and accepts resistance control
+- [ ] M2: resistance and standing-start acceleration checked against a
+  traced ride on the real trainer (`./x play --trace`)
 - [x] M3: 5 km mountain loop, HUD, ride session
 - [x] M4: TV dashboard (checked in a desktop browser, not yet on a TV)
 - [x] M4: settings menu (rider and bike weight, FTP, trainer difficulty,
@@ -241,22 +244,29 @@ Three tiers, in the order they arrive:
   run. A Flathub listing is a separate, later step with its own rules
 - [x] M6: free CC0 art assets, textured terrain and road, a real rider
 - [x] M7: themes as data (alpine, desert) and a course picker
-- [ ] M7: mountains that look like mountains (in progress)
+- [x] M7: natural hillsides beside the road, with the road cut into them
+- [ ] M7: far mountains that look like mountains (they are still low
+  and soft)
 - [x] M8: generated routes from a seed, in six fixed choices up to 10 km
 - [ ] M8: any chosen distance, with the world streamed in chunks; then
   an endless mode
 - [x] M9: title screen, pause menu, ride summary, and a console HUD with
   power zones
-- [ ] M9: menus restyled to the design in `docs/ui.md`
+- [x] M9: menus restyled with the shared style: title, pause, settings,
+  pairing, course picker, and summary
 - [x] M9: music. Seven bundled CC0 tracks, or the player's own folder
   of mp3, ogg, or wav, and a volume setting
 - [ ] M10: first ride through Steam: Game Mode, Steam Link, and Bluetooth
   from inside the Steam runtime
 - [x] M11: a second rider (Sigrid) and a rider choice in settings
-- [ ] M11: heart-rate straps over Bluetooth (Garmin HRM and others). Built; not yet tried with a real strap
-- [ ] M11: Zwift controllers for lanes, power, and menus. Built; not yet tried with real controllers
-- [x] M11: ride in the right-hand lane, and move left and right within it (five positions)
-- [x] M12: save each ride as a FIT activity file for Strava and other sites (upload by hand)
+- [ ] M11: heart-rate straps over Bluetooth (Garmin HRM and others).
+  Built; not yet tried with a real strap
+- [ ] M11: Zwift controllers for lanes, power, and menus. Built; not yet
+  tried with real controllers
+- [x] M11: ride in the right-hand lane, and move left and right within
+  it (five positions)
+- [x] M12: save each ride as a FIT activity file for Strava and other
+  sites (upload by hand; no upload has been tried yet)
 - [ ] M12: push rides to Strava with the rider's own API keys (no server)
 - [ ] Later: Chromecast video, ANT+, riding a course in reverse
 

@@ -5,6 +5,7 @@
 # GODOT=/path/to/godot selects the binary for smoke. The default is the flatpak.
 # ./x fetch downloads the official Godot editor and export templates.
 # ./x play launches the game. ./x export and ./x package build the player folder.
+# ./x release bumps the workspace version, tags v<version>, and pushes it.
 
 set -euo pipefail
 
@@ -17,8 +18,19 @@ PROFILE=${PROFILE:-debug}
 CRATE=${CRATE:-}
 
 run_cargo() {
+    # --root DIR runs cargo against a copy. Release --dry-run uses it so the
+    # real Cargo.toml and Cargo.lock are not written.
+    local cargo_root=$ROOT
+    if [[ "${1:-}" == "--root" ]]; then
+        cargo_root=$2
+        shift 2
+    fi
     if [[ "${PP_NATIVE:-}" == 1 ]]; then
-        cargo "$@"
+        if [[ "$cargo_root" == "$ROOT" ]]; then
+            cargo "$@"
+        else
+            cargo --manifest-path "$cargo_root/Cargo.toml" "$@"
+        fi
         return
     fi
     if ! podman image exists "$IMAGE"; then
@@ -26,7 +38,7 @@ run_cargo() {
         exit 1
     fi
     podman run --rm \
-        -v "$ROOT:/src" \
+        -v "$cargo_root:/src" \
         -v "${CARGO_VOLUME}:/usr/local/cargo/registry" \
         -w /src \
         -e CARGO_HOME=/usr/local/cargo \
@@ -36,8 +48,9 @@ run_cargo() {
 }
 
 usage() {
-    echo "usage: ./x {toolbox|build|test|fmt|clippy|lint|typecheck|smoke|run|scan|controllers|fetch|play|export|package|licenses}" >&2
+    echo "usage: ./x {toolbox|build|test|fmt|clippy|lint|typecheck|smoke|run|scan|controllers|fetch|play|export|package|licenses|release}" >&2
     echo "play:  ./x play [--windowed|--fullscreen] [--resolution WxH] [--quit-after N] [--scratch-data] [--] [game args]" >&2
+    echo "release: ./x release [--dry-run|--no-push] {patch|minor|major|X.Y.Z}" >&2
     exit 1
 }
 
@@ -363,6 +376,327 @@ cmd_package() {
     echo "sha256: $hash"
 }
 
+# Version is [workspace.package] version in the root Cargo.toml.
+# Cargo.lock is refreshed with `cargo update --workspace --offline`, which
+# rewrites workspace packages and leaves registry crates that are already
+# locked. The metainfo release element is stamped by the Flatpak workflow.
+release_current_version() {
+    local file=$1
+    awk '
+        /^\[/ { section = $0 }
+        section == "[workspace.package]" && /^version = "/ {
+            if (match($0, /"[^"]*"/)) {
+                print substr($0, RSTART + 1, RLENGTH - 2)
+                exit
+            }
+        }
+    ' "$file"
+}
+
+release_write_version() {
+    local file=$1 new=$2 tmp got
+    tmp=$(mktemp)
+    awk -v ver="$new" '
+        /^\[/ { section = $0 }
+        section == "[workspace.package]" && /^version = "/ {
+            sub(/"[^"]*"/, "\"" ver "\"")
+        }
+        { print }
+    ' "$file" >"$tmp"
+    mv "$tmp" "$file"
+    got=$(release_current_version "$file")
+    [[ "$got" == "$new" ]] || {
+        echo "release: could not set the workspace version in $file" >&2
+        return 1
+    }
+}
+
+# Print the new X.Y.Z, or fail if spec is not patch, minor, major, or X.Y.Z.
+release_next_version() {
+    local cur=$1 spec=$2
+    local -a p
+    if [[ "$spec" == patch || "$spec" == minor || "$spec" == major ]]; then
+        if [[ ! "$cur" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release: current version is not X.Y.Z ($cur)" >&2
+            return 1
+        fi
+        IFS=. read -r -a p <<<"$cur"
+        case "$spec" in
+            patch) p[2]=$((10#${p[2]} + 1)) ;;
+            minor) p[1]=$((10#${p[1]} + 1)); p[2]=0 ;;
+            major) p[0]=$((10#${p[0]} + 1)); p[1]=0; p[2]=0 ;;
+        esac
+        echo "${p[0]}.${p[1]}.${p[2]}"
+        return 0
+    fi
+    if [[ "$spec" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "$spec"
+        return 0
+    fi
+    echo "release: version must be patch, minor, major, or X.Y.Z (got: $spec)" >&2
+    return 1
+}
+
+# Return 0 when $1 is strictly newer than $2. Both are X.Y.Z.
+release_version_gt() {
+    local -a a b
+    local i
+    IFS=. read -r -a a <<<"$1"
+    IFS=. read -r -a b <<<"$2"
+    for i in 0 1 2; do
+        if ((10#${a[i]} > 10#${b[i]})); then
+            return 0
+        fi
+        if ((10#${a[i]} < 10#${b[i]})); then
+            return 1
+        fi
+    done
+    return 1
+}
+
+release_parse_branch_line() {
+    local line=$1
+    line=${line#\#\# }
+    line=${line%%...*}
+    printf '%s\n' "$line"
+}
+
+release_require_clean() {
+    local porcelain=$1
+    if [[ -n "$porcelain" ]]; then
+        echo "release: working tree is not clean" >&2
+        return 1
+    fi
+}
+
+release_refresh_lock() {
+    local dir=$1
+    echo "+ cargo update --workspace --offline"
+    run_cargo --root "$dir" update --workspace --offline
+}
+
+# Copy the manifests and bump them in DIR. Does not touch $ROOT.
+release_bump_copy() {
+    local dir=$1 new=$2
+    mkdir -p "$dir"
+    cp "$ROOT/Cargo.toml" "$ROOT/Cargo.lock" "$dir/"
+    cp -a "$ROOT/crates" "$dir/crates"
+    release_write_version "$dir/Cargo.toml" "$new"
+    release_refresh_lock "$dir"
+}
+
+release_restore_files() {
+    local backup=$1 dest=$2
+    cp "$backup/Cargo.toml" "$dest/Cargo.toml"
+    cp "$backup/Cargo.lock" "$dest/Cargo.lock"
+}
+
+# These three git commands are what a release runs after the checks.
+# --dry-run prints them and does not run them. --no-push runs the first two.
+release_git() {
+    local new=$1
+    echo "+ git commit -am \"Release v${new}\""
+    if [[ "$release_dry" -eq 0 ]]; then
+        git commit -am "Release v${new}"
+    fi
+    echo "+ git tag -a \"v${new}\" -m \"Release v${new}\""
+    if [[ "$release_dry" -eq 0 ]]; then
+        git tag -a "v${new}" -m "Release v${new}"
+    fi
+    echo "+ git push origin HEAD \"v${new}\""
+    if [[ "$release_dry" -eq 0 && "$release_no_push" -eq 0 ]]; then
+        git push origin HEAD "v${new}"
+    fi
+    echo "release: https://github.com/shotah/penguin_pass/actions"
+    echo "release: https://github.com/shotah/penguin_pass/releases"
+}
+
+release_self_test() {
+    local cur work backup before after bad
+    cur=0.1.0
+    [[ "$(release_next_version "$cur" patch)" == 0.1.1 ]]
+    [[ "$(release_next_version "$cur" minor)" == 0.2.0 ]]
+    [[ "$(release_next_version "$cur" major)" == 1.0.0 ]]
+    [[ "$(release_next_version "$cur" 1.4.5)" == 1.4.5 ]]
+    [[ "$(release_next_version 1.9.0 minor)" == 1.10.0 ]]
+    release_version_gt 0.1.1 0.1.0
+    release_version_gt 0.2.0 0.1.9
+    release_version_gt 1.0.0 0.9.9
+    release_version_gt 1.10.0 1.9.0
+    if release_version_gt 0.1.0 0.1.0; then
+        echo "release self-test: equal versions compared newer" >&2
+        exit 1
+    fi
+    if release_version_gt 0.0.9 0.1.0; then
+        echo "release self-test: a lower version compared newer" >&2
+        exit 1
+    fi
+    if release_next_version "$cur" 0.0.1 >/dev/null; then
+        if release_version_gt 0.0.1 "$cur"; then
+            echo "release self-test: 0.0.1 should not be newer than 0.1.0" >&2
+            exit 1
+        fi
+    else
+        echo "release self-test: 0.0.1 should parse" >&2
+        exit 1
+    fi
+    local spec
+    for spec in 1.2 foo v1.2.3 1.2.3-rc1 1.2.3.4 ""; do
+        if release_next_version "$cur" "$spec" >/dev/null 2>&1; then
+            echo "release self-test: accepted malformed spec: ${spec:-<empty>}" >&2
+            exit 1
+        fi
+    done
+    [[ "$(release_parse_branch_line '## main...origin/main')" == main ]]
+    [[ "$(release_parse_branch_line '## main...origin/main [ahead 1]')" == main ]]
+    [[ "$(release_parse_branch_line '## main')" == main ]]
+    [[ "$(release_parse_branch_line '## HEAD (no branch)')" == "HEAD (no branch)" ]]
+    [[ "$(release_status_branch_live)" == main ]]
+    if release_require_clean " M Cargo.toml" 2>/dev/null; then
+        echo "release self-test: dirty status was accepted" >&2
+        exit 1
+    fi
+    release_require_clean ""
+    work=$(mktemp -d)
+    backup=$(mktemp -d)
+    cp "$ROOT/Cargo.toml" "$work/Cargo.toml"
+    cp "$ROOT/Cargo.lock" "$work/Cargo.lock"
+    cp "$work/Cargo.toml" "$backup/Cargo.toml"
+    cp "$work/Cargo.lock" "$backup/Cargo.lock"
+    release_write_version "$work/Cargo.toml" 0.1.1
+    grep -q '^version = "0.1.1"$' "$work/Cargo.toml"
+    release_restore_files "$backup" "$work"
+    grep -q '^version = "0.1.0"$' "$work/Cargo.toml"
+    rm -rf "$work" "$backup"
+    before=$(sha256sum "$ROOT/Cargo.toml" "$ROOT/Cargo.lock")
+    work=$(mktemp -d)
+    release_bump_copy "$work" 0.1.1
+    bad=$(diff -u "$ROOT/Cargo.lock" "$work/Cargo.lock" | awk '
+        /^[-+]/ && !/^[-+]{3}/ && !/^[-+]version = "0\.1\.[01]"$/ { print }
+    ' || true)
+    if [[ -n "$bad" ]]; then
+        echo "release self-test: lockfile changed more than the workspace version" >&2
+        printf '%s\n' "$bad" >&2
+        rm -rf "$work"
+        exit 1
+    fi
+    diff -q "$ROOT/Cargo.toml" "$work/Cargo.toml" >/dev/null && {
+        echo "release self-test: copy of Cargo.toml did not change" >&2
+        rm -rf "$work"
+        exit 1
+    }
+    rm -rf "$work"
+    after=$(sha256sum "$ROOT/Cargo.toml" "$ROOT/Cargo.lock")
+    if [[ "$before" != "$after" ]]; then
+        echo "release self-test: real Cargo.toml or Cargo.lock changed" >&2
+        exit 1
+    fi
+    echo "release: 0.1.0 -> 0.1.1"
+    release_dry=1
+    release_no_push=0
+    release_git 0.1.1
+    echo "release self-test: ok"
+}
+
+release_status_branch_live() {
+    local line
+    line=$(git status --branch --porcelain)
+    line=${line%%$'\n'*}
+    release_parse_branch_line "$line"
+}
+
+cmd_release() {
+    local spec="" release_dry=0 release_no_push=0
+    local cur new backup branch work
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run) release_dry=1 ;;
+            --no-push) release_no_push=1 ;;
+            --self-test) release_self_test; return ;;
+            -h|--help) usage ;;
+            --) shift; break ;;
+            -*)
+                echo "release: unknown flag: $1" >&2
+                usage
+                ;;
+            *)
+                if [[ -n "$spec" ]]; then
+                    echo "release: too many arguments" >&2
+                    usage
+                fi
+                spec=$1
+                ;;
+        esac
+        shift
+    done
+    while [[ $# -gt 0 ]]; do
+        if [[ -n "$spec" ]]; then
+            echo "release: too many arguments" >&2
+            usage
+        fi
+        spec=$1
+        shift
+    done
+    if [[ "$release_dry" -eq 1 && "$release_no_push" -eq 1 ]]; then
+        echo "release: use either --dry-run or --no-push" >&2
+        exit 1
+    fi
+    [[ -n "$spec" ]] || usage
+    cur=$(release_current_version "$ROOT/Cargo.toml")
+    [[ -n "$cur" ]] || {
+        echo "release: no version under [workspace.package] in Cargo.toml" >&2
+        exit 1
+    }
+    new=$(release_next_version "$cur" "$spec") || exit 1
+    if ! release_version_gt "$new" "$cur"; then
+        echo "release: ${new} is not newer than ${cur}" >&2
+        exit 1
+    fi
+    release_require_clean "$(git status --porcelain)"
+    branch=$(release_status_branch_live)
+    if [[ "$branch" != main ]]; then
+        echo "release: current branch is '${branch}', not main" >&2
+        exit 1
+    fi
+    # Tag existence is a read of git. The commit, tag, and push below are the
+    # writes. --dry-run still runs this check, then skips the writes.
+    echo "+ git rev-parse --verify --quiet \"refs/tags/v${new}\""
+    if git rev-parse --verify --quiet "refs/tags/v${new}" >/dev/null; then
+        echo "release: tag v${new} already exists" >&2
+        exit 1
+    fi
+    echo "release: ${cur} -> ${new}"
+    if [[ "$release_dry" -eq 1 ]]; then
+        work=$(mktemp -d)
+        release_bump_copy "$work" "$new"
+        rm -rf "$work"
+        release_git "$new"
+        return 0
+    fi
+    backup=$(mktemp -d)
+    cp "$ROOT/Cargo.toml" "$ROOT/Cargo.lock" "$backup/"
+    if ! release_write_version "$ROOT/Cargo.toml" "$new"; then
+        release_restore_files "$backup" "$ROOT"
+        echo "release: restored Cargo.toml and Cargo.lock" >&2
+        rm -rf "$backup"
+        exit 1
+    fi
+    if ! release_refresh_lock "$ROOT"; then
+        release_restore_files "$backup" "$ROOT"
+        echo "release: restored Cargo.toml and Cargo.lock" >&2
+        rm -rf "$backup"
+        exit 1
+    fi
+    if ! "$ROOT/x" lint || ! "$ROOT/x" typecheck || ! "$ROOT/x" test; then
+        release_restore_files "$backup" "$ROOT"
+        echo "release: restored Cargo.toml and Cargo.lock" >&2
+        rm -rf "$backup"
+        exit 1
+    fi
+    rm -rf "$backup"
+    release_git "$new"
+}
+
 # scan forwards its remaining arguments to pp-scan. Every other command
 # still takes exactly one word.
 if [[ "${1:-}" == "scan" ]]; then
@@ -380,6 +714,12 @@ fi
 if [[ "${1:-}" == "play" ]]; then
     shift
     cmd_play "$@"
+    exit $?
+fi
+
+if [[ "${1:-}" == "release" ]]; then
+    shift
+    cmd_release "$@"
     exit $?
 fi
 

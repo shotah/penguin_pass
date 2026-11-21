@@ -53,11 +53,13 @@ download the **flatpak-bundle** artifact. GitHub wraps artifacts in a
 zip. Unzip it. Inside is `penguin-pass-<version>-x86_64.flatpak`.
 The version is `version` in `Cargo.toml` (currently `0.1.0`).
 
-**From a tag.** Push a tag such as `v0.1.0` on a commit that contains
-this workflow. The version in the filename is the tag with the leading
-`v` removed. The **Releases** page for that tag has the `.flatpak`
-attached directly, not inside a zip. The release body includes the
-SHA-256. A manual run does not create a release.
+**From a tag.** `./x release patch` (or `minor`, `major`, or an
+`X.Y.Z`) bumps the version and pushes a `v*` tag. That push is what
+starts this workflow. The steps, a dry run, and doing it by hand are
+in `docs/release.md`. The version in the filename is the tag with the
+leading `v` removed. The **Releases** page for that tag has the
+`.flatpak` attached directly, not inside a zip. The release body
+includes the SHA-256. A manual run does not create a release.
 
 ## Install and run
 
