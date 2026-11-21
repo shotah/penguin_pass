@@ -1937,18 +1937,16 @@ fn summary_figures(totals: &pp_session::RideSummary) -> Vec<(String, String)> {
     } else {
         "—".to_owned()
     };
-    let laps = if totals.laps.is_empty() {
-        "—".to_owned()
-    } else {
-        totals
-            .laps
-            .iter()
-            .map(|lap| format!("{} {}", lap.lap, clock(lap.time_s)))
-            .collect::<Vec<_>>()
-            .join("  ")
-    };
+    let lap_times: Vec<(u32, f64)> = totals
+        .laps
+        .iter()
+        .map(|lap| (lap.lap, lap.time_s))
+        .collect();
     vec![
-        ("Time".to_owned(), clock(totals.elapsed_s)),
+        (
+            "Time".to_owned(),
+            pp_view::format::format_clock(totals.elapsed_s),
+        ),
         (
             "Distance".to_owned(),
             format!("{:.2} km", totals.distance_m / 1000.0),
@@ -1963,7 +1961,10 @@ fn summary_figures(totals: &pp_session::RideSummary) -> Vec<(String, String)> {
             format!("{:.0} W", totals.max_power_w),
         ),
         ("Average speed".to_owned(), format!("{speed} km/h")),
-        ("Laps".to_owned(), laps),
+        (
+            "Laps".to_owned(),
+            pp_view::format::format_summary_laps(&lap_times),
+        ),
     ]
 }
 
@@ -1992,11 +1993,6 @@ fn zwift_word(state: &pp_controllers::LinkState) -> String {
         }
         _ => "scanning".to_owned(),
     }
-}
-
-fn clock(seconds: f64) -> String {
-    let whole = seconds.max(0.0).round() as u64;
-    format!("{}:{:02}", whole / 60, whole % 60)
 }
 
 fn pose(course: &Course, lap_distance_m: f64) -> (Vector3, Vector3) {

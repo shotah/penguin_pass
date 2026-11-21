@@ -53,7 +53,7 @@ impl Screens {
 
         let mut card = PanelContainer::new_alloc();
         card.set_name("Card");
-        card.set_position(Vector2::new(48.0, 96.0));
+        card.set_position(Vector2::new(48.0, 24.0));
         card.set_mouse_filter(MouseFilter::IGNORE);
         let mut card_style = ui_style::surface(Surface::Menu);
         ui_style::pad_box(
@@ -66,7 +66,7 @@ impl Screens {
         let mut box_ = VBoxContainer::new_alloc();
         box_.set_name("Rows");
         box_.set_custom_minimum_size(Vector2::new(440.0, 0.0));
-        box_.add_theme_constant_override("separation", ui_style::space::GAP);
+        box_.add_theme_constant_override("separation", 4);
 
         let mut logo = TextureRect::new_alloc();
         logo.set_name("Logo");
@@ -99,7 +99,7 @@ impl Screens {
         for index in 0..8 {
             let mut row_panel = PanelContainer::new_alloc();
             row_panel.set_name(&format!("ScreenPanel{index}"));
-            row_panel.set_custom_minimum_size(Vector2::new(400.0, 48.0));
+            row_panel.set_custom_minimum_size(Vector2::new(400.0, 40.0));
             row_panel.add_theme_stylebox_override("panel", &StyleBoxEmpty::new_gd());
             let mut row_box = HBoxContainer::new_alloc();
             let mut label = ui_style::label("", Role::MenuItem);
@@ -239,7 +239,7 @@ impl Screens {
             self.card
                 .add_theme_stylebox_override("panel", &StyleBoxEmpty::new_gd());
         } else {
-            self.card.set_position(Vector2::new(48.0, 96.0));
+            self.card.set_position(Vector2::new(48.0, 24.0));
             let mut card_style = ui_style::surface(Surface::Menu);
             ui_style::pad_box(
                 &mut card_style,

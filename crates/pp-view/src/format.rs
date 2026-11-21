@@ -56,12 +56,69 @@ pub fn format_lap(lap: u32) -> String {
 }
 
 /// Elapsed ride time as `h:mm:ss`.
+///
+/// A negative clock is zero. A non-finite or enormous value is an em dash,
+/// so a sentinel cannot print as a saturated integer.
 pub fn format_elapsed(elapsed_s: f64) -> String {
-    let total = elapsed_s.max(0.0).floor() as u64;
+    if !elapsed_s.is_finite() || elapsed_s > MAX_CLOCK_S {
+        return MISSING.to_owned();
+    }
+    let Some(total) = whole_seconds(elapsed_s.max(0.0), false) else {
+        return MISSING.to_owned();
+    };
     let hours = total / 3600;
     let minutes = (total % 3600) / 60;
     let seconds = total % 60;
     format!("{hours}:{minutes:02}:{seconds:02}")
+}
+
+/// A summary clock, `m:ss`. The same absurd values are an em dash.
+#[must_use]
+pub fn format_clock(seconds: f64) -> String {
+    match whole_seconds(seconds, true) {
+        Some(whole) => format_clock_whole(whole),
+        None => MISSING.to_owned(),
+    }
+}
+
+/// Summary laps figure.
+///
+/// The count is the highest lap number. A time is shown only for a lap whose
+/// clock is a real duration; the in-progress lap is closed with `f64::MAX`,
+/// and that sentinel is not a result. `Laps` itself is the label.
+#[must_use]
+pub fn format_summary_laps(laps: &[(u32, f64)]) -> String {
+    if laps.is_empty() {
+        return MISSING.to_owned();
+    }
+    let count = laps.iter().map(|(lap, _)| *lap).max().unwrap_or(0);
+    let best = laps
+        .iter()
+        .filter_map(|(_, time)| whole_seconds(*time, true))
+        .min();
+    match best {
+        Some(seconds) => format!("{count} · best {}", format_clock_whole(seconds)),
+        None => format!("{count}"),
+    }
+}
+
+/// One year. Longer than any ride, and well below the `u64` saturation point.
+const MAX_CLOCK_S: f64 = 60.0 * 60.0 * 24.0 * 365.0;
+
+fn whole_seconds(seconds: f64, round: bool) -> Option<u64> {
+    if !seconds.is_finite() || seconds < 0.0 || seconds > MAX_CLOCK_S {
+        return None;
+    }
+    let scaled = if round {
+        seconds.round()
+    } else {
+        seconds.floor()
+    };
+    Some(scaled as u64)
+}
+
+fn format_clock_whole(whole: u64) -> String {
+    format!("{}:{:02}", whole / 60, whole % 60)
 }
 
 /// Grade ink: blue on descents, green when flat, then yellow, orange, and red.
@@ -102,6 +159,32 @@ mod tests {
         assert_eq!(format_lap(1), "1");
         assert_eq!(format_elapsed(3661.9), "1:01:01");
         assert_eq!(format_elapsed(-4.0), "0:00:00");
+        assert_eq!(format_elapsed(f64::NAN), "—");
+        assert_eq!(format_elapsed(f64::INFINITY), "—");
+        assert_eq!(format_clock(80.0), "1:20");
+        assert_eq!(format_clock(0.0), "0:00");
+        assert_eq!(format_clock(f64::NAN), "—");
+        assert_eq!(format_clock(f64::INFINITY), "—");
+        assert_eq!(format_clock(f64::MAX), "—");
+        assert_eq!(format_clock(u64::MAX as f64), "—");
+        assert!(!format_clock(f64::MAX).contains("307445734561825860"));
+    }
+
+    #[test]
+    fn summary_laps_ignore_an_unfinished_lap_and_absurd_times() {
+        assert_eq!(format_summary_laps(&[]), "—");
+        assert_eq!(format_summary_laps(&[(1, f64::MAX)]), "1");
+        assert_eq!(format_summary_laps(&[(1, f64::INFINITY)]), "1");
+        assert_eq!(format_summary_laps(&[(1, f64::NAN)]), "1");
+        assert_eq!(format_summary_laps(&[(1, u64::MAX as f64)]), "1");
+        assert_eq!(format_summary_laps(&[(1, 0.0)]), "1 · best 0:00");
+        assert_eq!(
+            format_summary_laps(&[(1, 754.0), (2, f64::MAX)]),
+            "2 · best 12:34"
+        );
+        let garbage = format_summary_laps(&[(1, f64::MAX), (2, f64::NAN)]);
+        assert_eq!(garbage, "2");
+        assert!(!garbage.contains("307445734561825860"));
     }
 
     #[test]

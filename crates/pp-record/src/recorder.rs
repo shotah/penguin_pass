@@ -39,6 +39,10 @@ pub struct RideMeta {
     pub trainer_name: Option<String>,
     /// Game version string. Written on the creator device info.
     pub game_version: String,
+    /// Local time minus UTC, in seconds, used only for the file name.
+    ///
+    /// `0` keeps the name in UTC. Timestamps inside the FIT file stay UTC.
+    pub utc_offset_s: i32,
 }
 
 /// One game tick.
@@ -720,6 +724,7 @@ mod tests {
             ftp_w: 200,
             trainer_name: None,
             game_version: "0.1.0".to_owned(),
+            utc_offset_s: 0,
         }
     }
 

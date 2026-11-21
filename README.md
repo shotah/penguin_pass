@@ -256,7 +256,7 @@ Three tiers, in the order they arrive:
 - [ ] M11: heart-rate straps over Bluetooth (Garmin HRM and others). Built; not yet tried with a real strap
 - [ ] M11: Zwift controllers for lanes, power, and menus. Built; not yet tried with real controllers
 - [x] M11: ride in the right-hand lane, and move left and right within it (five positions)
-- [ ] M12: save each ride as an activity file for Strava and other sites
+- [x] M12: save each ride as a FIT activity file for Strava and other sites (upload by hand)
 - [ ] M12: push rides to Strava with the rider's own API keys (no server)
 - [ ] Later: Chromecast video, ANT+, riding a course in reverse
 

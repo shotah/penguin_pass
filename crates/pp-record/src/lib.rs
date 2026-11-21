@@ -21,6 +21,7 @@
 //!     ftp_w: 200,
 //!     trainer_name: None,
 //!     game_version: "0.1.0".to_owned(),
+//!     utc_offset_s: 0,
 //! };
 //! let mut recorder = Recorder::new(meta);
 //! recorder.push(RideSample {

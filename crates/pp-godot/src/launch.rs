@@ -7,7 +7,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 
-use godot::classes::{Os, ProjectSettings};
+use godot::classes::{Os, ProjectSettings, Time};
 use godot::prelude::*;
 use pp_session::{HeartRateFactory, Session, SessionOptions, Settings, TrainerFactory};
 use pp_trainer::{DiscoveredSensor, HeartRateLink, SimHeartRate};
@@ -120,6 +120,7 @@ pub fn open_session(
             );
             session.set_heart_rate_factory(Some(Box::new(pp_session::BleHeartRateFactory)));
             session.set_settings_path(&launch.settings_path);
+            stamp_local_time(&mut session);
             (session, None)
         }
         TrainerMode::Fake => {
@@ -128,6 +129,7 @@ pub fn open_session(
                 session_with(settings, Box::new(factory), host, launch.dashboard_port);
             session.set_heart_rate_factory(Some(Box::new(FakeStrap)));
             session.set_settings_path(&launch.settings_path);
+            stamp_local_time(&mut session);
             (session, Some(hub))
         }
         TrainerMode::Off => {
@@ -138,9 +140,20 @@ pub fn open_session(
                 launch.dashboard_port,
             );
             session.set_settings_path(&launch.settings_path);
+            stamp_local_time(&mut session);
             (session, None)
         }
     }
+}
+
+/// Godot's `bias` is minutes east of UTC. This machine (PST) reports `-480`.
+fn stamp_local_time(session: &mut Session) {
+    let zone = Time::singleton().get_time_zone_from_system();
+    let minutes = zone
+        .get("bias")
+        .and_then(|value| value.try_to::<i32>().ok())
+        .unwrap_or(0);
+    session.set_utc_offset_minutes(minutes);
 }
 
 struct FakeStrap;

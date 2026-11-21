@@ -438,8 +438,28 @@ fn unix_plus(start: u64, extra: u64) -> io::Result<typedef::DateTime> {
 }
 
 fn file_stem(meta: &RideMeta) -> io::Result<String> {
-    let stamp = format_stamp(unix_of(meta.started_at)?);
+    let local = local_unix(unix_of(meta.started_at)?, meta.utc_offset_s)?;
+    let stamp = format_stamp(local);
     Ok(format!("{stamp}-{}", course_slug(&meta.course_name)))
+}
+
+/// Shift a UTC unix time by a fixed offset for the file name only.
+fn local_unix(unix: u64, offset_s: i32) -> io::Result<u64> {
+    let shifted = i64::try_from(unix)
+        .unwrap_or(i64::MAX)
+        .saturating_add(i64::from(offset_s));
+    if shifted < 0 {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "local file name is before 1970-01-01",
+        ));
+    }
+    u64::try_from(shifted).map_err(|_| {
+        io::Error::new(
+            ErrorKind::InvalidInput,
+            "local file name does not fit in the clock",
+        )
+    })
 }
 
 fn format_stamp(unix: u64) -> String {
@@ -580,6 +600,7 @@ mod tests {
             ftp_w: 250,
             trainer_name: Some("Tacx Neo".to_owned()),
             game_version: "0.1.0".to_owned(),
+            utc_offset_s: 0,
         }
     }
 
@@ -721,6 +742,63 @@ mod tests {
             .collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn file_name_uses_the_local_offset_and_fit_timestamps_stay_utc() {
+        // 2023-11-15 06:26:00 UTC.
+        let started = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_029_560);
+        let dir = temp_dir("offset");
+        let utc = write_offset(&dir, started, 0);
+        let west = write_offset(&dir, started, -480 * 60);
+        let odd = write_offset(&dir, started, 345 * 60);
+        assert_eq!(fit_name(&utc), "2023-11-15-0626-offset.fit");
+        assert_eq!(fit_name(&west), "2023-11-14-2226-offset.fit");
+        assert_eq!(fit_name(&odd), "2023-11-15-1211-offset.fit");
+        assert_eq!(record_times(&utc), record_times(&west));
+        assert_eq!(record_times(&utc), record_times(&odd));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn write_offset(dir: &Path, started: SystemTime, offset_s: i32) -> PathBuf {
+        let mut header = meta("Offset");
+        header.started_at = started;
+        header.utc_offset_s = offset_s;
+        let mut recorder = Recorder::new(header);
+        for second in 0..=60 {
+            let elapsed = f64::from(second);
+            recorder.push(RideSample {
+                elapsed_s: elapsed,
+                power_w: Some(180.0),
+                cadence_rpm: Some(90.0),
+                heart_rate_bpm: Some(140),
+                speed_mps: 5.0,
+                distance_m: 2.0 * elapsed,
+                altitude_m: 1.0,
+                grade_pct: 0.0,
+                lap: 1,
+            });
+        }
+        let WriteOutcome::Written(path) = recorder.finish().write(dir).unwrap() else {
+            panic!("offset ride should be written");
+        };
+        path
+    }
+
+    fn fit_name(path: &Path) -> String {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap()
+            .to_owned()
+    }
+
+    fn record_times(path: &Path) -> Vec<i64> {
+        let bytes = fs::read(path).unwrap();
+        parse(&bytes)
+            .iter()
+            .filter(|message| message.kind() == MesgNum::Record)
+            .map(timestamp)
+            .collect()
     }
 
     #[test]

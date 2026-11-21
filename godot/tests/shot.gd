@@ -43,7 +43,9 @@ func _init() -> void:
 		OS.set_environment("PENGUIN_PASS_DASHBOARD_PORT", "0")
 		OS.set_environment("PENGUIN_PASS_DASHBOARD_LOOPBACK", "1")
 		if not user_args.has("--settings"):
-			var settings_path := "/tmp/penguin-pass-shot-%d.toml" % OS.get_process_id()
+			var settings_dir := "/tmp/penguin-pass-shot-%d" % OS.get_process_id()
+			DirAccess.make_dir_recursive_absolute(settings_dir)
+			var settings_path := settings_dir.path_join("settings.toml")
 			var settings_file := FileAccess.open(settings_path, FileAccess.WRITE)
 			if settings_file != null:
 				settings_file.store_string("fullscreen = false\ntv_dashboard_enabled = true\n")
@@ -134,6 +136,7 @@ func _views() -> Array:
 		return [
 			["summary-saved", 8.0, false, 1280, 800, "saved"],
 			["summary-not-saved", 8.0, false, 1280, 800, "unsaved"],
+			["summary-saved-1920", 8.0, false, 1920, 1080, "saved"],
 		]
 	if _polish:
 		return [

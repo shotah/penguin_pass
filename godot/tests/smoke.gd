@@ -7,7 +7,9 @@ func _init() -> void:
 	# ./x smoke cannot forward arguments after `--`. Set the same switches
 	# the command line would, before the scene is added, so this process
 	# never opens Bluetooth and never reads the owner's settings.
-	var settings_path := "/tmp/penguin-pass-smoke-%d.toml" % OS.get_process_id()
+	var settings_dir := "/tmp/penguin-pass-smoke-%d" % OS.get_process_id()
+	DirAccess.make_dir_recursive_absolute(settings_dir)
+	var settings_path := settings_dir.path_join("settings.toml")
 	var settings_file := FileAccess.open(settings_path, FileAccess.WRITE)
 	if settings_file == null:
 		_fail("could not write the temp settings file")
@@ -15,6 +17,7 @@ func _init() -> void:
 	settings_file.store_string("this is not toml [[[\n")
 	settings_file.close()
 	OS.set_environment("PENGUIN_PASS_SETTINGS", settings_path)
+	_settings_path = settings_path
 	OS.set_environment("PENGUIN_PASS_FAKE_TRAINER", "1")
 	OS.set_environment("PENGUIN_PASS_DASHBOARD_PORT", "0")
 	OS.set_environment("PENGUIN_PASS_DASHBOARD_LOOPBACK", "1")
@@ -41,6 +44,7 @@ func _init() -> void:
 var _game: Node
 var _version := ""
 var _ran := false
+var _settings_path := ""
 
 
 func _on_frame() -> void:
@@ -317,6 +321,7 @@ func _menu_and_trainer(game: Node) -> bool:
 	if str(game.debug_menu_detail()).find("Could not save") < 0:
 		_fail("a failed save did not show a message: %s" % game.debug_menu_detail())
 		return false
+	game.debug_set_settings_path(_settings_path)
 	game.debug_use_no_bluetooth()
 	game.debug_menu_open()
 	game.debug_menu_action("accept")

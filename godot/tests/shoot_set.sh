@@ -5,8 +5,8 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 DIR="$ROOT/docs/img/shots"
 mkdir -p "$DIR"
-mkdir -p "$ROOT/godot/.godot"
-SETTINGS="$ROOT/godot/.godot/shot-settings.toml"
+SHOT_DIR=$(mktemp -d /tmp/penguin-pass-shot-XXXXXX)
+SETTINGS="$SHOT_DIR/settings.toml"
 cat >"$SETTINGS" <<'EOF'
 fullscreen = false
 tv_dashboard_enabled = true

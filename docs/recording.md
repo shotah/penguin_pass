@@ -30,7 +30,7 @@ The manufacturer id is the FIT development id (255). Penguin Pass does not have 
 
 A ride shorter than 60 seconds, or shorter than 100 meters, is not written. `Activity::write` returns `Skipped` for that. It is not an I/O error. Duration is checked first.
 
-The file name is `YYYY-MM-DD-HHMM-<course>.fit`, in UTC, from the ride's start time. The course part is lower case, with a hyphen where the title is not a letter or a digit. An empty title becomes `ride`. The write uses a temporary name in the same directory, flushes, then links it into place. An existing file is not replaced. The next one is `-2`, then `-3`.
+The file name is `YYYY-MM-DD-HHMM-<course>.fit`, in local time (`RideMeta::utc_offset_s`, default 0 so the name stays UTC). Timestamps inside the file stay UTC. The course part is lower case, with a hyphen where the title is not a letter or a digit. An empty title becomes `ride`. The write uses a temporary name in the same directory, flushes, then links it into place. An existing file is not replaced. The next one is `-2`, then `-3`.
 
 ## Where the files go
 

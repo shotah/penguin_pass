@@ -120,7 +120,7 @@ Ending a ride writes one FIT file, marked cycling / virtual activity, with no ma
 
 Files go in `rides_folder` when that settings key is set. Otherwise they go in a `rides` directory next to the settings file passed to `set_settings_path`. `set_rides_dir` replaces both, which is how tests choose a temporary directory. With none of those set, nothing is written. The directory is created on the first save. For a normal `./x play` the settings file is `user://settings.toml`, so once the game passes that path the files land in `/home/deck/.local/share/godot/app_userdata/Penguin Pass/rides`.
 
-The ride trace is a separate CSV and is not this file.
+The ride trace is a separate CSV and is not this file. The file name uses local time. Call `set_utc_offset_minutes` with the system's offset before the ride starts. The timestamps inside the FIT file stay UTC.
 
 ## Ride trace
 

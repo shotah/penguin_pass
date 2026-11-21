@@ -245,6 +245,7 @@ pub struct Session {
     rides_dir_override: Option<PathBuf>,
     settings_path: Option<PathBuf>,
     last_saved_ride: Option<PathBuf>,
+    utc_offset_s: i32,
 }
 
 impl Session {
@@ -319,6 +320,7 @@ impl Session {
             rides_dir_override: None,
             settings_path: None,
             last_saved_ride: None,
+            utc_offset_s: 0,
         };
         if let Some(detail) = fallback {
             session.events.push(RideEvent::CourseUnavailable { detail });
@@ -353,6 +355,14 @@ impl Session {
     /// without [`Self::set_settings_path`], ending a ride writes nothing.
     pub fn set_rides_dir(&mut self, dir: Option<PathBuf>) {
         self.rides_dir_override = dir;
+    }
+
+    /// Local time minus UTC, in minutes, for ride file names started afterwards.
+    ///
+    /// `0` until this is called. The FIT timestamps stay UTC. A later call
+    /// does not rename a ride that is already being recorded.
+    pub fn set_utc_offset_minutes(&mut self, minutes: i32) {
+        self.utc_offset_s = minutes.saturating_mul(60);
     }
 
     /// Remember the settings file so rides default to `<its folder>/rides`.
@@ -1661,6 +1671,7 @@ impl Session {
             ftp_w: rider.ftp_w,
             trainer_name,
             game_version: env!("CARGO_PKG_VERSION").to_owned(),
+            utc_offset_s: self.utc_offset_s,
         }));
     }
 
@@ -4262,6 +4273,7 @@ mod tests {
             ftp_w: 200,
             trainer_name: Some("Simulated rider".to_owned()),
             game_version: "0.1.0".to_owned(),
+            utc_offset_s: 0,
         });
         for second in 0..3600 {
             recorder.push(pp_record::RideSample {
@@ -4282,6 +4294,61 @@ mod tests {
         eprintln!("RIDE_WRITE_1H {:?}", started.elapsed());
         assert!(matches!(outcome, pp_record::WriteOutcome::Written(_)));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn set_utc_offset_minutes_changes_the_file_name_only() {
+        let utc_dir = trace_dir("utc-name");
+        let local_dir = trace_dir("local-name");
+        let utc = saved_name(&utc_dir, None);
+        let local = saved_name(&local_dir, Some(-480));
+        let delta = name_minutes(&local) - name_minutes(&utc);
+        assert!(
+            (-481..=-479).contains(&delta),
+            "local {local} utc {utc} delta {delta}"
+        );
+        let _ = std::fs::remove_dir_all(&utc_dir);
+        let _ = std::fs::remove_dir_all(&local_dir);
+    }
+
+    fn saved_name(dir: &std::path::Path, offset_minutes: Option<i32>) -> String {
+        let mut session = Session::new(offline());
+        session.set_rides_dir(Some(dir.to_path_buf()));
+        if let Some(minutes) = offset_minutes {
+            session.set_utc_offset_minutes(minutes);
+            session.hold_at_start();
+            session.begin_ride();
+        }
+        session.set_sim_power(220);
+        for _ in 0..75 {
+            session.tick(1.0);
+        }
+        session.end_ride();
+        session
+            .last_saved_ride()
+            .expect("saved")
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn name_minutes(file_name: &str) -> i64 {
+        let stamp = &file_name[..15];
+        let year: i32 = stamp[0..4].parse().unwrap();
+        let month: u32 = stamp[5..7].parse().unwrap();
+        let day: u32 = stamp[8..10].parse().unwrap();
+        let hour: u32 = stamp[11..13].parse().unwrap();
+        let minute: u32 = stamp[13..15].parse().unwrap();
+        let year = if month <= 2 { year - 1 } else { year };
+        let era = if year >= 0 { year } else { year - 399 } / 400;
+        let year_of_era = (year - era * 400) as u64;
+        let month_prime = if month > 2 { month - 3 } else { month + 9 };
+        let day_of_year = (153 * month_prime + 2) / 5 + day - 1;
+        let day_of_era =
+            year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year as u64;
+        let days = era as i64 * 146_097 + day_of_era as i64 - 719_468;
+        days * 1_440 + i64::from(hour) * 60 + i64::from(minute)
     }
 
     fn fit_files(dir: &std::path::Path) -> Vec<PathBuf> {
