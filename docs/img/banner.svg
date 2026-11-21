@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-labelledby="title desc">
+  <title id="title">Penguin Pass</title>
+  <desc id="desc">A penguin in a cycling helmet beside a road into a mountain pass, with the words Penguin Pass.</desc>
+
+  <defs>
+    <clipPath id="frame">
+      <rect width="1280" height="320" rx="28"/>
+    </clipPath>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16325c"/>
+      <stop offset="0.42" stop-color="#12284a"/>
+      <stop offset="1" stop-color="#0B1220"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffe9a8" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="snow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d7e3f4"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a2744"/>
+      <stop offset="1" stop-color="#0B1220"/>
+    </linearGradient>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="1280" height="320" fill="#0B1220"/>
+    <rect width="1280" height="320" fill="url(#sky)"/>
+
+    <!-- Sun in the notch between the peaks. The glow stays tight so it does not wash the ridges. -->
+    <circle cx="292" cy="158" r="88" fill="url(#glow)"/>
+    <circle cx="292" cy="158" r="40" fill="#FFD166"/>
+
+    <!-- Ridgelines, paler as they recede. The near one sits under the wordmark as a horizon. -->
+    <path d="M-20 188 L120 158 L240 176 L380 148 L520 170 L680 154 L860 172 L1040 150 L1300 168 L1300 200 L-20 200 Z" fill="#4d74aa" opacity="0.22"/>
+    <path d="M-20 210 L80 168 L170 192 L280 156 L400 188 L530 162 L670 190 L830 164 L1000 188 L1160 166 L1300 184 L1300 236 L-20 236 Z" fill="#1c3566" opacity="0.8"/>
+
+    <!-- Two peaks, the same silhouette as the logo, set wider for the banner -->
+    <path d="M-40 278 L176 96 L336 278 Z" fill="#22386b"/>
+    <path d="M176 96 L336 278 L220 278 Z" fill="#1a2c57"/>
+    <path d="M176 96 L214 156 L198 146 L184 164 L166 146 L148 162 L128 148 Z" fill="#f4f8ff"/>
+
+    <path d="M200 278 L408 52 L590 278 Z" fill="#2e4a86"/>
+    <path d="M408 52 L590 278 L462 278 Z" fill="#243c70"/>
+    <path d="M408 52 L456 128 L438 142 L418 118 L396 146 L374 122 L356 134 Z" fill="#f4f8ff"/>
+
+    <!-- Snow only at the foot of the peaks, then the dark ground -->
+    <path d="M0 232 C140 206 280 200 420 222 C500 236 540 250 548 258 L500 272 C360 268 160 274 0 280 Z" fill="url(#snow)"/>
+    <path d="M0 256 C260 236 620 268 1280 242 V320 H0 Z" fill="url(#ground)"/>
+
+    <!-- Road narrowing toward the pass, white edges like the ride -->
+    <path d="M132 320 C196 262 236 224 258 198 L322 192 C304 228 268 272 368 320 Z" fill="none" stroke="#f4f8ff" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M132 320 C196 262 236 224 258 198 L322 192 C304 228 268 272 368 320 Z" fill="#39425a"/>
+    <path d="M248 320 C238 268 262 226 290 196" fill="none" stroke="#f4f8ff" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="13 11"/>
+
+    <!-- Penguin from docs/img/logo.svg, stood on the left verge -->
+    <g transform="translate(-6 -228) scale(0.96)">
+      <ellipse cx="112" cy="494" rx="22" ry="9" fill="#f59e0b"/>
+      <ellipse cx="160" cy="494" rx="22" ry="9" fill="#f59e0b"/>
+      <ellipse cx="70" cy="404" rx="15" ry="50" transform="rotate(14 70 404)" fill="#0b1220"/>
+      <ellipse cx="134" cy="406" rx="64" ry="90" fill="#111a2e"/>
+      <ellipse cx="146" cy="420" rx="43" ry="70" fill="#ffffff"/>
+      <ellipse cx="194" cy="402" rx="13" ry="46" transform="rotate(-16 194 402)" fill="#0b1220"/>
+      <circle cx="138" cy="312" r="46" fill="#111a2e"/>
+      <ellipse cx="156" cy="328" rx="24" ry="20" fill="#ffffff"/>
+      <circle cx="162" cy="324" r="5.5" fill="#111a2e"/>
+      <path d="M176 318 L212 329 L176 340 Z" fill="#f59e0b"/>
+      <path d="M176 329 L212 329 L176 340 Z" fill="#d97706"/>
+      <path d="M88 306 A50 50 0 0 1 188 306 L188 311 Q138 294 88 311 Z" fill="#e63946"/>
+      <path d="M88 311 Q138 294 188 311 L188 316 Q138 300 88 316 Z" fill="#b3202c"/>
+      <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.92">
+        <path d="M110 290 L121 273"/>
+        <path d="M136 284 L138 264"/>
+        <path d="M163 289 L154 272"/>
+      </g>
+    </g>
+
+    <g font-family="'Barlow Semi Condensed', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif" text-anchor="middle">
+      <text x="900" y="132" font-size="76" font-weight="700" fill="#F4F8FF" letter-spacing="1.4">Penguin Pass</text>
+      <text x="900" y="176" font-size="22" font-weight="500" fill="#B4C0D4">Indoor cycling for Linux. Your trainer, a mountain, no Wine.</text>
+    </g>
+
+    <!-- Course profile along the bottom, coloured the way the ride console colours grade -->
+    <g fill="none" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M430 304 L510 298" stroke="#9AA8BD"/>
+      <path d="M510 298 L590 288" stroke="#3DD68C"/>
+      <path d="M590 288 L670 276" stroke="#FFD166"/>
+      <path d="M670 276 L750 268" stroke="#FF9A3C"/>
+      <path d="M750 268 L820 264" stroke="#FF5A52"/>
+      <path d="M820 264 L890 270" stroke="#D277FF"/>
+      <path d="M890 270 L970 282" stroke="#4FA8FF"/>
+      <path d="M970 282 L1050 292" stroke="#9AA8BD"/>
+      <path d="M1050 292 L1130 284" stroke="#3DD68C"/>
+      <path d="M1130 284 L1216 296" stroke="#4FA8FF"/>
+    </g>
+    <circle cx="820" cy="264" r="5" fill="#F4F8FF"/>
+    <circle cx="820" cy="264" r="2.4" fill="#0B1220"/>
+  </g>
+
+  <rect x="1.5" y="1.5" width="1277" height="317" rx="26.5" fill="none" stroke="#F4F8FF" stroke-opacity="0.16" stroke-width="3"/>
+</svg>

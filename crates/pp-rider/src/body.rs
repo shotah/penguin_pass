@@ -9,15 +9,13 @@ use std::f32::consts::PI;
 
 use glam::{Quat, Vec2, Vec3};
 
+use crate::build::RiderBuild;
 use crate::geo::{
     Cap, Geo, PartBuilder, Ring, Slot, block, cap, capsule, ellipsoid, keyed, loft, strut, sweep,
     torus,
 };
 use crate::mesh::{Part, PartId};
-use crate::paint::{self, styled};
-use crate::rig::{
-    FOREARM, HEAD_PIVOT_LOCAL, HIP_HALF, SHIN, SHOULDER_LOCAL, THIGH, UPPER_ARM, WAIST_UP,
-};
+use crate::paint::{self, Paint, styled};
 use crate::style::{RiderStyle, StyleColor};
 
 /// Crease angle for skin and cloth, in degrees.
@@ -34,19 +32,35 @@ const LYCRA: f32 = 0.55;
 const SKIN: f32 = 0.62;
 
 /// Build one part of the rider in its own local space.
-pub(crate) fn part(style: &RiderStyle, id: PartId) -> Part {
+pub(crate) fn part(style: &RiderStyle, build: &RiderBuild, id: PartId) -> Part {
     match id {
-        PartId::Pelvis => pelvis(style),
-        PartId::Torso => torso(style),
-        PartId::Head => head(style),
-        PartId::UpperArmL | PartId::UpperArmR => upper_arm(style, id),
-        PartId::ForearmL | PartId::ForearmR => forearm(style, id),
-        PartId::HandL | PartId::HandR => hand(style, id),
-        PartId::ThighL | PartId::ThighR => thigh(style, id),
-        PartId::ShinL | PartId::ShinR => shin(style, id),
-        PartId::FootL | PartId::FootR => foot(style, id),
+        PartId::Pelvis => pelvis(style, build),
+        PartId::Torso => torso(style, build),
+        PartId::Head => head(style, build),
+        PartId::UpperArmL | PartId::UpperArmR => upper_arm(style, build, id),
+        PartId::ForearmL | PartId::ForearmR => forearm(style, build, id),
+        PartId::HandL | PartId::HandR => hand(style, build, id),
+        PartId::ThighL | PartId::ThighR => thigh(style, build, id),
+        PartId::ShinL | PartId::ShinR => shin(style, build, id),
+        PartId::FootL | PartId::FootR => foot(style, build, id),
         _ => unreachable!("{} is not a part of the rider", id.name()),
     }
+}
+
+/// `base` when `scale` is 1, so the reference mesh keeps its exact bits.
+fn scaled(base: f32, scale: f32) -> f32 {
+    if scale == 1.0 { base } else { base * scale }
+}
+
+/// Widen a limb's cross-section. The third key is how far the section sits
+/// toward the back, and that stays put.
+fn girth(keys: &[(f32, [f32; 3])], scale: f32) -> Vec<(f32, [f32; 3])> {
+    if scale == 1.0 {
+        return keys.to_vec();
+    }
+    keys.iter()
+        .map(|&(t, [width, depth, back])| (t, [width * scale, depth * scale, back]))
+        .collect()
 }
 
 /// One cross-section of a limb: how far down it is (0 at the joint, 1 at
@@ -78,7 +92,7 @@ fn limb(
     loft(&rings, segs, top, bottom, |row, _| stations[row].1)
 }
 
-fn thigh(style: &RiderStyle, id: PartId) -> Part {
+fn thigh(style: &RiderStyle, build: &RiderBuild, id: PartId) -> Part {
     let mut part = PartBuilder::new(id.name());
     let bibs = part.slot(styled(style, StyleColor::Bibs, LYCRA, 0.0));
     let band = part.slot(styled(style, StyleColor::JerseyAccent, CLOTH, 0.0));
@@ -106,19 +120,20 @@ fn thigh(style: &RiderStyle, id: PartId) -> Part {
         (0.94, skin, 0.0),
         (1.00, skin, 0.0),
     ];
+    let keys = girth(&keys, build.leg_girth);
     let geo = limb(
-        THIGH,
+        build.thigh,
         &keys,
         &stations,
         12,
-        Cap::Round(0.082),
-        Cap::Round(0.055),
+        Cap::Round(scaled(0.082, build.leg_girth)),
+        Cap::Round(scaled(0.055, build.leg_girth)),
     );
     part.add(&geo, SOFT);
     part.finish()
 }
 
-fn shin(style: &RiderStyle, id: PartId) -> Part {
+fn shin(style: &RiderStyle, build: &RiderBuild, id: PartId) -> Part {
     let mut part = PartBuilder::new(id.name());
     let skin = part.slot(styled(style, StyleColor::Skin, SKIN, 0.0));
     let sock = part.slot(styled(style, StyleColor::Socks, CLOTH, 0.0));
@@ -146,13 +161,14 @@ fn shin(style: &RiderStyle, id: PartId) -> Part {
         (0.92, sock, pad),
         (1.00, sock, pad),
     ];
+    let keys = girth(&keys, build.leg_girth);
     let geo = limb(
-        SHIN,
+        build.shin,
         &keys,
         &stations,
         12,
-        Cap::Round(0.054),
-        Cap::Round(0.037),
+        Cap::Round(scaled(0.054, build.leg_girth)),
+        Cap::Round(scaled(0.037, build.leg_girth)),
     );
     part.add(&geo, SOFT);
     part.finish()
@@ -161,7 +177,7 @@ fn shin(style: &RiderStyle, id: PartId) -> Part {
 /// Height of the bottom of the shoe's sole above the pedal axle, in meters.
 const SOLE_Y: f32 = 0.012;
 
-fn foot(style: &RiderStyle, id: PartId) -> Part {
+fn foot(style: &RiderStyle, build: &RiderBuild, id: PartId) -> Part {
     let mut part = PartBuilder::new(id.name());
     let upper = part.slot(styled(style, StyleColor::Shoes, 0.5, 0.0));
     let sole = part.slot(paint::SOLE);
@@ -226,21 +242,35 @@ fn foot(style: &RiderStyle, id: PartId) -> Part {
     if id == PartId::FootL {
         geo = geo.mirrored_x();
     }
+    if build.foot != 1.0 {
+        geo = geo.scaled(Vec3::splat(build.foot));
+    }
     part.add(&geo, HARD);
     part.finish()
 }
 
-fn pelvis(style: &RiderStyle) -> Part {
+fn pelvis(style: &RiderStyle, build: &RiderBuild) -> Part {
     let mut part = PartBuilder::new(PartId::Pelvis.name());
     let bibs = part.slot(styled(style, StyleColor::Bibs, LYCRA, 0.0));
     // Up the spine: half-width, half-depth, and how far back the section sits.
+    let flare = build.hip_flare;
+    let widest = if flare == 0.0 {
+        build.hip_half + 0.062
+    } else {
+        build.hip_half + 0.062 + flare
+    };
+    let above = if flare == 0.0 {
+        0.132
+    } else {
+        0.132 + flare * 0.55
+    };
     let stations: [(f32, f32, f32, f32); 6] = [
         (-0.080, 0.080, 0.064, 0.000),
-        (-0.045, 0.132, 0.092, 0.004),
-        (0.005, HIP_HALF + 0.062, 0.100, 0.006),
+        (-0.045, above, 0.092, 0.004),
+        (0.005, widest, 0.100, 0.006),
         (0.055, 0.138, 0.094, 0.004),
-        (WAIST_UP - 0.005, 0.124, 0.088, 0.000),
-        (WAIST_UP + 0.030, 0.104, 0.076, 0.000),
+        (build.waist_up - 0.005, 0.124, 0.088, 0.000),
+        (build.waist_up + 0.030, 0.104, 0.076, 0.000),
     ];
     let rings: Vec<Ring> = stations
         .iter()
@@ -264,7 +294,10 @@ fn pelvis(style: &RiderStyle) -> Part {
 
 /// Shape of the torso at height `y` above the waist pivot: half-width,
 /// half-depth, and the centre's Z (negative is forward), in meters.
-fn torso_section(y: f32) -> [f32; 3] {
+///
+/// `y` is the reference height. Width and depth scales of 1 leave the keyed
+/// section untouched, which is what keeps the reference rider's vertices.
+fn torso_section(y: f32, build: &RiderBuild) -> [f32; 3] {
     const KEYS: [(f32, [f32; 3]); 9] = [
         (-0.072, [0.128, 0.090, 0.004]),
         (-0.060, [0.143, 0.101, 0.004]),
@@ -276,19 +309,38 @@ fn torso_section(y: f32) -> [f32; 3] {
         (0.410, [0.120, 0.082, -0.138]),
         (0.440, [0.072, 0.064, -0.152]),
     ];
-    keyed(&KEYS, y)
+    let [half_width, half_depth, z] = keyed(&KEYS, y);
+    if build.torso_width == 1.0 && build.torso_depth == 1.0 && build.waist_pinch == 0.0 {
+        return [half_width, half_depth, z];
+    }
+    // The pinch is the waist, strongest just above the pelvis and gone by
+    // the chest. The chase camera reads that narrow band from behind.
+    let along = ((0.24 - y) / 0.22).clamp(0.0, 1.0);
+    let waist = along * along * (3.0 - 2.0 * along);
+    let width = build.torso_width * (1.0 - build.waist_pinch * waist);
+    [half_width * width, half_depth * build.torso_depth, z]
 }
 
 /// The torso's cross-section at height `y`, square to its curved centreline.
 /// `bulge` pushes the back out, in meters, for the jersey pockets.
-fn torso_ring(y: f32, bulge: f32) -> Ring {
-    let [half_width, half_depth, z] = torso_section(y);
+fn torso_ring(y: f32, bulge: f32, build: &RiderBuild) -> Ring {
+    let [half_width, half_depth, z] = torso_section(y, build);
     let step = 0.004;
-    let slope = (torso_section(y + step)[2] - torso_section(y - step)[2]) / (2.0 * step);
+    let slope = if build.torso_length == 1.0 {
+        (torso_section(y + step, build)[2] - torso_section(y - step, build)[2]) / (2.0 * step)
+    } else {
+        (torso_section(y + step, build)[2] - torso_section(y - step, build)[2])
+            / (build.torso_length * 2.0 * step)
+    };
     let tangent = Vec3::new(0.0, 1.0, slope).normalize();
     let front = Vec3::new(0.0, tangent.z, -tangent.y);
+    let y_pos = if build.torso_length == 1.0 {
+        y
+    } else {
+        y * build.torso_length
+    };
     Ring {
-        c: Vec3::new(0.0, y, z),
+        c: Vec3::new(0.0, y_pos, z),
         u: Vec3::X * half_width,
         v: front * half_depth,
         vn: 1.0 + bulge / half_depth,
@@ -297,7 +349,7 @@ fn torso_ring(y: f32, bulge: f32) -> Ring {
     }
 }
 
-fn torso(style: &RiderStyle) -> Part {
+fn torso(style: &RiderStyle, build: &RiderBuild) -> Part {
     let mut part = PartBuilder::new(PartId::Torso.name());
     let primary = part.slot(styled(style, StyleColor::JerseyPrimary, CLOTH, 0.0));
     let secondary = part.slot(styled(style, StyleColor::JerseySecondary, CLOTH, 0.0));
@@ -326,7 +378,7 @@ fn torso(style: &RiderStyle) -> Part {
     ];
     let rings: Vec<Ring> = stations
         .iter()
-        .map(|&(y, bulge)| torso_ring(y, bulge))
+        .map(|&(y, bulge)| torso_ring(y, bulge, build))
         .collect();
     const SEGS: usize = 20;
     // Columns run from the right side (0) round the chest (5) to the left
@@ -376,21 +428,24 @@ fn torso(style: &RiderStyle) -> Part {
     // A ball round each shoulder joint, a little larger than the sleeve. The
     // arm turns inside it, so no notch opens between the yoke and the sleeve
     // when the arm reaches for the bars.
+    let shoulder = Vec3::from_array(build.shoulder);
+    let cap = scaled(0.064, build.arm_girth);
     for side in [-1.0, 1.0] {
-        let joint = Vec3::new(side * SHOULDER_LOCAL.x, SHOULDER_LOCAL.y, SHOULDER_LOCAL.z);
+        let joint = Vec3::new(side * shoulder.x, shoulder.y, shoulder.z);
         part.add(
-            &ellipsoid(Vec3::splat(0.064), 10, 6, primary).translated(joint),
+            &ellipsoid(Vec3::splat(cap), 10, 6, primary).translated(joint),
             SOFT,
         );
     }
 
     // Neck, ending in a ball inside the head, and the collar round its base.
-    let neck_base = Vec3::new(0.0, 0.412, -0.146);
+    let neck_base = Vec3::new(0.0, scaled(0.412, build.torso_length), -0.146);
+    let head_pivot = Vec3::from_array(build.head_pivot);
     part.add(
-        &capsule(neck_base, HEAD_PIVOT_LOCAL, 0.052, 0.048, 10, skin),
+        &capsule(neck_base, head_pivot, 0.052, 0.048, 10, skin),
         SOFT,
     );
-    let neck_dir = (HEAD_PIVOT_LOCAL - neck_base).normalize();
+    let neck_dir = (head_pivot - neck_base).normalize();
     part.add(
         &torus(0.058, 0.013, 12, 5, accent)
             .rotated(Quat::from_rotation_arc(Vec3::Y, neck_dir))
@@ -400,7 +455,7 @@ fn torso(style: &RiderStyle) -> Part {
     part.finish()
 }
 
-fn upper_arm(style: &RiderStyle, id: PartId) -> Part {
+fn upper_arm(style: &RiderStyle, build: &RiderBuild, id: PartId) -> Part {
     let mut part = PartBuilder::new(id.name());
     let sleeve = part.slot(styled(style, StyleColor::JerseyPrimary, CLOTH, 0.0));
     let cuff = part.slot(styled(style, StyleColor::JerseyAccent, CLOTH, 0.0));
@@ -423,19 +478,20 @@ fn upper_arm(style: &RiderStyle, id: PartId) -> Part {
         (0.82, skin, 0.0),
         (1.00, skin, 0.0),
     ];
+    let keys = girth(&keys, build.arm_girth);
     let geo = limb(
-        UPPER_ARM,
+        build.upper_arm,
         &keys,
         &stations,
         10,
-        Cap::Round(0.062),
-        Cap::Round(0.041),
+        Cap::Round(scaled(0.062, build.arm_girth)),
+        Cap::Round(scaled(0.041, build.arm_girth)),
     );
     part.add(&geo, SOFT);
     part.finish()
 }
 
-fn forearm(style: &RiderStyle, id: PartId) -> Part {
+fn forearm(style: &RiderStyle, build: &RiderBuild, id: PartId) -> Part {
     let mut part = PartBuilder::new(id.name());
     let skin = part.slot(styled(style, StyleColor::Skin, SKIN, 0.0));
     let keys = [
@@ -453,13 +509,14 @@ fn forearm(style: &RiderStyle, id: PartId) -> Part {
         (0.88, skin, 0.0),
         (1.00, skin, 0.0),
     ];
+    let keys = girth(&keys, build.arm_girth);
     let geo = limb(
-        FOREARM,
+        build.forearm,
         &keys,
         &stations,
         10,
-        Cap::Round(0.041),
-        Cap::Round(0.031),
+        Cap::Round(scaled(0.041, build.arm_girth)),
+        Cap::Round(scaled(0.031, build.arm_girth)),
     );
     part.add(&geo, SOFT);
     part.finish()
@@ -470,7 +527,7 @@ const HAND_SCALE: f32 = 1.15;
 
 /// A hand built for the right side: the wrist at the origin, the fingers
 /// toward -Z, the palm facing -Y, the thumb on the -X side.
-fn hand(style: &RiderStyle, id: PartId) -> Part {
+fn hand(style: &RiderStyle, build: &RiderBuild, id: PartId) -> Part {
     let mut part = PartBuilder::new(id.name());
     let skin = part.slot(styled(style, StyleColor::Skin, SKIN, 0.0));
 
@@ -533,7 +590,12 @@ fn hand(style: &RiderStyle, id: PartId) -> Part {
         Cap::Blunt(0.009),
         |_, _| skin,
     ));
-    geo = geo.scaled(Vec3::splat(HAND_SCALE));
+    let hand_scale = if build.hand == 1.0 {
+        HAND_SCALE
+    } else {
+        HAND_SCALE * build.hand
+    };
+    geo = geo.scaled(Vec3::splat(hand_scale));
     if id == PartId::HandL {
         geo = geo.mirrored_x();
     }
@@ -633,17 +695,21 @@ impl Scaled {
     }
 }
 
-fn head(style: &RiderStyle) -> Part {
+fn head(style: &RiderStyle, build: &RiderBuild) -> Part {
     let mut part = Scaled {
         part: PartBuilder::new(PartId::Head.name()),
-        scale: HEAD_SCALE,
+        scale: if build.head == HEAD_SCALE {
+            HEAD_SCALE
+        } else {
+            build.head
+        },
     };
     let skin = part.slot(styled(style, StyleColor::Skin, SKIN, 0.0));
     let shell = part.slot(styled(style, StyleColor::Helmet, 0.35, 0.0));
     let stripe = part.slot(styled(style, StyleColor::JerseySecondary, 0.35, 0.0));
     let dark = part.slot(paint::HELMET_DARK);
     let lens = part.slot(paint::LENS);
-    let hair = part.slot(paint::HAIR);
+    let hair = part.slot(hair_paint(build));
     let lips = part.slot(paint::LIPS);
 
     // Skull, chin to crown: half-width, half-depth, centre Z.
@@ -816,5 +882,51 @@ fn head(style: &RiderStyle) -> Part {
         ),
         SOFT,
     );
+    // The braid is part of the head, so it rides with the helmet. A separate
+    // part would be needed to swing it, and the head is already one rigid piece.
+    if build.ponytail {
+        // The tail of the helmet ends near z = 0.16. The braid has to leave
+        // under that edge and stay behind it; a drop closer to the neck
+        // disappears into the collar.
+        let tie = part.slot(styled(style, StyleColor::JerseyAccent, 0.45, 0.0));
+        let path = [
+            Vec3::new(0.000, 0.020, 0.145),
+            Vec3::new(0.018, -0.015, 0.230),
+            Vec3::new(0.030, -0.090, 0.340),
+            Vec3::new(0.022, -0.185, 0.420),
+            Vec3::new(0.006, -0.280, 0.445),
+            Vec3::new(-0.012, -0.360, 0.410),
+        ];
+        let last = (path.len() - 1) as f32;
+        part.add(
+            &sweep(
+                &path,
+                Vec3::X,
+                |i| {
+                    let t = i as f32 / last;
+                    Vec2::splat(0.020 - 0.011 * t)
+                },
+                8,
+                Cap::Blunt(0.010),
+                Cap::Blunt(0.006),
+                |_, _| hair,
+            ),
+            SOFT,
+        );
+        let out = (path[2] - path[1]).normalize();
+        part.add(
+            &torus(0.020, 0.0045, 10, 5, tie)
+                .rotated(Quat::from_rotation_arc(Vec3::Y, out))
+                .translated(path[1]),
+            HARD,
+        );
+    }
     part.part.finish()
+}
+
+fn hair_paint(build: &RiderBuild) -> Paint {
+    match build.hair {
+        Some(rgb) => paint::fixed(rgb, 0.8, 0.0),
+        None => paint::HAIR,
+    }
 }

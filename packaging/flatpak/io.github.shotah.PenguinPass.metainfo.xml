@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.shotah.PenguinPass</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <!-- project_license is a placeholder. The game's licence is not chosen.
+       Replace LicenseRef-PenguinPass-TODO before the first public release. -->
+  <project_license>LicenseRef-PenguinPass-TODO</project_license>
+  <name>Penguin Pass</name>
+  <summary>Indoor cycling on a smart trainer</summary>
+  <description>
+    <p>
+      Penguin Pass is an indoor-cycling game for Linux. Pair a smart trainer
+      over Bluetooth, ride a 5 km mountain loop, and open the ride in a
+      browser on a TV on the same network.
+    </p>
+    <p>
+      With no trainer connected, a simulated rider is driven from the
+      keyboard or a game controller.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.shotah.PenguinPass.desktop</launchable>
+  <provides>
+    <binary>penguin-pass</binary>
+  </provides>
+  <developer id="io.github.shotah">
+    <name>shotah</name>
+  </developer>
+  <url type="homepage">https://github.com/shotah/penguin_pass</url>
+  <url type="bugtracker">https://github.com/shotah/penguin_pass/issues</url>
+  <url type="vcs-browser">https://github.com/shotah/penguin_pass</url>
+  <categories>
+    <category>Game</category>
+    <category>SportsGame</category>
+  </categories>
+  <keywords>
+    <keyword>cycling</keyword>
+    <keyword>trainer</keyword>
+    <keyword>fitness</keyword>
+  </keywords>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-cartoon">none</content_attribute>
+    <content_attribute id="violence-fantasy">none</content_attribute>
+    <content_attribute id="violence-realistic">none</content_attribute>
+    <content_attribute id="violence-bloodshed">none</content_attribute>
+    <content_attribute id="violence-sexual">none</content_attribute>
+    <content_attribute id="violence-desecration">none</content_attribute>
+    <content_attribute id="language-profanity">none</content_attribute>
+    <content_attribute id="language-humor">none</content_attribute>
+    <content_attribute id="language-discrimination">none</content_attribute>
+    <content_attribute id="drugs-alcohol">none</content_attribute>
+    <content_attribute id="drugs-narcotics">none</content_attribute>
+    <content_attribute id="drugs-tobacco">none</content_attribute>
+    <content_attribute id="sex-nudity">none</content_attribute>
+    <content_attribute id="sex-themes">none</content_attribute>
+    <content_attribute id="social-chat">none</content_attribute>
+    <content_attribute id="social-info">none</content_attribute>
+    <content_attribute id="social-audio">none</content_attribute>
+    <content_attribute id="social-location">none</content_attribute>
+    <content_attribute id="money-purchasing">none</content_attribute>
+    <content_attribute id="money-gambling">none</content_attribute>
+  </content_rating>
+  <releases>
+    <release version="0.1.0" date="2026-11-20"/>
+  </releases>
+  <!-- Before the first public release, add a screenshots block with a real
+       https URL of a PNG or JPEG, for example:
+  <screenshots>
+    <screenshot type="default">
+      <image type="source" width="1920" height="1080">https://example.invalid/penguin-pass.png</image>
+    </screenshot>
+  </screenshots>
+  -->
+</component>

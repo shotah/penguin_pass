@@ -11,9 +11,9 @@ use godot::classes::mesh::{ArrayType, PrimitiveType};
 use godot::classes::{ArrayMesh, INode3D, MeshInstance3D, Node3D, StandardMaterial3D};
 use godot::obj::{Base, Gd, WithBaseField};
 use godot::prelude::*;
-use pp_rider::{Part, PartId, PoseInput, RideAnimator, RideSample, RiderModel, RiderStyle};
+use pp_rider::{Part, PartId, PoseInput, RideAnimator, RideSample, RiderModel, RiderPreset};
 
-use crate::mesh_util::{add_cylinder, add_sphere, add_tube, standard_material};
+use crate::mesh_util::standard_material;
 
 /// Where the model's road contact sits in the node, in meters.
 ///
@@ -29,16 +29,6 @@ const CLOSE_CAMERA_M: f32 = 0.75;
 
 /// The parts a camera at the rider's head would look out through.
 const HIDDEN_FROM_CLOSE_CAMERA: [PartId; 2] = [PartId::Head, PartId::Torso];
-
-// `mesh_util` still has three helpers that only the placeholder rider
-// called. That file belongs to the scenery. Naming them here keeps the
-// crate free of dead-code errors until they are deleted there; then delete
-// this block and the three imports.
-const _: () = {
-    let _ = add_cylinder;
-    let _ = add_sphere;
-    let _ = add_tube;
-};
 
 /// What the game told the rider about the ride, for the next [`Rider::place`].
 #[derive(Clone, Copy)]
@@ -66,6 +56,8 @@ pub struct Rider {
     eye_forward: Vector3,
     hidden_from_camera: bool,
     built: bool,
+    /// [`RiderPreset::id`] of the meshes in the tree. `nils` until a preset is chosen.
+    preset_id: String,
 }
 
 #[godot_api]
@@ -83,6 +75,7 @@ impl INode3D for Rider {
             eye_forward: Vector3::FORWARD,
             hidden_from_camera: false,
             built: false,
+            preset_id: String::from(RiderPreset::nils().id),
         }
     }
 
@@ -184,6 +177,22 @@ impl Rider {
     pub fn debug_override_cadence(&mut self, rpm: f64) {
         self.cadence_override = (rpm >= 0.0).then_some(rpm as f32);
     }
+
+    /// Switch to the rider preset `id` (`nils`, `sigrid`, …).
+    ///
+    /// Godot name for [`Rider::set_preset`]. Unknown ids do nothing.
+    #[func(rename = set_preset)]
+    pub fn set_preset_gd(&mut self, id: GString) -> bool {
+        self.set_preset(&id.to_string())
+    }
+
+    /// Id of the preset currently shown.
+    ///
+    /// Godot name for [`Rider::preset_id`].
+    #[func(rename = preset_id)]
+    pub fn preset_id_gd(&self) -> GString {
+        GString::from(self.preset_id())
+    }
 }
 
 impl Rider {
@@ -275,9 +284,49 @@ impl Rider {
         }
     }
 
+    /// Id of the preset currently shown, such as `nils` or `sigrid`.
+    pub fn preset_id(&self) -> &str {
+        self.preset_id.as_str()
+    }
+
+    /// Switch to the preset `id`.
+    ///
+    /// Returns false when `id` is not a [`RiderPreset`]. The meshes are
+    /// rebuilt in place, and the old nodes and materials are freed. Calling
+    /// it again with the same id does not rebuild. Before the node is ready
+    /// the choice is stored and used when the meshes are first built.
+    pub fn set_preset(&mut self, id: &str) -> bool {
+        let Some(preset) = RiderPreset::get(id) else {
+            return false;
+        };
+        if self.preset_id == preset.id && self.model.is_some() {
+            return true;
+        }
+        self.preset_id = preset.id.to_owned();
+        if self.built {
+            self.discard_meshes();
+            self.assemble();
+        }
+        true
+    }
+
+    /// Drop the part nodes so a new preset can take their place.
+    ///
+    /// `free` releases the node now. The mesh and its materials go with it,
+    /// which is what the quit-time leak check is looking for.
+    fn discard_meshes(&mut self) {
+        self.model = None;
+        self.hidden_from_camera = false;
+        for mut node in std::mem::take(&mut self.parts) {
+            self.base_mut().remove_child(&node);
+            node.free();
+        }
+    }
+
     /// Build one mesh node per part. Surfaces that share a look share a material.
     fn assemble(&mut self) {
-        let model = RiderModel::build(&RiderStyle::default());
+        let preset = RiderPreset::get(&self.preset_id).unwrap_or_else(RiderPreset::nils);
+        let model = RiderModel::build_preset(&preset);
         let mut materials: Vec<(pp_rider::Material, Gd<StandardMaterial3D>)> = Vec::new();
         for part in model.parts() {
             let mut node = MeshInstance3D::new_alloc();

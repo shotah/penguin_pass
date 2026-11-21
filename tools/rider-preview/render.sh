@@ -8,6 +8,9 @@
 #   ONLY=a,b       render only these jobs: turnaround, chase, first, strip,
 #                  style, closeups, arraymesh, steer, stand, tuck, compare
 #   BIKE_ONLY=1    leave the rider out
+#   PRESET=id      which rider to export (default nils, the reference)
+#   PREFIX=text    prepended to each PNG name, so a second rider does not
+#                  overwrite the pictures already in docs/img/rider
 #   PP_NATIVE=1    run cargo on the host instead of in the build container
 #   GODOT=/path    Godot binary to use instead of the flatpak
 #
@@ -49,6 +52,9 @@ extra=()
 if [[ "${BIKE_ONLY:-}" == 1 ]]; then
     extra+=(--bike-only)
 fi
+if [[ -n "${PRESET:-}" ]]; then
+    extra+=(--preset "$PRESET")
+fi
 
 "$EXPORT" --out "$GLB/rest.glb" --crank 25 --wheel 20 "${extra[@]}"
 "$EXPORT" --out "$GLB/bike.glb" --crank 25 --wheel 20 --bike-only
@@ -61,14 +67,23 @@ if [[ "${BIKE_ONLY:-}" != 1 ]]; then
     # The same pose as chase.glb, as plain arrays, to check the Godot recipe.
     "$ROOT/target/debug/examples/export_arrays" --out "$GLB/chase.json" \
         --crank 55 --wheel 140 --effort 0.5
-    "$EXPORT" --out "$GLB/steer.glb" --crank 120 --wheel 50 --effort 1 --steer 20
-    "$EXPORT" --out "$GLB/stand.glb" --crank 60 --wheel 80 --effort 0.8 --stand 1
-    "$EXPORT" --out "$GLB/tuck.glb" --crank 0 --wheel 200 --tuck 1
+    "$EXPORT" --out "$GLB/steer.glb" --crank 120 --wheel 50 --effort 1 --steer 20 "${extra[@]}"
+    "$EXPORT" --out "$GLB/stand.glb" --crank 60 --wheel 80 --effort 0.8 --stand 1 "${extra[@]}"
+    "$EXPORT" --out "$GLB/tuck.glb" --crank 0 --wheel 200 --tuck 1 "${extra[@]}"
+fi
+if [[ "${PAIR:-}" == 1 ]]; then
+    "$EXPORT" --out "$GLB/left-chase.glb" --crank 55 --wheel 140 --effort 0.5 --preset nils
+    "$EXPORT" --out "$GLB/right-chase.glb" --crank 55 --wheel 140 --effort 0.5 --preset sigrid
+    "$EXPORT" --out "$GLB/left-rest.glb" --crank 25 --wheel 20 --preset nils
+    "$EXPORT" --out "$GLB/right-rest.glb" --crank 25 --wheel 20 --preset sigrid
 fi
 
 args=(--glb-dir "$GLB" --out-dir "$OUT" --repo "$ROOT")
 if [[ -n "$ONLY" ]]; then
     args+=(--only "$ONLY")
+fi
+if [[ -n "${PREFIX:-}" ]]; then
+    args+=(--prefix "$PREFIX")
 fi
 
 if [[ -n "${GODOT:-}" ]]; then

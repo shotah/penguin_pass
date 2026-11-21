@@ -27,8 +27,11 @@ All maps are 1024×1024 JPEG except the sky. Normals are the OpenGL (`nor_gl`) s
 | `textures/snow_02_nor_gl_1k.jpg` | same | https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_02/snow_02_nor_gl_1k.jpg | `9495ec680616b8340e2cbecbd151bff84c690cfad4209e90cc98d2d0ba81f810` | 1.0M |
 | `textures/snow_02_rough_1k.jpg` | same | https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_02/snow_02_rough_1k.jpg | `b6dea8039ac2a5beaed6fd41834fb55540cc76b492edd1d48ba2da2f30f1cb75` | 143k |
 | `sky/kloppenheim_06_puresky_2k.hdr` | Greg Zaal, sky edits by Jarod Guest | https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/kloppenheim_06_puresky_2k.hdr | `99451201586489ef3288c97bfac2a2ac232a5491c51a1faf0ec8ea39f3ccd533` | 4,434,394 |
+| `textures/sand_01_diff_1k.jpg` | Rob Tuytel | https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sand_01/sand_01_diff_1k.jpg | `a73b90eaa6d675ef57e7d48a8cf23e1f412e353ab2e29cf73930b8ecd4e76875` | 485,088 |
 
-Asset pages: https://polyhaven.com/a/asphalt_01, https://polyhaven.com/a/forest_ground_06, https://polyhaven.com/a/gravel_ground_01, https://polyhaven.com/a/rock_ground_02, https://polyhaven.com/a/snow_02, https://polyhaven.com/a/kloppenheim_06_puresky.
+Asset pages: https://polyhaven.com/a/asphalt_01, https://polyhaven.com/a/forest_ground_06, https://polyhaven.com/a/gravel_ground_01, https://polyhaven.com/a/rock_ground_02, https://polyhaven.com/a/snow_02, https://polyhaven.com/a/sand_01, https://polyhaven.com/a/kloppenheim_06_puresky.
+
+`sand_01` is the diffuse map only. Its page states CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/). The published dimensions on the info API are 1500×1500; the file itself is 1024×1024.
 
 Published sample sizes: asphalt 2.08 m, forest floor 2.11 m, gravel 3 m, rock 3 m, snow 2 m. The sky file is 2048×1024.
 

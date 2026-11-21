@@ -642,68 +642,31 @@ drawn as shadows only.
 
 ### Lines other files need
 
-None of these were made, because those files belong to other work. The
-Rust was not compiled. The camera and road changes were tried from the
-preview script, at run time, and the pictures above are the result.
+The handlebar snap and the road winding are in `camera.rs` and `road.rs`.
+`ROAD_SHADER` albedo is darker so the lit asphalt stays near the
+climb-chase frame. `set_ride_state` is called from `Game`. The pictures
+above this section were taken before that library was rebuilt.
 
-**`crates/pp-godot/src/camera.rs`, in `CameraRig::follow`.** Hold the
-handlebar camera on the bike. Replace
+**`crates/pp-godot/src/camera.rs`, in `CameraRig::follow`.** The snap is
+`!self.initialized || dt <= 0.0 || first_person`. Chase aim is
+`(0.0, 0.05, -1.2)` so the bike sits above a bottom-quarter console, and
+the chase lag is capped at 2.4 m.
 
-```rust
-        let snap = !self.initialized || dt <= 0.0;
-```
-
-with
-
-```rust
-        // The handlebar camera rides on the bike. Smoothing its position
-        // leaves it behind the rider's back at speed.
-        let snap = !self.initialized || dt <= 0.0 || first_person;
-```
-
-**`crates/pp-godot/src/road.rs`, in `build_ribbon`.** Wind the ribbon so
-its top is the front face. In the loop, swap the second and third
-`push_vertex` call of each triangle, so the order of corners is
+**`crates/pp-godot/src/road.rs`, in `build_ribbon`.** The corner order is
 
 ```text
 left[index], left[next], right[index]
 left[next],  right[next], right[index]
 ```
 
-The asphalt then takes direct sun and renders lighter, as in
-`ingame-shadow-check.png`; the colours in `ROAD_SHADER` may want to come
-down. `cull_disabled` can then go.
+so the top of the ribbon is the front face. `cull_disabled` is gone.
 
-**`crates/pp-godot/src/game.rs`, in `present`.** Pass the ride state.
-Replace
-
-```rust
-        if let Some(rider) = self.rider.as_mut() {
-            rider.bind_mut().place(
-```
-
-with
-
-```rust
-        let ftp_w = f32::from(self.session().settings().ftp_w);
-        if let Some(rider) = self.rider.as_mut() {
-            let mut rider = rider.bind_mut();
-            rider.set_ride_state(
-                telemetry.power_w,
-                ftp_w,
-                telemetry.grade_pct,
-                telemetry.speed_mps,
-            );
-            rider.place(
-```
-
-`ingame.sh` checks `set_ride_state` itself through the running game.
+**`crates/pp-godot/src/game.rs`, in `present`.** `set_ride_state` is called
+before `place`. `ingame.sh` checks it through the running game.
 
 **`crates/pp-godot/src/mesh_util.rs`.** `add_cylinder`, `add_sphere`, and
-`add_tube` were only used by the placeholder rider. `rider.rs` names them
-in a `const _` block so the crate does not fail on dead code. Delete the
-three functions (and `CylinderMesh` and `SphereMesh` from the `use`), then
-delete that block and the three imports in `rider.rs`.
+`add_tube` are gone, and so is the `const _` block in `rider.rs`.
+`MODEL_ORIGIN` stays at 0.02 m.
 
 **`crates/pp-godot/src/game.rs`, in `pose`** (optional). The rider is
 placed at `position[1] + 0.06` and the road is drawn at `+ 0.08`
@@ -720,10 +683,12 @@ which is 144 Hz, and 4.4 ms with vsync off.
 
 ## What still falls short
 
-- In play, the handlebar view is the rider's back until the camera change
-  above is made. That is the largest thing wrong with the rider in the
-  game today, and it is not in the rider's files.
-- The rider has no shadow on the road until the road change above is made.
+- The handlebar camera now snaps to the bike, and the road's top face
+  takes the sun. The pictures in this file are from before that library
+  was rebuilt, so they still show the old view and the missing shadow.
+- On the fast descent the chase camera's lag is capped at 2.4 m, so the
+  rider should stay within about a quarter of the 30 km/h size. That has
+  not been photographed yet.
 - The parts are rigid. The torso does not bend, so a stand or a tuck shows
   a hinge at the waist, and a deeply bent knee shows the overlap of two
   rounded ends, not stretched skin.
@@ -738,9 +703,9 @@ which is 144 Hz, and 4.4 ms with vsync off.
   bike; the whole rig leans as one piece.
 - With the handlebar camera at full lean, the outside forearm fills a
   corner of the frame.
-- From the chase camera on the fast descent the rider is about 6 m away
-  and small, because the camera trails by speed / 7.5. The kit still reads
-  at that size; the legs do not.
+- From the chase camera on the fast descent the rider used to sit about
+  6 m away. The lag cap is in `camera.rs`; the new framing has not been
+  photographed.
 - The face is a nose, a mouth, and sunglasses. Hands have one pose each for
   the hoods and the drops, and the blend between them passes through the
   bar.

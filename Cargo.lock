@@ -1187,6 +1187,7 @@ dependencies = [
  "pp-cast",
  "pp-core",
  "pp-course",
+ "pp-routegen",
  "pp-trainer",
  "reqwest",
  "serde",
@@ -1212,6 +1213,7 @@ name = "pp-view"
 version = "0.1.0"
 dependencies = [
  "pp-core",
+ "pp-routegen",
  "pp-session",
  "serde",
  "serde_json",

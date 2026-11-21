@@ -1,5 +1,7 @@
 //! Square chunk grid on the X/Z ground plane.
 
+use std::collections::BTreeSet;
+
 use crate::WorldError;
 
 /// Column and row of a chunk on the ground plane.
@@ -160,6 +162,49 @@ impl ChunkGrid {
             out.push(coord);
         });
         out
+    }
+
+    /// Chunks whose closed square comes within `half_width_m` of a polyline.
+    ///
+    /// `points` are `[x, z]` metres. A segment longer than one chunk edge is
+    /// split, so a hairpin is not replaced by its chord. Fewer than two
+    /// finite points, or a bad half-width, yields an empty list. The list is
+    /// sorted by [`ChunkCoord`] and contains each chunk once.
+    #[must_use]
+    pub fn chunks_along_polyline(&self, points: &[[f64; 2]], half_width_m: f64) -> Vec<ChunkCoord> {
+        if points.len() < 2 || !half_width_m.is_finite() || half_width_m < 0.0 {
+            return Vec::new();
+        }
+        if points
+            .iter()
+            .any(|point| !point[0].is_finite() || !point[1].is_finite())
+        {
+            return Vec::new();
+        }
+        let mut set = BTreeSet::new();
+        let step = self.edge_m.max(1.0);
+        let mut anchor = 0usize;
+        let mut travelled = 0.0_f64;
+        for index in 1..points.len() {
+            let dx = points[index][0] - points[index - 1][0];
+            let dz = points[index][1] - points[index - 1][1];
+            travelled += (dx * dx + dz * dz).sqrt();
+            let last = index + 1 == points.len();
+            if travelled >= step || last {
+                for coord in self.chunks_in_capsule(
+                    points[anchor][0],
+                    points[anchor][1],
+                    points[index][0],
+                    points[index][1],
+                    half_width_m,
+                ) {
+                    set.insert(coord);
+                }
+                anchor = index;
+                travelled = 0.0;
+            }
+        }
+        set.into_iter().collect()
     }
 
     pub(crate) fn visit_circle(
@@ -522,6 +567,26 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_polyline_follows_a_hairpin_instead_of_its_chord() {
+        let grid = ChunkGrid::default();
+        let mut points = Vec::new();
+        let steps = 32;
+        for step in 0..=steps {
+            let angle = step as f64 / steps as f64 * std::f64::consts::PI;
+            points.push([angle.cos() * 34.0, angle.sin() * 34.0]);
+        }
+        let covered = set_of(grid.chunks_along_polyline(&points, 96.0));
+        let apex = grid.coord_at(0.0, 34.0);
+        assert!(covered.contains(&apex), "apex {apex:?} missing");
+        assert!(!covered.contains(&ChunkCoord::new(8, 8)));
+        assert!(grid.chunks_along_polyline(&[[0.0, 0.0]], 10.0).is_empty());
+        assert!(
+            grid.chunks_along_polyline(&[[0.0, 0.0], [f64::NAN, 1.0]], 10.0)
+                .is_empty()
+        );
     }
 
     #[test]

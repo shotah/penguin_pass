@@ -5,6 +5,9 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[dev-dependencies]
+pp-routegen = { path = "../pp-routegen" }
+
 [dependencies]
 pp-core = { path = "../pp-core" }
 pp-session = { path = "../pp-session" }

@@ -3,7 +3,7 @@
 //! ```text
 //! export_glb --out rider.glb [--crank DEG] [--wheel DEG] [--steer DEG]
 //!            [--effort 0..1] [--stand 0..1] [--tuck 0..1] [--bike-only]
-//!            [--stats]
+//!            [--preset ID] [--stats]
 //! ```
 //!
 //! One node per part, named as the part, carrying the pose as its transform.
@@ -19,13 +19,14 @@ use std::path::PathBuf;
 use gltf::json;
 use gltf::json::validation::Checked::Valid;
 use gltf::json::validation::USize64;
-use pp_rider::{Material, PartId, PoseInput, RiderModel, RiderStyle, Surface};
+use pp_rider::{Material, PartId, PoseInput, RiderModel, RiderPreset, Surface};
 
 struct Args {
     out: PathBuf,
     input: PoseInput,
     bike_only: bool,
     stats: bool,
+    preset: String,
 }
 
 fn parse_args() -> Result<Args, Box<dyn Error>> {
@@ -33,6 +34,7 @@ fn parse_args() -> Result<Args, Box<dyn Error>> {
     let mut input = PoseInput::default();
     let mut bike_only = false;
     let mut stats = false;
+    let mut preset = String::from("nils");
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
         if flag == "--bike-only" {
@@ -57,6 +59,7 @@ fn parse_args() -> Result<Args, Box<dyn Error>> {
             "--effort" => input.effort = number()?,
             "--stand" => input.stand = number()?,
             "--tuck" => input.tuck = number()?,
+            "--preset" => preset = value,
             _ => return Err(format!("unknown argument {flag}").into()),
         }
     }
@@ -65,6 +68,7 @@ fn parse_args() -> Result<Args, Box<dyn Error>> {
         input,
         bike_only,
         stats,
+        preset,
     })
 }
 
@@ -203,7 +207,9 @@ impl Writer {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = parse_args()?;
-    let model = RiderModel::build(&RiderStyle::default());
+    let preset =
+        RiderPreset::get(&args.preset).ok_or_else(|| format!("unknown preset {}", args.preset))?;
+    let model = RiderModel::build_preset(&preset);
     let pose = model.pose(&args.input);
 
     let mut writer = Writer {

@@ -17,8 +17,8 @@
     "shadow_distance": 280.0
   },
   "fog": {
-    "density": 0.00009,
-    "aerial": 0.22,
+    "density": 0.00004,
+    "aerial": 0.16,
     "color": [0.64, 0.74, 0.84],
     "energy": 0.55
   },
@@ -28,21 +28,20 @@
     {"name": "rock", "color": [0.48, 0.46, 0.42], "texture": "ground_rock", "normal": "", "altitude": [-40.0, 400.0], "slope": [0.32, 1.4], "blend": 0.12},
     {"name": "snow", "color": [0.86, 0.88, 0.90], "texture": "ground_snow", "normal": "", "altitude": [115.0, 500.0], "slope": [0.0, 0.55], "blend": 22.0}
   ],
-  "backdrop": {
-    "rings": 3,
-    "inner_margin_m": 90.0,
-    "ring_gap_m": 700.0,
-    "base_drop_m": 60.0,
-    "height_m": [140.0, 280.0],
-    "snow_fraction": 0.86,
-    "segments": 128,
-    "style": "ridges"
+  "relief": {
+    "amplitude_m": 260.0,
+    "wavelength_m": 1500.0,
+    "octaves": 3,
+    "snow_line_m": 150.0,
+    "terraced": false,
+    "terrace_m": 40.0,
+    "side_m": 26.0
   },
   "scatter": [
-    {"kind": "tree", "ids": ["pine_5", "pine_4", "common_tree_5"], "density_per_ha": 140.0, "altitude": [0.0, 125.0], "max_slope": 0.5, "min_road_m": 7.5, "max_road_m": 70.0, "scale": [0.85, 1.2], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.55, "cluster_frequency": 0.018, "seed": 11, "visibility_m": 150.0},
-    {"kind": "bush", "ids": ["bush_common_flowers", "fern_1", "plant_1_big"], "density_per_ha": 70.0, "altitude": [0.0, 140.0], "max_slope": 0.6, "min_road_m": 6.5, "max_road_m": 28.0, "scale": [0.7, 1.15], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.4, "cluster_frequency": 0.03, "seed": 19, "visibility_m": 70.0},
-    {"kind": "grass", "ids": ["grass_common_short"], "density_per_ha": 380.0, "altitude": [-10.0, 150.0], "max_slope": 0.55, "min_road_m": 5.2, "max_road_m": 16.0, "scale": [0.35, 0.65], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.2, "cluster_frequency": 0.05, "seed": 23, "visibility_m": 28.0},
-    {"kind": "flower", "ids": ["flower_3_group", "clover_1"], "density_per_ha": 50.0, "altitude": [-10.0, 120.0], "max_slope": 0.4, "min_road_m": 5.5, "max_road_m": 14.0, "scale": [0.6, 1.0], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.35, "cluster_frequency": 0.04, "seed": 31, "visibility_m": 24.0},
-    {"kind": "rock", "ids": ["rock_medium_1", "pebble_round_1"], "density_per_ha": 30.0, "altitude": [40.0, 260.0], "max_slope": 0.9, "min_road_m": 6.0, "max_road_m": 40.0, "scale": [0.45, 1.05], "random_yaw": true, "tilt_to_slope": true, "cluster": 0.35, "cluster_frequency": 0.02, "seed": 29, "visibility_m": 90.0}
+    {"kind": "tree", "ids": ["pine_5", "pine_4", "common_tree_5"], "density_per_ha": 140.0, "altitude": [-40.0, 700.0], "max_slope": 0.48, "min_road_m": 7.5, "max_road_m": 180.0, "scale": [0.85, 1.2], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.55, "cluster_frequency": 0.018, "seed": 11, "visibility_m": 400.0},
+    {"kind": "bush", "ids": ["bush_common_flowers", "fern_1", "plant_1_big"], "density_per_ha": 70.0, "altitude": [0.0, 140.0], "max_slope": 0.6, "min_road_m": 6.5, "max_road_m": 28.0, "scale": [0.7, 1.15], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.4, "cluster_frequency": 0.03, "seed": 19, "visibility_m": 150.0},
+    {"kind": "grass", "ids": ["grass_common_short"], "density_per_ha": 380.0, "altitude": [-10.0, 150.0], "max_slope": 0.55, "min_road_m": 5.2, "max_road_m": 16.0, "scale": [0.35, 0.65], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.2, "cluster_frequency": 0.05, "seed": 23, "visibility_m": 50.0},
+    {"kind": "flower", "ids": ["flower_3_group", "clover_1"], "density_per_ha": 50.0, "altitude": [-10.0, 120.0], "max_slope": 0.4, "min_road_m": 5.5, "max_road_m": 14.0, "scale": [0.6, 1.0], "random_yaw": true, "tilt_to_slope": false, "cluster": 0.35, "cluster_frequency": 0.04, "seed": 31, "visibility_m": 45.0},
+    {"kind": "rock", "ids": ["rock_medium_1", "pebble_round_1"], "density_per_ha": 30.0, "altitude": [40.0, 260.0], "max_slope": 0.9, "min_road_m": 6.0, "max_road_m": 60.0, "scale": [0.45, 1.05], "random_yaw": true, "tilt_to_slope": true, "cluster": 0.35, "cluster_frequency": 0.02, "seed": 29, "visibility_m": 250.0}
   ]
 }

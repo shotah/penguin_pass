@@ -1,5 +1,6 @@
 //! The built model: every part's mesh plus the rig that poses them.
 
+use crate::build::{RiderBuild, RiderPreset};
 use crate::mesh::{Part, PartId};
 use crate::pose::{Pose, PoseInput, solve};
 use crate::rig::Rig;
@@ -17,14 +18,36 @@ pub struct RiderModel {
 }
 
 impl RiderModel {
-    /// Generate every mesh in the colours of `style`.
+    /// Generate every mesh in the colours of `style`, with the reference build.
     ///
     /// The result depends only on `style`: two calls with equal styles give
     /// equal models, vertex for vertex. Only material colours differ between
     /// styles; the geometry and the surface layout stay the same.
     #[must_use]
     pub fn build(style: &RiderStyle) -> Self {
-        let rig = Rig::new();
+        Self::build_with(style, &RiderBuild::default())
+    }
+
+    /// Generate every mesh for one [`RiderPreset`].
+    ///
+    /// The reference preset matches [`Self::build`] with [`RiderStyle::default`],
+    /// vertex for vertex.
+    #[must_use]
+    pub fn build_preset(preset: &RiderPreset) -> Self {
+        Self::build_with(&preset.style, &preset.build)
+    }
+
+    /// Generate every mesh in the colours of `style` and the proportions of `build`.
+    ///
+    /// Two calls with equal styles and equal builds give equal models, vertex
+    /// for vertex. The reference build is what [`Self::build`] uses.
+    #[must_use]
+    pub fn build_with(style: &RiderStyle, build: &RiderBuild) -> Self {
+        let rig = if *build == RiderBuild::default() {
+            Rig::new()
+        } else {
+            Rig::from_build(build)
+        };
         let parts = PartId::ALL
             .iter()
             .map(|&id| match id {
@@ -33,7 +56,7 @@ impl RiderModel {
                 PartId::FrontWheel | PartId::RearWheel => bike::wheel(style, id),
                 PartId::Crankset => bike::crankset(),
                 PartId::PedalL | PartId::PedalR => bike::pedal(id),
-                _ => body::part(style, id),
+                _ => body::part(style, build, id),
             })
             .collect();
         Self { parts, rig }

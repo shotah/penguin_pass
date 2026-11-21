@@ -854,9 +854,28 @@
       renderStatus(data);
     });
   }
+  var courseStamp = "";
+  function applyCourse(data) {
+    if (!data) return;
+    var pts = data.points || [];
+    var head = pts.length ? pts[0].elevation_m : 0;
+    var tail = pts.length ? pts[pts.length - 1].elevation_m : 0;
+    var stamp = (data.name || "") + "|" + data.length_m + "|" + pts.length + "|" + head + "|" + tail;
+    if (stamp === courseStamp) return;
+    courseStamp = stamp;
+    course = data;
+    var label = course.name;
+    if (!label) {
+      var km = (course.length_m || 0) / 1000;
+      label = km > 0 ? km.toFixed(1) + " km loop" : "Ride";
+    }
+    document.getElementById("course-name").textContent = label;
+    drawCharts();
+  }
   function poll() {
     loadJson("/api/telemetry", function (data) { render(data); });
     loadJson("/api/status", function (data) { renderStatus(data); });
+    loadJson("/api/course", applyCourse);
     setTimeout(poll, 250);
   }
   function holdWake() {
@@ -869,16 +888,7 @@
     litZone = -2;
     if (latest) render(latest);
   });
-  loadJson("/api/course", function (data) {
-    course = data || course;
-    var label = course.name;
-    if (!label) {
-      var km = (course.length_m || 0) / 1000;
-      label = km > 0 ? km.toFixed(1) + " km loop" : "Ride";
-    }
-    document.getElementById("course-name").textContent = label;
-    drawCharts();
-  });
+  loadJson("/api/course", applyCourse);
   loadJson("/api/status", function (data) { renderStatus(data); });
   loadJson("/api/telemetry", function (data) { render(data); });
   showStream("connecting");

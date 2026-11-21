@@ -84,6 +84,8 @@ saved setting.
 | `--dashboard-port <n>` | Bind the TV page on this port. `0` picks a free port |
 | `--dashboard-loopback` | Bind the TV page on 127.0.0.1 only |
 | `--quit-from-menu` | On the first frame, confirm Quit in the menu. For the export exit check |
+| `--skip-title` | Start already riding. Shots and scripted checks use this |
+| `--play-through` | Title, Start, ride, End ride, then Quit. The release exit check |
 
 Tests and `./godot/tests/shoot_set.sh` always pass `--fake-trainer` or
 `--no-bluetooth`, a temporary settings file, and `--dashboard-port 0`.
@@ -124,6 +126,10 @@ The skirt starts below the outer terrain so the chunks cover the join. A
 theme can ask for mesas instead of ridges. The section is optional; a file
 without it uses the alpine defaults.
 
+`PENGUIN_PASS_THEME`, when set, replaces the theme file stem for this process
+(`desert` or `alpine`). Unset uses the course's theme. A bad stem, a missing
+file, or a rejected theme falls back to the built-in alpine theme.
+
 Scatter is one `MultiMeshInstance3D` per mesh per chunk. Each chunk is
 generated from its coordinates, the theme seed, and the layer seed, so a
 neighbour's contents do not change it and the order chunks are visited does
@@ -148,7 +154,7 @@ After the world is built the game prints
 actually loaded. The rider stays procedural: the library has no road bicycle.
 Guard rails, posts, and the arch stay procedural too.
 
-The menu, HUD strings, theme checks, scatter rules, and backdrop are plain
+The menu, HUD strings, theme checks, scatter rules, and mountain relief are plain
 Rust in `crates/pp-view`. `pp-godot` draws them. Simulated power steps by 25 W.
 Holding Up or Down, after a short delay, adds about 100 W per second.
 
@@ -159,9 +165,9 @@ name, seed
 sky:    top, horizon, ground_horizon, ground_bottom, curve, energy   (RGB 0..1)
 sun:    pitch, yaw, energy, color, shadow_distance
 fog:    density, aerial, color, energy
-backdrop (optional):
-  rings, inner_margin_m, ring_gap_m, base_drop_m,
-  height_m[min,max], snow_fraction, segments, style ("ridges" or "mesas")
+relief (optional; a leftover backdrop section is ignored):
+  amplitude_m, wavelength_m, octaves, snow_line_m,
+  terraced (flat steps for desert mesas), terrace_m
 ground[]:
   name, color, texture, normal, altitude[min,max], slope[min,max], blend
 scatter[]:

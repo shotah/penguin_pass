@@ -8,16 +8,15 @@ use std::path::Path;
 
 use godot::builtin::Side;
 use godot::classes::control::{LayoutPreset, MouseFilter, SizeFlags};
-use godot::classes::{CanvasLayer, Label, Node3D, PanelContainer, VBoxContainer};
+use godot::classes::{CanvasLayer, Label, Node3D, PanelContainer, StyleBoxEmpty, VBoxContainer};
+
+use crate::ui_style::{self, Role, Surface};
 use godot::obj::Gd;
 use godot::prelude::*;
 use pp_session::{Session, Settings};
 use pp_view::menu::{Action, Device, MenuState, MenuView, Snapshot};
 
 const ROW_COUNT: usize = 12;
-const FONT: i32 = 22;
-const TITLE_FONT: i32 = 28;
-const DETAIL_FONT: i32 = 20;
 
 /// What the player just pressed.
 pub use pp_view::menu::Command;
@@ -31,6 +30,8 @@ pub enum Effect {
     Quit,
     /// The ride was restarted.
     Restarted,
+    /// The music-folder row asked for a directory picker.
+    ChooseMusicFolder,
 }
 
 /// The overlay and the row that is selected.
@@ -38,8 +39,11 @@ pub struct RideMenu {
     layer: Gd<CanvasLayer>,
     title: Gd<Label>,
     rows: Vec<Gd<Label>>,
+    row_panels: Vec<Gd<PanelContainer>>,
     detail: Gd<Label>,
+    selected: usize,
     state: MenuState,
+    music_report: String,
 }
 
 impl RideMenu {
@@ -58,38 +62,37 @@ impl RideMenu {
         panel.set_offset(Side::RIGHT, -80.0);
         panel.set_offset(Side::BOTTOM, -70.0);
         panel.set_mouse_filter(MouseFilter::STOP);
-        panel.add_theme_stylebox_override("panel", &panel_style());
+        panel.add_theme_stylebox_override("panel", &ui_style::surface(Surface::Menu));
 
         let mut box_ = VBoxContainer::new_alloc();
         box_.set_name("Rows");
-        box_.add_theme_constant_override("separation", 6);
+        box_.add_theme_constant_override("separation", 2);
         box_.set_h_size_flags(SizeFlags::EXPAND_FILL);
 
-        let mut title = Label::new_alloc();
-        title.set_text("Settings");
-        title.add_theme_font_size_override("font_size", TITLE_FONT);
-        title.add_theme_color_override("font_color", Color::from_rgb(0.96, 0.94, 0.88));
+        let title = ui_style::label("Settings", Role::Title);
         box_.add_child(&title);
 
         let mut rows = Vec::with_capacity(ROW_COUNT);
+        let mut row_panels = Vec::with_capacity(ROW_COUNT);
         for index in 0..ROW_COUNT {
-            let mut label = Label::new_alloc();
+            let mut row_panel = PanelContainer::new_alloc();
+            row_panel.set_name(&format!("RowPanel{index}"));
+            row_panel.set_custom_minimum_size(Vector2::new(0.0, 48.0));
+            row_panel.add_theme_stylebox_override("panel", &StyleBoxEmpty::new_gd());
+            let mut label = ui_style::label("", Role::Row);
             label.set_name(&format!("Row{index}"));
-            label.add_theme_font_size_override("font_size", FONT);
-            box_.add_child(&label);
+            row_panel.add_child(&label);
+            box_.add_child(&row_panel);
             rows.push(label);
+            row_panels.push(row_panel);
         }
 
-        let mut detail = Label::new_alloc();
+        let mut detail = ui_style::label("", Role::Body);
         detail.set_name("Detail");
-        detail.add_theme_font_size_override("font_size", DETAIL_FONT);
-        detail.add_theme_color_override("font_color", Color::from_rgb(0.78, 0.82, 0.74));
+        detail.add_theme_color_override("font_color", ui_style::MIST);
         box_.add_child(&detail);
 
-        let mut footer = Label::new_alloc();
-        footer.set_text("Arrows move    Enter selects    Esc goes back");
-        footer.add_theme_font_size_override("font_size", DETAIL_FONT);
-        footer.add_theme_color_override("font_color", Color::from_rgb(0.62, 0.66, 0.7));
+        let footer = ui_style::label("Move    Select    Back", Role::Unit);
         box_.add_child(&footer);
 
         panel.add_child(&box_);
@@ -100,14 +103,27 @@ impl RideMenu {
             layer,
             title,
             rows,
+            row_panels,
             detail,
+            selected: 0,
             state: MenuState::default(),
+            music_report: String::new(),
         }
     }
 
     /// Whether the overlay is showing.
     pub fn is_open(&self) -> bool {
         self.state.open
+    }
+
+    /// Whether the settings panel is actually on screen.
+    pub fn is_visible(&self) -> bool {
+        self.layer.is_visible()
+    }
+
+    /// Folder scan line shown under the music folder row.
+    pub fn set_music_report(&mut self, report: &str) {
+        self.music_report = report.to_owned();
     }
 
     /// Page title, for the smoke test.
@@ -123,8 +139,7 @@ impl RideMenu {
     /// Text of the highlighted row.
     pub fn selected_text(&self) -> String {
         self.rows
-            .iter()
-            .find(|label| label.get_text().to_string().starts_with('>'))
+            .get(self.selected)
             .map(|label| label.get_text().to_string())
             .unwrap_or_default()
     }
@@ -144,19 +159,25 @@ impl RideMenu {
 
     /// Apply one command. Saves when a value changes.
     pub fn handle(&mut self, command: Command, session: &mut Session, path: &Path) -> Effect {
-        let snap = snapshot(session);
+        let snap = snapshot(session, &self.music_report);
         let action = self.state.handle(command, &snap);
         let effect = self.perform(action, session, path);
         self.refresh(session);
+        // Closing the state used to leave the panel drawn. Input had already
+        // returned to the ride, so Escape looked like it did nothing.
+        if !self.state.open {
+            self.layer.set_visible(false);
+        }
         effect
     }
 
     /// Redraw from the live session. Call this every frame the menu is open.
     pub fn refresh(&mut self, session: &Session) {
         if !self.state.open {
+            self.layer.set_visible(false);
             return;
         }
-        let snap = snapshot(session);
+        let snap = snapshot(session, &self.music_report);
         let view = self.state.view(&snap);
         self.paint(&view);
     }
@@ -182,6 +203,7 @@ impl RideMenu {
                 self.save(session, path);
                 Effect::None
             }
+            Action::ChooseMusicFolder => Effect::ChooseMusicFolder,
             Action::Apply(settings) => {
                 let fullscreen = settings.fullscreen;
                 let changed = fullscreen != session.settings().fullscreen;
@@ -197,27 +219,40 @@ impl RideMenu {
 
     fn paint(&mut self, view: &MenuView) {
         self.title.set_text(&view.title);
+        ui_style::style_label(&mut self.title, Role::Title);
+        self.selected = view.selected;
         for (index, label) in self.rows.iter_mut().enumerate() {
-            if let Some(line) = view.lines.get(index) {
-                let shown = if index == view.selected {
-                    format!("> {line}")
-                } else {
-                    format!("  {line}")
-                };
-                label.set_text(&shown);
-                label.set_visible(true);
-                let color = if index == view.selected {
-                    Color::from_rgb(1.0, 0.86, 0.45)
-                } else {
-                    Color::from_rgb(0.9, 0.92, 0.94)
-                };
-                label.add_theme_color_override("font_color", color);
-            } else {
+            let Some(line) = view.lines.get(index) else {
                 label.set_text("");
                 label.set_visible(false);
+                if let Some(panel) = self.row_panels.get_mut(index) {
+                    panel.set_visible(false);
+                }
+                continue;
+            };
+            let focused = index == view.selected;
+            label.set_text(line);
+            label.set_visible(true);
+            label.add_theme_color_override(
+                "font_color",
+                if focused {
+                    ui_style::INK
+                } else {
+                    ui_style::SNOW
+                },
+            );
+            if let Some(panel) = self.row_panels.get_mut(index) {
+                panel.set_visible(true);
+                if focused {
+                    panel.add_theme_stylebox_override("panel", &ui_style::focus_style());
+                } else {
+                    panel.add_theme_stylebox_override("panel", &StyleBoxEmpty::new_gd());
+                }
             }
         }
         self.detail.set_text(&view.detail);
+        self.detail
+            .add_theme_color_override("font_color", ui_style::MIST);
     }
 
     fn save(&mut self, session: &Session, path: &Path) {
@@ -228,7 +263,7 @@ impl RideMenu {
     }
 }
 
-fn snapshot(session: &Session) -> Snapshot {
+fn snapshot(session: &Session, music_report: &str) -> Snapshot {
     let status = session.status();
     let settings: Settings = session.settings().clone();
     Snapshot {
@@ -237,6 +272,7 @@ fn snapshot(session: &Session) -> Snapshot {
         dashboard: status.dashboard,
         dashboard_urls: status.dashboard_urls,
         dashboard_error: status.dashboard_error,
+        music_report: music_report.to_owned(),
         devices: session
             .discovered()
             .into_iter()
@@ -244,6 +280,7 @@ fn snapshot(session: &Session) -> Snapshot {
                 id: device.id,
                 name: device.name,
                 rssi_dbm: device.rssi_dbm,
+                power_only: !device.ftms && !device.fec,
             })
             .collect(),
     }
@@ -264,14 +301,4 @@ pub fn apply_window_mode(fullscreen: bool) {
         godot::classes::window::Mode::WINDOWED
     };
     window.set_mode(mode);
-}
-
-fn panel_style() -> Gd<godot::classes::StyleBoxFlat> {
-    let mut style = godot::classes::StyleBoxFlat::new_gd();
-    style.set_bg_color(Color::from_rgba(0.06, 0.08, 0.12, 0.92));
-    style.set_border_color(Color::from_rgba(0.85, 0.78, 0.55, 0.45));
-    style.set_border_width_all(2);
-    style.set_corner_radius_all(12);
-    style.set_content_margin_all(18.0);
-    style
 }

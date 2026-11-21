@@ -59,6 +59,15 @@ Anything after a literal `--` is passed to the game:
 | `--no-bluetooth` | Do not use Bluetooth |
 | `--dashboard-port <n>` | TV page port. `0` picks a free port |
 | `--dashboard-loopback` | TV page listens on 127.0.0.1 only |
+| `--skip-title` | Start on the road instead of the title screen |
+| `--play-through` | Title, Start, a short ride, End ride, then Quit |
+| `--no-music` | Start with the music bus muted |
+
+`./x play --trace` records the ride for diagnosis. It makes
+`target/traces/<date-time>/` and sets `PENGUIN_PASS_TRACE_DIR` to it. The
+game writes `ride.csv` there, one row per frame (`docs/session.md`). A real
+trainer also writes `ble.csv`, one row per Bluetooth message
+(`docs/bluetooth.md`). Both start with `unix_ms`, so they line up.
 
 `--scratch-data` (or `PENGUIN_PASS_SCRATCH_DATA=1`) points Godot's XDG
 directories at `dist/xdg/` so a check does not read or write your settings.
@@ -115,7 +124,7 @@ What was tested is the desktop launch, written up at the bottom.
 ## Controls
 
 The simulated rider is the keyboard, or the Steam Deck gamepad. Hold the
-power keys and the 10 W step repeats. Esc or Start opens the menu (rider
+power keys and the 25 W step repeats. Esc or Start opens the menu (rider
 and bike weight, FTP, trainer difficulty, the TV page, full screen, restart,
 quit). The bindings and the menu are written up in `docs/game.md`.
 
@@ -163,7 +172,7 @@ does not start the game.
 - Pairing a trainer from inside Steam's Linux runtime container has not
   been tested. `./x play` does not connect to a trainer.
 - Game Mode and streaming to a TV were not tested here.
-- There is no course picker, and no Chromecast video. The settings menu is in the game; see `docs/game.md`.
+- There is no Chromecast video. The settings menu is in the game; see `docs/game.md`.
 - The project window mode is still 1280x800 windowed. `./x play` asks
   Godot for full screen on the command line. A double-clicked export does
   not, until `project.godot` sets the window mode or the Steam launch

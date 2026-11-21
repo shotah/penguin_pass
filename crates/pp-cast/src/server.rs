@@ -1,7 +1,7 @@
 //! Background thread that owns the HTTP server.
 
-use crate::RideStatus;
 use crate::http::{self, AppState};
+use crate::{CourseProfile, RideStatus};
 use pp_core::Telemetry;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -60,6 +60,7 @@ pub struct CastServer {
     status: watch::Sender<RideStatus>,
     /// Keeps the status channel open before any browser connects.
     _status_rx: watch::Receiver<RideStatus>,
+    course: watch::Sender<CourseProfile>,
     shutdown: Option<watch::Sender<bool>>,
     thread: Option<JoinHandle<()>>,
 }
@@ -92,12 +93,13 @@ impl CastServer {
 
         let (telemetry, telemetry_rx) = watch::channel(Telemetry::default());
         let (status, status_rx) = watch::channel(RideStatus::default());
+        let (course, _course_rx) = watch::channel(config.course);
         let (shutdown, _) = watch::channel(false);
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let state = AppState {
             telemetry: telemetry.clone(),
             status: status.clone(),
-            course: std::sync::Arc::new(config.course),
+            course: course.clone(),
             shutdown: shutdown.clone(),
         };
 
@@ -113,6 +115,7 @@ impl CastServer {
                 _telemetry_rx: telemetry_rx,
                 status,
                 _status_rx: status_rx,
+                course,
                 shutdown: Some(shutdown),
                 thread: Some(thread),
             }),
@@ -139,6 +142,14 @@ impl CastServer {
     /// [`RideStatus::default`]: no zone colours and a neutral connection chip.
     pub fn publish_status(&self, status: RideStatus) {
         self.status.send_replace(status);
+    }
+
+    /// Replace the course profile the page draws.
+    ///
+    /// Non-blocking, same as [`Self::publish`]. The next `GET /api/course`
+    /// returns this profile. An open page picks it up on its next refresh.
+    pub fn set_course(&self, course: CourseProfile) {
+        self.course.send_replace(course);
     }
 
     /// Address the server actually bound, including a port chosen by the

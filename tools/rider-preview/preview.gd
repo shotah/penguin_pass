@@ -8,6 +8,7 @@ extends SceneTree
 ##   --repo DIR      repository root, for the scenery models and the kept
 ##                   screenshot of the placeholder rider
 ##   --only A,B      render only these jobs (default: all)
+##   --prefix TEXT   prepended to each PNG name (rider2-chase.png)
 ##
 ## Jobs: turnaround, chase, first, strip, style, closeups, compare, and
 ## arraymesh, steer, stand, and tuck when their model files exist.
@@ -30,6 +31,7 @@ var _glb_dir := ""
 var _out_dir := ""
 var _repo := ""
 var _only := PackedStringArray()
+var _prefix := ""
 var _jobs: Array = []
 var _job := 0
 var _tile := 0
@@ -72,6 +74,7 @@ func _read_args() -> void:
 	var only := _arg(args, "--only", "")
 	if not only.is_empty():
 		_only = only.split(",", false)
+	_prefix = _arg(args, "--prefix", "")
 
 
 func _arg(args: PackedStringArray, name: String, fallback: String) -> String:
@@ -460,6 +463,26 @@ func _make_jobs() -> Array:
 				tile["post"] = false
 			jobs.append({"name": extra, "cols": 4, "tile": Vector2i(640, 640), "tiles": tiles})
 
+	if _wanted("pair") and _has("left-chase.glb") and _has("right-chase.glb"):
+		var pair_chase := _persp("", "left-chase.glb", Vector3(0.0, 1.55, 4.7), Vector3(0.0, 1.0, -0.2), 40.0)
+		pair_chase["pair"] = "right-chase.glb"
+		pair_chase["gap"] = 0.95
+		pair_chase["ground"] = "road"
+		pair_chase["post"] = false
+		var side_by_side: Array = [pair_chase]
+		if _has("left-rest.glb") and _has("right-rest.glb"):
+			var pair_rear := _ortho("", "left-rest.glb", Vector3(0.0, 0.95, 8.0), Vector3(0.0, 0.9, 0.0), 1.7)
+			pair_rear["pair"] = "right-rest.glb"
+			pair_rear["gap"] = 0.95
+			pair_rear["post"] = false
+			side_by_side.append(pair_rear)
+		jobs.append({
+			"name": "riders-compare",
+			"cols": 1,
+			"tile": Vector2i(1280, 800),
+			"tiles": side_by_side,
+		})
+
 	return jobs
 
 
@@ -470,6 +493,7 @@ func _setup_tile(job: Dictionary, tile: Dictionary) -> void:
 	_hidden.clear()
 	for model in _models.values():
 		model.visible = false
+		model.position = Vector3.ZERO
 	var model := _rider(tile["glb"])
 	if model != null:
 		model.visible = true
@@ -478,6 +502,14 @@ func _setup_tile(job: Dictionary, tile: Dictionary) -> void:
 			if node != null:
 				node.visible = false
 				_hidden.append(node)
+	if tile.has("pair"):
+		var other := _rider(str(tile["pair"]))
+		var gap := float(tile.get("gap", 0.9))
+		if model != null:
+			model.position.x = -gap * 0.5
+		if other != null:
+			other.visible = true
+			other.position.x = gap * 0.5
 
 	var ground: String = tile.get("ground", "studio")
 	_road.visible = ground == "road"
@@ -553,7 +585,7 @@ func _on_drawn() -> void:
 
 func _save(image: Image, file: String) -> void:
 	DirAccess.make_dir_recursive_absolute(_out_dir)
-	var path := _out_dir.path_join(file)
+	var path := _out_dir.path_join(_prefix + file)
 	var err := image.save_png(path)
 	if err != OK:
 		push_error("save_png %s failed: %d" % [path, err])
@@ -567,7 +599,7 @@ func _compare() -> void:
 	# A copy of the game's start-chase shot from before the new model, kept
 	# so this picture still shows the placeholder after the game changes.
 	var before_path := _repo.path_join("docs/img/rider/history/placeholder-start-chase.png")
-	var after_path := _out_dir.path_join("chase.png")
+	var after_path := _out_dir.path_join(_prefix + "chase.png")
 	if not FileAccess.file_exists(before_path) or not FileAccess.file_exists(after_path):
 		push_error("compare needs %s and %s" % [before_path, after_path])
 		_failed = true

@@ -319,7 +319,7 @@ Trainer chip states, each with its own mark:
 | Simulated rider | keyboard icon | `Simulated rider` |
 
 **Power hint.** Only with the simulated rider: a pill at x 32, y 562,
-height 40, with the up and down glyphs, `Power`, and `±10 W`. It hides
+height 40, with the up and down glyphs, `Power`, and `±25 W`. It hides
 after the first power change and returns when the pause menu closes.
 
 ### States
@@ -755,7 +755,7 @@ is taller than it is wide.
 
 In the ride: Menu opens settings, Y (or `C`) switches the camera, and
 with the simulated rider D-pad up and down (or the arrow keys) change
-power by 10 W.
+power by 25 W.
 
 ## Motion
 

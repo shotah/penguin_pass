@@ -1,4 +1,4 @@
-//! Theme file: colours, scatter rules, and the distant backdrop.
+//! Theme file: colours, scatter rules, and how the ground rises into mountains.
 //!
 //! A theme that fails to parse or fails the checks is rejected. The game then
 //! uses [`Theme::builtin`] and keeps running.
@@ -8,12 +8,22 @@ use serde::Deserialize;
 /// Nothing is scattered inside this distance from the centreline.
 pub const ROAD_KEEP_OUT_M: f32 = 5.0;
 
+/// `true` when `name` can be a theme file stem: 1 to 32 lower-case ASCII
+/// letters, digits, `-`, or `_`. Anything else (a path, an empty string)
+/// is not looked for on disk.
+pub fn is_theme_name(name: &str) -> bool {
+    (1..=32).contains(&name.len())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+}
+
 /// How the morning is lit, what gets scattered, and the skyline.
 #[derive(Clone, Debug)]
 pub struct Theme {
     /// Theme name from the file, or `"alpine"` for the built-in copy.
     pub name: String,
-    /// Master seed mixed into every scatter layer and the backdrop.
+    /// Master seed mixed into every scatter layer and the relief.
     pub seed: u32,
     /// Procedural sky colours.
     pub sky: SkyLook,
@@ -25,8 +35,8 @@ pub struct Theme {
     pub ground: Vec<GroundLayer>,
     /// What to instance beside the road.
     pub scatter: Vec<ScatterLayer>,
-    /// Distant skyline. Defaults when the file has no `backdrop` section.
-    pub backdrop: Backdrop,
+    /// How the ground rises into ridges away from the road.
+    pub relief: crate::relief::Relief,
 }
 
 /// Sky gradient.
@@ -44,6 +54,9 @@ pub struct SkyLook {
     pub curve: f32,
     /// Sky energy.
     pub energy: f32,
+    /// Catalog sky id. Empty keeps the catalog panorama. `"none"` is the
+    /// procedural gradient, so a desert morning is not the alpine HDR.
+    pub panorama: String,
 }
 
 /// Directional sun.
@@ -126,42 +139,6 @@ pub struct ScatterLayer {
     pub visibility_m: f32,
 }
 
-/// Distant skyline. `style` is `"ridges"` or `"mesas"`.
-#[derive(Clone, Debug)]
-pub struct Backdrop {
-    /// How many rings of mountains. Zero draws none.
-    pub rings: u32,
-    /// Metres past the furthest road sample where the first ring starts.
-    pub inner_margin_m: f32,
-    /// Extra metres of radius for each further ring.
-    pub ring_gap_m: f32,
-    /// How far below zero the skirt starts, so it tucks under the terrain.
-    pub base_drop_m: f32,
-    /// Ridge height range, metres.
-    pub height_m: [f32; 2],
-    /// Fraction of the ridge that is snow, wobbling with the noise.
-    pub snow_fraction: f32,
-    /// Vertices around one ring.
-    pub segments: u32,
-    /// `"ridges"` or `"mesas"`. Anything else is drawn as ridges.
-    pub style: String,
-}
-
-impl Default for Backdrop {
-    fn default() -> Self {
-        Self {
-            rings: 3,
-            inner_margin_m: 90.0,
-            ring_gap_m: 700.0,
-            base_drop_m: 60.0,
-            height_m: [140.0, 280.0],
-            snow_fraction: 0.86,
-            segments: 128,
-            style: "ridges".to_owned(),
-        }
-    }
-}
-
 #[derive(Deserialize)]
 struct ThemeFile {
     name: String,
@@ -171,8 +148,12 @@ struct ThemeFile {
     fog: FogFile,
     ground: Vec<GroundFile>,
     scatter: Vec<ScatterFile>,
+    /// Old files still carry this. It is ignored; a ring of triangles is not
+    /// a mountain range. Present so a leftover section is not a parse error.
     #[serde(default)]
-    backdrop: BackdropFile,
+    backdrop: serde_json::Value,
+    #[serde(default)]
+    relief: ReliefFile,
 }
 
 #[derive(Deserialize)]
@@ -183,6 +164,8 @@ struct SkyFile {
     ground_bottom: [f32; 3],
     curve: f32,
     energy: f32,
+    #[serde(default)]
+    panorama: String,
 }
 
 #[derive(Deserialize)]
@@ -235,23 +218,21 @@ struct ScatterFile {
 }
 
 #[derive(Deserialize, Default)]
-struct BackdropFile {
+struct ReliefFile {
     #[serde(default)]
-    rings: Option<u32>,
+    amplitude_m: Option<f32>,
     #[serde(default)]
-    inner_margin_m: Option<f32>,
+    wavelength_m: Option<f32>,
     #[serde(default)]
-    ring_gap_m: Option<f32>,
+    octaves: Option<u32>,
     #[serde(default)]
-    base_drop_m: Option<f32>,
+    snow_line_m: Option<f32>,
     #[serde(default)]
-    height_m: Option<[f32; 2]>,
+    terraced: Option<bool>,
     #[serde(default)]
-    snow_fraction: Option<f32>,
+    terrace_m: Option<f32>,
     #[serde(default)]
-    segments: Option<u32>,
-    #[serde(default)]
-    style: Option<String>,
+    side_m: Option<f32>,
 }
 
 impl Theme {
@@ -265,8 +246,9 @@ impl Theme {
     pub fn parse(text: &str) -> Result<Self, String> {
         let file: ThemeFile = serde_json::from_str(text).map_err(|error| error.to_string())?;
         validate(&file)?;
-        let defaults = Backdrop::default();
-        let file_backdrop = file.backdrop;
+        let defaults = crate::relief::Relief::default();
+        let file_relief = file.relief;
+        let _old_backdrop = file.backdrop;
         Ok(Self {
             name: file.name,
             seed: file.seed,
@@ -277,6 +259,7 @@ impl Theme {
                 ground_bottom: file.sky.ground_bottom,
                 curve: file.sky.curve,
                 energy: file.sky.energy,
+                panorama: file.sky.panorama,
             },
             sun: SunLook {
                 pitch: file.sun.pitch,
@@ -324,33 +307,28 @@ impl Theme {
                     visibility_m: layer.visibility_m,
                 })
                 .collect(),
-            backdrop: Backdrop {
-                rings: file_backdrop.rings.unwrap_or(defaults.rings).min(6),
-                inner_margin_m: file_backdrop
-                    .inner_margin_m
-                    .unwrap_or(defaults.inner_margin_m)
-                    .max(40.0),
-                ring_gap_m: file_backdrop
-                    .ring_gap_m
-                    .unwrap_or(defaults.ring_gap_m)
-                    .max(80.0),
-                base_drop_m: file_backdrop
-                    .base_drop_m
-                    .unwrap_or(defaults.base_drop_m)
-                    .max(0.0),
-                height_m: file_backdrop.height_m.unwrap_or(defaults.height_m),
-                snow_fraction: file_backdrop
-                    .snow_fraction
-                    .unwrap_or(defaults.snow_fraction)
-                    .clamp(0.0, 1.0),
-                segments: file_backdrop
-                    .segments
-                    .unwrap_or(defaults.segments)
-                    .clamp(24, 180),
-                style: file_backdrop
-                    .style
-                    .filter(|style| !style.trim().is_empty())
-                    .unwrap_or(defaults.style),
+            relief: crate::relief::Relief {
+                amplitude_m: file_relief
+                    .amplitude_m
+                    .unwrap_or(defaults.amplitude_m)
+                    .clamp(0.0, 800.0),
+                wavelength_m: file_relief
+                    .wavelength_m
+                    .unwrap_or(defaults.wavelength_m)
+                    .clamp(400.0, 4_000.0),
+                octaves: file_relief.octaves.unwrap_or(defaults.octaves).clamp(1, 5),
+                snow_line_m: file_relief.snow_line_m.unwrap_or(defaults.snow_line_m),
+                terraced: file_relief.terraced.unwrap_or(false),
+                terrace_m: file_relief
+                    .terrace_m
+                    .unwrap_or(defaults.terrace_m)
+                    .clamp(8.0, 120.0),
+                rise_near_m: defaults.rise_near_m,
+                rise_far_m: defaults.rise_far_m,
+                side_m: file_relief
+                    .side_m
+                    .unwrap_or(defaults.side_m)
+                    .clamp(0.0, 80.0),
             },
         })
     }
@@ -388,19 +366,12 @@ fn validate(file: &ThemeFile) -> Result<(), String> {
             return Err(format!("{} visibility is not positive", layer.kind));
         }
     }
-    if let Some(height) = file.backdrop.height_m
-        && (height[0] <= 0.0 || height[1] < height[0])
+    if let Some(amplitude) = file.relief.amplitude_m
+        && !(0.0..=800.0).contains(&amplitude)
     {
-        return Err("backdrop height range is invalid".to_string());
+        return Err("relief amplitude is out of range".to_string());
     }
     Ok(())
-}
-
-impl Theme {
-    /// Whether the backdrop should be flat-topped mesas.
-    pub fn style_is_mesa(&self) -> bool {
-        self.backdrop.style == "mesas"
-    }
 }
 
 fn check_window(name: &str, label: &str, window: [f32; 2]) -> Result<(), String> {
@@ -416,16 +387,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn theme_names_are_file_stems() {
+        assert!(is_theme_name("desert"));
+        assert!(is_theme_name("alpine_2"));
+        assert!(!is_theme_name(""));
+        assert!(!is_theme_name("Desert"));
+        assert!(!is_theme_name("../alpine"));
+        assert!(!is_theme_name(&"a".repeat(33)));
+    }
+
+    #[test]
     fn the_built_in_alpine_theme_loads_and_keeps_the_road_clear() {
         let theme = Theme::builtin();
         assert_eq!(theme.name, "alpine");
         assert!(theme.scatter.iter().all(|layer| layer.min_road_m >= 5.0));
-        assert_eq!(theme.backdrop.rings, 3);
-        assert_eq!(theme.backdrop.style, "ridges");
+        assert!(!theme.relief.terraced);
+        assert!(theme.relief.amplitude_m > 100.0);
+        assert!(theme.relief.wavelength_m >= 900.0);
     }
 
     #[test]
-    fn a_missing_backdrop_section_uses_the_defaults() {
+    fn a_missing_relief_section_uses_the_defaults() {
         let text = r#"{
             "name": "desert",
             "seed": 3,
@@ -436,19 +418,52 @@ mod tests {
             "scatter": []
         }"#;
         let parsed = Theme::parse(text).unwrap();
-        assert_eq!(parsed.backdrop.rings, Backdrop::default().rings);
-        assert_eq!(parsed.backdrop.style, "ridges");
+        assert!(!parsed.relief.terraced);
+        assert!(
+            (parsed.relief.amplitude_m - crate::relief::Relief::default().amplitude_m).abs() < 1.0
+        );
         assert_eq!(parsed.scatter.len(), 0);
+        assert!(parsed.sky.panorama.is_empty());
     }
 
     #[test]
-    fn a_bad_theme_is_rejected_and_a_mesa_style_is_kept() {
+    fn an_old_backdrop_section_is_ignored() {
+        let text = r#"{
+            "name": "alpine",
+            "seed": 1,
+            "sky": {"top": [1,1,1], "horizon": [1,1,1], "ground_horizon": [1,1,1], "ground_bottom": [1,1,1], "curve": 0.1, "energy": 1.0},
+            "sun": {"pitch": -20.0, "yaw": 10.0, "energy": 1.0, "color": [1,1,1], "shadow_distance": 100.0},
+            "fog": {"density": 0.001, "aerial": 0.1, "color": [1,1,1], "energy": 1.0},
+            "ground": [{"name": "meadow", "color": [0.3, 0.5, 0.2], "altitude": [0.0, 10.0], "slope": [0.0, 1.0], "blend": 1.0}],
+            "backdrop": {"rings": 3, "style": "mesas", "height_m": [90.0, 200.0], "segments": 96},
+            "scatter": []
+        }"#;
+        let parsed = Theme::parse(text).unwrap();
+        assert!(!parsed.relief.terraced);
+        assert!(parsed.relief.amplitude_m > 0.0);
+    }
+
+    #[test]
+    fn a_bad_theme_is_rejected_and_a_terrace_is_kept() {
         assert!(Theme::parse("{").is_err());
         assert!(Theme::parse(r#"{"name":" ","seed":1}"#).is_err());
-        let mut text = include_str!("../../../godot/themes/alpine.json").to_owned();
-        text = text.replacen("\"ridges\"", "\"mesas\"", 1);
-        let theme = Theme::parse(&text).unwrap();
-        assert!(theme.style_is_mesa());
-        assert_eq!(theme.backdrop.style, "mesas");
+        let theme = Theme::parse(include_str!("../../../godot/themes/desert.json")).unwrap();
+        assert!(theme.relief.terraced);
+    }
+
+    #[test]
+    fn the_desert_file_is_a_mesa_theme_without_the_alpine_sky() {
+        let theme = Theme::parse(include_str!("../../../godot/themes/desert.json")).unwrap();
+        assert_eq!(theme.name, "desert");
+        assert_eq!(theme.sky.panorama, "none");
+        assert!(theme.relief.terraced);
+        assert!(theme.relief.snow_line_m > 1_000.0);
+        assert!(
+            theme
+                .ground
+                .iter()
+                .any(|layer| layer.texture == "ground_sand")
+        );
+        assert!(theme.scatter.iter().all(|layer| layer.min_road_m >= 5.0));
     }
 }

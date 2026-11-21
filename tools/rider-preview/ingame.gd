@@ -315,14 +315,10 @@ func _build_jobs() -> Array:
 		jobs.append({"name": "ingame-eye", "cols": 3, "tiles": tiles, "scale": Vector2i(960, 600)})
 
 	if _wanted("shadow"):
-		# Why the rider has no shadow on the road. Left: the game as it
-		# is. Right: the same frame with the road ribbon's triangles wound
-		# the other way, done here at run time, not in the game.
+		# The ribbon's top is the front face, so the rider's shadow falls
+		# on the asphalt. One tile, the game as it is.
 		var as_is := _free("start", Vector3(-2.6, 2.4, -4.2), Vector3(0, 0.6, 0), 40.0)
-		var flipped := as_is.duplicate()
-		flipped["seek"] = false
-		flipped["flip_road"] = true
-		jobs.append({"name": "ingame-shadow-check", "cols": 2, "tiles": [as_is, flipped], "scale": Vector2i(960, 600)})
+		jobs.append({"name": "ingame-shadow-check", "cols": 1, "tiles": [as_is], "scale": Vector2i(960, 600)})
 	return jobs
 
 

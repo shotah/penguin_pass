@@ -9,7 +9,7 @@ use pp_session::{
     MIN_BIKE_MASS_KG, MIN_FTP_W, MIN_RIDER_MASS_KG, MIN_TRAINER_DIFFICULTY, Settings,
 };
 
-const MAIN_ROWS: usize = 10;
+const MAIN_ROWS: usize = 12;
 
 /// What the player just pressed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +45,8 @@ pub enum Action {
     Connect(String),
     /// Drop the trainer and save.
     Disconnect,
+    /// Open the folder picker.
+    ChooseMusicFolder,
 }
 
 /// Which page is showing.
@@ -69,6 +71,8 @@ pub struct Device {
     pub name: String,
     /// Signal strength. Missing sorts last.
     pub rssi_dbm: Option<i16>,
+    /// Power meter only: no FTMS and no FE-C, so resistance cannot be set.
+    pub power_only: bool,
 }
 
 /// What the menu needs to read. It does not touch the session.
@@ -86,6 +90,8 @@ pub struct Snapshot {
     pub dashboard_error: Option<String>,
     /// Trainers from the last scan, in any order.
     pub devices: Vec<Device>,
+    /// Last folder scan, for the music row. Empty when the row uses built-in tracks.
+    pub music_report: String,
 }
 
 /// Strings for one frame of the overlay.
@@ -126,6 +132,14 @@ impl Default for MenuState {
 }
 
 impl MenuState {
+    /// Open the pairing page and clear the remembered row.
+    pub fn open_pairing(&mut self) {
+        self.open = true;
+        self.page = Page::Pairing;
+        self.index = 0;
+        self.selected_id.clear();
+    }
+
     /// Show the main page.
     pub fn open_main(&mut self) {
         self.open = true;
@@ -188,11 +202,12 @@ impl MenuState {
                     self.selected_id.clear();
                     return Action::Scan;
                 }
-                8 => {
+                9 => return Action::ChooseMusicFolder,
+                10 => {
                     self.page = Page::ConfirmRestart;
                     self.index = 0;
                 }
-                9 => {
+                11 => {
                     self.page = Page::ConfirmQuit;
                     self.index = 0;
                 }
@@ -200,6 +215,9 @@ impl MenuState {
                 _ => {}
             },
             Command::Left | Command::Right => {
+                if self.index == 9 && matches!(command, Command::Right) {
+                    return Action::ChooseMusicFolder;
+                }
                 let increase = matches!(command, Command::Right);
                 if let Some(settings) = stepped(snap.settings.clone(), self.index, increase) {
                     return Action::Apply(settings);
@@ -300,6 +318,8 @@ impl MenuState {
             format!("FTP    {} W", settings.ftp_w),
             format!("TV dashboard    {}", dashboard_value(snap)),
             format!("Full screen    {}", on_off(settings.fullscreen)),
+            format!("Music volume    {}%", settings.music_volume),
+            format!("Music folder    {}", music_folder_line(snap)),
             "Restart ride".to_owned(),
             "Quit".to_owned(),
         ];
@@ -310,6 +330,8 @@ impl MenuState {
                 2 => "How much of the hill the trainer makes you feel. On-screen speed always uses the real hill.".to_owned(),
                 6 => dashboard_detail(snap),
                 0 => "Open this to scan and connect. The ride keeps going.".to_owned(),
+                8 => "How loud the music is. Left and right change it immediately.".to_owned(),
+                9 => music_folder_detail(snap),
                 _ => String::new(),
             }
         };
@@ -332,7 +354,16 @@ impl MenuState {
         }
         let mut lines = Vec::new();
         for device in &devices {
-            lines.push(format!("{}    {}", device.name, signal(device.rssi_dbm)));
+            let kind = if device.power_only {
+                "    power only, no resistance"
+            } else {
+                ""
+            };
+            lines.push(format!(
+                "{}    {}{kind}",
+                device.name,
+                signal(device.rssi_dbm)
+            ));
         }
         lines.push("Disconnect and use the simulated rider".to_owned());
         let index = self.index.min(lines.len().saturating_sub(1));
@@ -421,6 +452,19 @@ fn stepped(mut settings: Settings, index: usize, increase: bool) -> Option<Setti
                 .unwrap_or(MIN_FTP_W);
             Some(settings)
         }
+        8 => {
+            let next = i32::from(settings.music_volume) + if increase { 5 } else { -5 };
+            settings.music_volume = u8::try_from(next.clamp(0, 100)).unwrap_or(0);
+            Some(settings)
+        }
+        9 => {
+            if !increase {
+                settings.music_folder = None;
+                Some(settings)
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
@@ -428,6 +472,27 @@ fn stepped(mut settings: Settings, index: usize, increase: bool) -> Option<Setti
 fn step_f32(value: f32, step: f32, increase: bool, min: f32, max: f32) -> f32 {
     let next = if increase { value + step } else { value - step };
     (next.clamp(min, max) * 100.0).round() / 100.0
+}
+
+fn music_folder_line(snap: &Snapshot) -> String {
+    match snap.settings.music_folder.as_ref() {
+        Some(path) => path.display().to_string(),
+        None => "Built-in tracks".to_owned(),
+    }
+}
+
+fn music_folder_detail(snap: &Snapshot) -> String {
+    let mut text =
+        "mp3, ogg and wav files in this folder replace the ride music. Other files are skipped."
+            .to_owned();
+    if snap.settings.missing_music_folder().is_some() {
+        text.push_str(" That folder is not on this computer.");
+    }
+    if !snap.music_report.is_empty() {
+        text.push(' ');
+        text.push_str(&snap.music_report);
+    }
+    text
 }
 
 fn on_off(value: bool) -> &'static str {
@@ -492,16 +557,19 @@ mod tests {
             dashboard: DashboardRun::Off,
             dashboard_urls: Vec::new(),
             dashboard_error: None,
+            music_report: String::new(),
             devices: vec![
                 Device {
                     id: "FAKE:KICKR".to_owned(),
                     name: "Fake Kickr".to_owned(),
                     rssi_dbm: Some(-72),
+                    power_only: false,
                 },
                 Device {
                     id: "FAKE:NEO".to_owned(),
                     name: "Fake Neo 2T".to_owned(),
                     rssi_dbm: Some(-48),
+                    power_only: true,
                 },
             ],
         }
@@ -550,7 +618,9 @@ mod tests {
         assert_eq!(view.title, "Trainers");
         assert!(view.lines[0].contains("Fake Neo 2T"));
         assert!(view.lines[0].contains("strong"));
+        assert!(view.lines[0].contains("power only, no resistance"));
         assert!(view.lines[1].contains("ok"));
+        assert!(!view.lines[1].contains("power only"));
         menu.handle(Command::Down, &snap());
         menu.handle(Command::Down, &snap());
         menu.handle(Command::Down, &snap());
@@ -564,7 +634,7 @@ mod tests {
     fn confirm_yes_quits_and_no_returns_and_bluetooth_has_a_plain_hint() {
         let mut menu = MenuState::default();
         menu.open_main();
-        menu.index = 9;
+        menu.index = 11;
         menu.handle(Command::Accept, &snap());
         assert_eq!(menu.page(), Page::ConfirmQuit);
         menu.handle(Command::Down, &snap());
@@ -573,7 +643,7 @@ mod tests {
             Action::None
         ));
         assert_eq!(menu.page(), Page::Main);
-        menu.index = 9;
+        menu.index = 11;
         menu.handle(Command::Accept, &snap());
         assert!(matches!(
             menu.handle(Command::Accept, &snap()),
@@ -598,11 +668,13 @@ mod tests {
                 id: "b".to_owned(),
                 name: "Beta".to_owned(),
                 rssi_dbm: Some(-70),
+                power_only: false,
             },
             Device {
                 id: "a".to_owned(),
                 name: "Alpha".to_owned(),
                 rssi_dbm: Some(-70),
+                power_only: false,
             },
         ];
         let ranked = rank(&devices);

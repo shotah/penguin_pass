@@ -17,7 +17,7 @@ pub struct CenterSample {
 pub const RIBBON_WIDTH_M: f32 = 9.0;
 
 const ROAD_SHADER: &str = r#"shader_type spatial;
-render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+render_mode diffuse_burley, specular_schlick_ggx;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -38,18 +38,21 @@ void fragment() {
     float verge = smoothstep(0.44, 0.50, from_center);
     float grain = hash(floor(vec2(u * 70.0, along * 1.4)));
     float streak = hash(vec2(floor(along * 0.35), floor(u * 12.0)));
-    vec3 asphalt = mix(vec3(0.30, 0.30, 0.31), vec3(0.40, 0.39, 0.37), grain);
-    asphalt = mix(asphalt, vec3(0.27, 0.27, 0.28), streak * 0.35);
-    vec3 gravel = mix(vec3(0.42, 0.36, 0.28), vec3(0.55, 0.48, 0.36), grain);
+    // Albedo is this dark so the ribbon still reads as the climb-chase
+    // asphalt once the front face takes the sun. The old values were tuned
+    // for a back face that only saw the sky.
+    vec3 asphalt = mix(vec3(0.15, 0.15, 0.16), vec3(0.20, 0.195, 0.18), grain);
+    asphalt = mix(asphalt, vec3(0.11, 0.11, 0.12), streak * 0.35);
+    vec3 gravel = mix(vec3(0.32, 0.27, 0.21), vec3(0.40, 0.34, 0.26), grain);
     vec2 across = vec2((u - 0.5) * 9.0, along);
-    vec3 photo_asphalt = texture(asphalt_tex, across / asphalt_tile).rgb;
-    vec3 photo_gravel = texture(gravel_tex, across / gravel_tile).rgb;
+    vec3 photo_asphalt = texture(asphalt_tex, across / asphalt_tile).rgb * vec3(0.42, 0.42, 0.44);
+    vec3 photo_gravel = texture(gravel_tex, across / gravel_tile).rgb * vec3(0.72, 0.68, 0.62);
     asphalt = mix(asphalt, photo_asphalt, textured);
     gravel = mix(gravel, photo_gravel, textured);
     vec3 grass = vec3(0.28, 0.40, 0.20);
     vec3 surface = mix(asphalt, gravel, shoulder);
     surface = mix(surface, grass, verge);
-    vec3 paint = vec3(0.93, 0.92, 0.86);
+    vec3 paint = vec3(0.90, 0.90, 0.86);
     float edge = step(0.30, from_center) * step(from_center, 0.325);
     float dash = step(fract(along / 6.0), 0.45);
     float center = step(from_center, 0.008);
@@ -106,44 +109,27 @@ pub fn build_ribbon(samples: &[CenterSample], width_m: f32) -> Gd<ArrayMesh> {
 
     let mut tool = SurfaceTool::new_gd();
     tool.begin(PrimitiveType::TRIANGLES);
+    // Godot's front face is clockwise. Seen from above with the road running
+    // away, left-near, left-far, right-near is clockwise, so the top of the
+    // ribbon is the lit side and takes shadows.
     for index in 0..samples.len() - 1 {
         let next = index + 1;
-        push_vertex(
-            &mut tool,
-            left[index],
-            normal[index],
-            Vector2::new(0.0, distance[index]),
-        );
-        push_vertex(
-            &mut tool,
-            right[index],
-            normal[index],
-            Vector2::new(1.0, distance[index]),
-        );
-        push_vertex(
-            &mut tool,
-            left[next],
-            normal[next],
-            Vector2::new(0.0, distance[next]),
-        );
-        push_vertex(
-            &mut tool,
-            left[next],
-            normal[next],
-            Vector2::new(0.0, distance[next]),
-        );
-        push_vertex(
-            &mut tool,
-            right[index],
-            normal[index],
-            Vector2::new(1.0, distance[index]),
-        );
-        push_vertex(
-            &mut tool,
-            right[next],
-            normal[next],
-            Vector2::new(1.0, distance[next]),
-        );
+        let corners = [
+            (left[index], index, 0.0),
+            (left[next], next, 0.0),
+            (right[index], index, 1.0),
+            (left[next], next, 0.0),
+            (right[next], next, 1.0),
+            (right[index], index, 1.0),
+        ];
+        for (position, at, u) in corners {
+            push_vertex(
+                &mut tool,
+                position,
+                normal[at],
+                Vector2::new(u, distance[at]),
+            );
+        }
     }
     tool.commit().unwrap_or_else(ArrayMesh::new_gd)
 }

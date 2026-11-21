@@ -11,13 +11,15 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use btleplug::api::{
-    Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter, ValueNotification, WriteType,
+    Central, CentralEvent, CharPropFlags, Manager as _, Peripheral as _, ScanFilter,
+    ValueNotification, WriteType,
 };
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures_util::StreamExt;
 use pp_core::{TrainerCommand, TrainerSample};
 use pp_ftms::{
-    CYCLING_POWER_MEASUREMENT_UUID, FITNESS_MACHINE_CONTROL_POINT_UUID, FTMS_SERVICE_UUID,
+    CYCLING_POWER_MEASUREMENT_UUID, CYCLING_POWER_SERVICE_UUID, FEC_NOTIFY_UUID, FEC_SERVICE_UUID,
+    FEC_WRITE_UUID, FITNESS_MACHINE_CONTROL_POINT_UUID, FTMS_SERVICE_UUID,
     HEART_RATE_MEASUREMENT_UUID, INDOOR_BIKE_DATA_UUID,
 };
 use tokio::sync::{Notify, mpsc::UnboundedReceiver};
@@ -37,6 +39,12 @@ pub struct DiscoveredTrainer {
     pub name: String,
     /// Received signal strength, in dBm, when the adapter reported it.
     pub rssi_dbm: Option<i16>,
+    /// Advertises the Fitness Machine Service (0x1826).
+    pub ftms: bool,
+    /// Advertises the Cycling Power Service (0x1818).
+    pub cycling_power: bool,
+    /// Advertises the Tacx FE-C service (`6e40fec1-…`).
+    pub fec: bool,
 }
 
 struct Timed<T> {
@@ -89,6 +97,8 @@ struct Shared {
     discovered: Mutex<Vec<DiscoveredTrainer>>,
     pending: Mutex<Option<TrainerCommand>>,
     staleness: Duration,
+    /// Short service ids from the last GATT discovery, for the connect log line.
+    services: Mutex<String>,
 }
 
 impl Shared {
@@ -107,6 +117,7 @@ impl Shared {
             discovered: Mutex::new(Vec::new()),
             pending: Mutex::new(None),
             staleness,
+            services: Mutex::new(String::new()),
         }
     }
 
@@ -165,6 +176,14 @@ impl Shared {
     fn take_pending(&self) -> Option<TrainerCommand> {
         lock(&self.pending).take()
     }
+
+    fn set_services(&self, services: String) {
+        *lock(&self.services) = services;
+    }
+
+    fn services(&self) -> String {
+        lock(&self.services).clone()
+    }
 }
 
 enum ControlCmd {
@@ -210,6 +229,7 @@ impl BleTrainer {
     /// Returns an error when the background thread cannot be started.
     pub fn spawn_with(config: TrainerConfig) -> Result<Self, TrainerError> {
         let mode = config.mode;
+        let trace = crate::trace::BleTrace::from_env();
         let shared = Arc::new(Shared::new(config.staleness));
         let notify = Arc::new(Notify::new());
         let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -217,7 +237,7 @@ impl BleTrainer {
         let notify_thread = Arc::clone(&notify);
         let thread = std::thread::Builder::new()
             .name("pp-trainer".into())
-            .spawn(move || worker_main(config, shared_thread, notify_thread, cmd_rx))
+            .spawn(move || worker_main(config, trace, shared_thread, notify_thread, cmd_rx))
             .map_err(|err| TrainerError::Message(err.to_string()))?;
         Ok(Self {
             shared,
@@ -228,7 +248,7 @@ impl BleTrainer {
         })
     }
 
-    /// Trainers advertising the Fitness Machine Service. Does not block.
+    /// Trainers advertising FTMS, Cycling Power, or Tacx FE-C. Does not block.
     #[must_use]
     pub fn discovered(&self) -> Vec<DiscoveredTrainer> {
         self.shared.discovered()
@@ -324,6 +344,7 @@ fn join_timeout(handle: JoinHandle<()>, timeout: Duration) {
 
 fn worker_main(
     config: TrainerConfig,
+    trace: crate::trace::BleTrace,
     shared: Arc<Shared>,
     notify: Arc<Notify>,
     cmd_rx: UnboundedReceiver<ControlCmd>,
@@ -340,15 +361,25 @@ fn worker_main(
             return;
         }
     };
-    runtime.block_on(run(config, shared, notify, cmd_rx));
+    let shared_run = Arc::clone(&shared);
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.block_on(run(config, trace, shared_run, notify, cmd_rx));
+    }));
+    if panicked.is_err() {
+        shared.set_state(ConnectionState::Failed(
+            "bluetooth thread panicked".to_string(),
+        ));
+    }
 }
 
 async fn run(
     config: TrainerConfig,
+    trace: crate::trace::BleTrace,
     shared: Arc<Shared>,
     notify: Arc<Notify>,
     mut cmd_rx: UnboundedReceiver<ControlCmd>,
 ) {
+    let _setup = crate::enter_bluetooth_setup().await;
     let manager = match Manager::new().await {
         Ok(manager) => manager,
         Err(err) => {
@@ -363,9 +394,11 @@ async fn run(
             return;
         }
     };
-    let filter = ScanFilter {
-        services: vec![FTMS_SERVICE_UUID],
-    };
+    // An empty filter is what BlueZ treats as "every advertisement". A
+    // service-UUID filter hides the Tacx Neo 2T, which advertises Cycling
+    // Power and FE-C and does not advertise FTMS. Household devices are
+    // dropped afterwards by [`is_trainer`].
+    let filter = ScanFilter::default();
     if let Err(err) = adapter.start_scan(filter.clone()).await {
         shared.set_state(ConnectionState::Failed(err.to_string()));
         return;
@@ -374,12 +407,15 @@ async fn run(
     let mut events = match adapter.events().await {
         Ok(events) => events,
         Err(err) => {
+            let _ = adapter.stop_scan().await;
             shared.set_state(ConnectionState::Failed(err.to_string()));
             return;
         }
     };
+    drop(_setup);
 
     let mut engine = Engine::new(config);
+    engine.set_trace_log(trace);
     let started = Instant::now();
     let mut pending_query: Option<String> = None;
 
@@ -404,9 +440,9 @@ async fn run(
                     }
                 }
                 None => {
-                    shared.set_state(ConnectionState::Failed(format!(
-                        "no trainer matches {query}"
-                    )));
+                    let reason = format!("no trainer matches {query}");
+                    eprintln!("pp-trainer: connect failed \"{query}\": {reason}");
+                    shared.set_state(ConnectionState::Failed(reason));
                 }
             }
             if pending_query.is_none() {
@@ -442,8 +478,15 @@ async fn run(
             Drained::Quiet => {}
         }
     }
+    // Drop the event stream before the adapter. bluez-async removes the D-Bus
+    // match from `MessageStream::drop` on a spawned task and unwraps the
+    // result. If the session is already gone, BlueZ returns "No match with
+    // that id found" and that worker panics. The sleep lets the round trip
+    // finish while this adapter still holds the session.
+    drop(events);
+    tokio::time::sleep(Duration::from_millis(250)).await;
     let _ = adapter.stop_scan().await;
-    engine.stop();
+    let _ = engine.stop();
     shared.set_state(ConnectionState::Disconnected);
 }
 
@@ -462,7 +505,7 @@ async fn maintain(
 ) -> OnceStop {
     let mut published = FieldClocks::default();
     loop {
-        engine.start_connect(name.clone());
+        engine.start_connect(elapsed_ms(ctx.started), name.clone());
         publish(engine, ctx.shared, &mut published);
         match run_once(&mut peripheral, engine, ctx, cmd_rx, &mut published).await {
             OnceStop::Shutdown => return OnceStop::Shutdown,
@@ -481,11 +524,11 @@ async fn maintain(
             tokio::select! {
                 cmd = cmd_rx.recv() => match cmd {
                     Some(ControlCmd::Shutdown) | None => {
-                        engine.stop();
+                        let _ = engine.stop();
                         return OnceStop::Shutdown;
                     }
                     Some(ControlCmd::Connect(query)) => {
-                        engine.stop();
+                        let _ = engine.stop();
                         return OnceStop::Switch(query);
                     }
                 },
@@ -533,6 +576,13 @@ async fn run_once(
     });
 
     let stop = session_loop(peripheral, engine, ctx, cmd_rx, published, &mut rx).await;
+    if matches!(stop, OnceStop::Lost) {
+        let actions = engine.release_flat();
+        if !actions.is_empty() {
+            let _ = tokio::time::timeout(Duration::from_millis(500), perform(peripheral, &actions))
+                .await;
+        }
+    }
     forward.abort();
     let _ = tokio::time::timeout(Duration::from_secs(2), async {
         let chars = peripheral.characteristics();
@@ -557,7 +607,11 @@ async fn session_loop(
         fail_connect(engine, ctx, published, err.to_string());
         return OnceStop::Lost;
     }
-    let profile = profile_from(&peripheral.characteristics());
+    let characteristics = peripheral.characteristics();
+    let services = short_services(&characteristics);
+    ctx.shared.set_services(services.clone());
+    engine.set_services(&services);
+    let profile = profile_from(&characteristics);
     let actions = engine.handle(elapsed_ms(ctx.started), InEvent::Ready(profile));
     if let Err(err) = perform(peripheral, &actions).await {
         fail_connect(engine, ctx, published, err);
@@ -575,11 +629,13 @@ async fn session_loop(
         tokio::select! {
             cmd = cmd_rx.recv() => match cmd {
                 Some(ControlCmd::Shutdown) | None => {
-                    engine.stop();
+                    let actions = engine.stop();
+                    let _ = perform(peripheral, &actions).await;
                     return OnceStop::Shutdown;
                 }
                 Some(ControlCmd::Connect(query)) => {
-                    engine.stop();
+                    let actions = engine.stop();
+                    let _ = perform(peripheral, &actions).await;
                     return OnceStop::Switch(query);
                 }
             },
@@ -682,6 +738,22 @@ async fn perform(peripheral: &Peripheral, actions: &[OutAction]) -> Result<(), S
                     .await
                     .map_err(|err| err.to_string())?;
             }
+            OutAction::WriteFec(bytes) => {
+                let characteristic = find_char(peripheral, FEC_WRITE_UUID)
+                    .ok_or_else(|| "missing tacx fe-c control characteristic".to_string())?;
+                let write_type = if characteristic
+                    .properties
+                    .contains(CharPropFlags::WRITE_WITHOUT_RESPONSE)
+                {
+                    WriteType::WithoutResponse
+                } else {
+                    WriteType::WithResponse
+                };
+                peripheral
+                    .write(&characteristic, bytes, write_type)
+                    .await
+                    .map_err(|err| err.to_string())?;
+            }
             OutAction::Disconnect | OutAction::Reconnect => {}
         }
     }
@@ -706,10 +778,14 @@ fn profile_from(chars: &BTreeSet<btleplug::api::Characteristic>) -> DeviceProfil
         cycling_power: has(CYCLING_POWER_MEASUREMENT_UUID),
         heart_rate: has(HEART_RATE_MEASUREMENT_UUID),
         control_point: has(FITNESS_MACHINE_CONTROL_POINT_UUID),
+        fec_notify: has(FEC_NOTIFY_UUID),
+        fec_write: has(FEC_WRITE_UUID),
     }
 }
 
 fn publish(engine: &Engine, shared: &Shared, published: &mut FieldClocks) {
+    let previous = shared.state();
+    note_transition(&previous, engine, &shared.services());
     shared.set_state(engine.state());
     let name = engine.name();
     if !name.is_empty() {
@@ -768,7 +844,8 @@ async fn resolve(adapter: &Adapter, query: &str) -> Option<(Peripheral, String)>
         let Some(props) = peripheral.properties().await.ok().flatten() else {
             continue;
         };
-        if !advertises_ftms(&props) {
+        let flags = advertised(&props);
+        if !is_trainer(&flags) {
             continue;
         }
         let id = props.address.to_string();
@@ -791,7 +868,8 @@ async fn refresh_discovered(adapter: &Adapter, shared: &Shared) {
         let Ok(Some(props)) = peripheral.properties().await else {
             continue;
         };
-        if !advertises_ftms(&props) {
+        let flags = advertised(&props);
+        if !is_trainer(&flags) {
             continue;
         }
         let id = props.address.to_string();
@@ -800,6 +878,9 @@ async fn refresh_discovered(adapter: &Adapter, shared: &Shared) {
             id,
             name,
             rssi_dbm: props.rssi,
+            ftms: flags.ftms,
+            cycling_power: flags.cycling_power,
+            fec: flags.fec,
         });
     }
     found.sort_by_key(|device| std::cmp::Reverse(device.rssi_dbm.unwrap_or(i16::MIN)));
@@ -817,9 +898,70 @@ async fn note_event(adapter: &Adapter, shared: &Shared, event: &CentralEvent) {
     }
 }
 
-fn advertises_ftms(props: &btleplug::api::PeripheralProperties) -> bool {
-    props.services.contains(&FTMS_SERVICE_UUID)
-        || props.service_data.contains_key(&FTMS_SERVICE_UUID)
+struct Advertised {
+    ftms: bool,
+    cycling_power: bool,
+    fec: bool,
+}
+
+fn advertised(props: &btleplug::api::PeripheralProperties) -> Advertised {
+    let services: Vec<Uuid> = props.service_data.keys().copied().collect();
+    advertised_ids(&props.services, &services)
+}
+
+fn advertised_ids(services: &[Uuid], service_data: &[Uuid]) -> Advertised {
+    let has = |uuid: Uuid| services.contains(&uuid) || service_data.contains(&uuid);
+    Advertised {
+        ftms: has(FTMS_SERVICE_UUID),
+        cycling_power: has(CYCLING_POWER_SERVICE_UUID),
+        fec: has(FEC_SERVICE_UUID),
+    }
+}
+
+fn is_trainer(flags: &Advertised) -> bool {
+    flags.ftms || flags.cycling_power || flags.fec
+}
+
+fn note_transition(previous: &ConnectionState, engine: &Engine, services: &str) {
+    let next = engine.state();
+    match (previous, &next) {
+        (ConnectionState::Connected, ConnectionState::Connected) => {}
+        (_, ConnectionState::Connected) => {
+            eprintln!(
+                "pp-trainer: connected \"{}\" services=[{services}] telemetry={} control={}",
+                engine.name(),
+                engine.telemetry_label(),
+                engine.control_label()
+            );
+        }
+        (ConnectionState::Failed(before), ConnectionState::Failed(after)) if before == after => {}
+        (_, ConnectionState::Failed(reason)) => {
+            eprintln!("pp-trainer: connect failed \"{}\": {reason}", engine.name());
+        }
+        _ => {}
+    }
+}
+
+fn short_services(chars: &BTreeSet<btleplug::api::Characteristic>) -> String {
+    let mut ids: Vec<String> = chars
+        .iter()
+        .map(|characteristic| short_uuid(characteristic.service_uuid))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids.join(",")
+}
+
+fn short_uuid(uuid: Uuid) -> String {
+    let value = uuid.as_u128();
+    let high = u32::try_from(value >> 96).unwrap_or(u32::MAX);
+    let bluetooth_base = 0x0000_1000_8000_0080_5f9b_34fb_u128;
+    let rest = value & ((1_u128 << 96) - 1);
+    if high <= u32::from(u16::MAX) && rest == bluetooth_base {
+        format!("{high:04x}")
+    } else {
+        format!("{high:08x}")
+    }
 }
 
 fn device_name(props: &btleplug::api::PeripheralProperties, id: &str) -> String {
@@ -870,5 +1012,44 @@ fn drain_control(cmd_rx: &mut UnboundedReceiver<ControlCmd>) -> Drained {
     match query {
         Some(query) => Drained::Connect(query),
         None => Drained::Quiet,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_trainer_services_are_listed() {
+        let tacx = advertised_ids(
+            &[
+                pp_ftms::uuid16(0x180A),
+                CYCLING_POWER_SERVICE_UUID,
+                pp_ftms::uuid16(0x1816),
+                FEC_SERVICE_UUID,
+            ],
+            &[],
+        );
+        assert!(is_trainer(&tacx));
+        assert!(!tacx.ftms);
+        assert!(tacx.cycling_power);
+        assert!(tacx.fec);
+
+        let ftms = advertised_ids(&[], &[FTMS_SERVICE_UUID]);
+        assert!(is_trainer(&ftms));
+        assert!(ftms.ftms);
+
+        let dishwasher = advertised_ids(&[pp_ftms::uuid16(0x180A), Uuid::from_u128(0x1234)], &[]);
+        assert!(!is_trainer(&dishwasher));
+        let headphones = advertised_ids(&[pp_ftms::uuid16(0x180F), pp_ftms::uuid16(0x1812)], &[]);
+        assert!(!is_trainer(&headphones));
+    }
+
+    #[test]
+    fn short_uuids_keep_the_sig_number_or_the_vendor_prefix() {
+        assert_eq!(short_uuid(FTMS_SERVICE_UUID), "1826");
+        assert_eq!(short_uuid(CYCLING_POWER_SERVICE_UUID), "1818");
+        assert_eq!(short_uuid(FEC_SERVICE_UUID), "6e40fec1");
+        assert_eq!(short_uuid(FEC_NOTIFY_UUID), "6e40fec2");
     }
 }

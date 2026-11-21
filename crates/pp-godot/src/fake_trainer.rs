@@ -87,11 +87,17 @@ impl FakeHub {
                 id: "FAKE:NEO".to_owned(),
                 name: "Fake Neo 2T".to_owned(),
                 rssi_dbm: Some(-48),
+                ftms: false,
+                cycling_power: true,
+                fec: true,
             },
             DiscoveredTrainer {
                 id: "FAKE:KICKR".to_owned(),
                 name: "Fake Kickr".to_owned(),
                 rssi_dbm: Some(-72),
+                ftms: true,
+                cycling_power: true,
+                fec: false,
             },
         ]
     }

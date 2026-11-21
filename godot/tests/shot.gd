@@ -109,6 +109,7 @@ func _on_drawn() -> void:
 		_on_set_frame(dt_ms)
 		return
 	if _seen == 2:
+		_game.debug_start_ride()
 		_game.debug_seek(_distance, _power, _elapsed)
 		_game.debug_set_first_person(_first_person)
 	if _seen <= _warmup:
@@ -136,13 +137,35 @@ func _views() -> Array:
 		["menu-pairing", 8.0, false, 1280, 800, "pairing"],
 		["menu-connected", 8.0, false, 1280, 800, "connected"],
 		["hud-trainer", 900.0, false, 1280, 800, "hud"],
+		["title", 8.0, false, 1280, 800, "title"],
+		["pause", 8.0, false, 1280, 800, "pause"],
+		["settings", 8.0, false, 1280, 800, "settings"],
+		["pairing", 8.0, false, 1280, 800, "pairing"],
+		["course", 8.0, false, 1280, 800, "course"],
+		["summary", 8.0, false, 1280, 800, "summary"],
 	]
 
 
 func _pose(kind: String) -> void:
+	if kind == "title" or kind == "course":
+		_game.debug_show_title()
+		if kind == "course":
+			_game.debug_menu_action("down")
+			_game.debug_menu_action("accept")
+		return
 	_game.debug_menu_close()
-	if kind == "menu":
+	if kind == "menu" or kind == "settings":
 		_game.debug_menu_open()
+	elif kind == "pause":
+		_game.debug_menu_action("back")
+	elif kind == "summary":
+		_game.debug_menu_action("back")
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("down")
+		_game.debug_menu_action("accept")
+		_game.debug_menu_action("right")
+		_game.debug_menu_action("accept")
 	elif kind == "pairing":
 		_game.debug_menu_open()
 		_game.debug_menu_action("accept")
@@ -170,9 +193,12 @@ func _on_set_frame(dt_ms: float) -> void:
 			return
 		var view: Array = _views()[_view]
 		_viewport.size = Vector2i(int(view[3]), int(view[4]))
+		var kind := str(view[5]) if view.size() > 5 else "ride"
+		if kind != "title" and kind != "course":
+			_game.debug_start_ride()
 		_game.debug_seek(float(view[1]), _power, 0.0)
 		_game.debug_set_first_person(bool(view[2]))
-		_pose(str(view[5]) if view.size() > 5 else "ride")
+		_pose(kind)
 		_view_samples.clear()
 		_settle = 1
 		return

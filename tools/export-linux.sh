@@ -59,6 +59,7 @@ stage = Path(sys.argv[1])
 exts = {
     ".gltf", ".glb", ".png", ".jpg", ".jpeg", ".hdr", ".exr",
     ".svg", ".webp", ".bmp", ".tga", ".json",
+    ".mp3", ".ogg", ".wav",
 }
 count = 0
 for folder in ("assets", "themes"):

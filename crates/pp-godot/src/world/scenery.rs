@@ -7,7 +7,9 @@
 use godot::classes::base_material_3d::Flags;
 use godot::classes::mesh::PrimitiveType;
 use godot::classes::multi_mesh::TransformFormat;
-use godot::classes::{ArrayMesh, MultiMesh, MultiMeshInstance3D, StandardMaterial3D, SurfaceTool};
+use godot::classes::{
+    ArrayMesh, MeshInstance3D, MultiMesh, MultiMeshInstance3D, StandardMaterial3D, SurfaceTool,
+};
 use godot::obj::Gd;
 use godot::prelude::*;
 use pp_course::Course;
@@ -80,6 +82,7 @@ fn scatter_world(
 ) -> ScatterReport {
     let meshes = placeholder_meshes();
     let mut count = 0;
+    let mut trees = 0;
     let mut checksum = 0_i64;
     let mut violations = 0;
     let mut seen_unknown = false;
@@ -106,6 +109,9 @@ fn scatter_world(
             }
             for instance in &planned {
                 count += 1;
+                if layer.kind == "tree" {
+                    trees += 1;
+                }
                 checksum = checksum.wrapping_add(instance_hash(layer, instance));
                 if field.road(instance.position.x, instance.position.z).0 < ROAD_KEEP_OUT_M {
                     violations += 1;
@@ -130,6 +136,7 @@ fn scatter_world(
             }
         });
     }
+    godot_print!("PENGUIN_PASS_SCATTER count={count} trees={trees}");
     ScatterReport {
         count,
         checksum,
@@ -138,19 +145,15 @@ fn scatter_world(
 }
 
 fn visit_chunks(field: &Field, max_road_m: f32, mut visit: impl FnMut(i32, i32)) {
-    let min_c = (-1_200.0_f32 / CHUNK_M) as i32;
-    let max_c = (1_200.0_f32 / CHUNK_M) as i32;
     let limit = max_road_m + CHUNK_M;
-    for cx in min_c..=max_c {
-        for cz in min_c..=max_c {
-            let x = (cx as f32 + 0.5) * CHUNK_M;
-            let z = (cz as f32 + 0.5) * CHUNK_M;
-            if field.road(x, z).0 > limit {
-                continue;
-            }
-            visit(cx, cz);
+    field.each_corridor_chunk(|cx, cz| {
+        let x = (cx as f32 + 0.5) * CHUNK_M;
+        let z = (cz as f32 + 0.5) * CHUNK_M;
+        if field.road(x, z).0 > limit {
+            return;
         }
-    }
+        visit(cx, cz);
+    });
 }
 
 const CHUNK_M: f32 = 128.0;
@@ -206,54 +209,223 @@ fn spawn_chunk(
     let mut node = MultiMeshInstance3D::new_alloc();
     node.set_name(&format!("{}{cx}_{cz}_{variant}", layer.kind));
     node.set_multimesh(&multi);
+    let far_tree = layer.kind == "tree" && layer.visibility_m > 120.0;
+    if far_tree {
+        node.set_visibility_range_end(110.0);
+        node.set_visibility_range_end_margin(24.0);
+    } else {
+        node.set_visibility_range_end(layer.visibility_m);
+    }
+    node.set_cast_shadows_setting(godot::classes::geometry_instance_3d::ShadowCastingSetting::OFF);
+    parent.add_child(&node);
+    if far_tree {
+        let stand = if layer.ids.iter().any(|id| id.contains("pine")) {
+            distant_pine_mesh()
+        } else {
+            distant_broad_mesh()
+        };
+        let prop = ScatterProp {
+            mesh: stand.upcast(),
+            lift: 0.0,
+        };
+        spawn_distant(parent, &prop, layer, cx, cz, variant, planned);
+    }
+}
+
+fn spawn_distant(
+    parent: &mut Gd<Node3D>,
+    prop: &ScatterProp,
+    layer: &ScatterLayer,
+    cx: i32,
+    cz: i32,
+    variant: i32,
+    planned: &[Instance],
+) {
+    let mut multi = MultiMesh::new_gd();
+    multi.set_transform_format(TransformFormat::TRANSFORM_3D);
+    multi.set_mesh(&prop.mesh);
+    multi.set_instance_count(planned.len() as i32);
+    for (index, instance) in planned.iter().enumerate() {
+        let basis = Basis::IDENTITY
+            .rotated(Vector3::UP, instance.yaw)
+            .scaled(Vector3::new(instance.scale, instance.scale, instance.scale));
+        let position = instance.position + Vector3::UP * prop.lift * instance.scale;
+        multi.set_instance_transform(index as i32, Transform3D::new(basis, position));
+    }
+    let mut node = MultiMeshInstance3D::new_alloc();
+    node.set_name(&format!("far{}{cx}_{cz}_{variant}", layer.kind));
+    node.set_multimesh(&multi);
+    node.set_visibility_range_begin(90.0);
+    node.set_visibility_range_begin_margin(24.0);
     node.set_visibility_range_end(layer.visibility_m);
+    node.set_visibility_range_end_margin(40.0);
     node.set_cast_shadows_setting(godot::classes::geometry_instance_3d::ShadowCastingSetting::OFF);
     parent.add_child(&node);
 }
 
+fn distant_pine_mesh() -> Gd<ArrayMesh> {
+    let mut tool = SurfaceTool::new_gd();
+    tool.begin(PrimitiveType::TRIANGLES);
+    cylinder(
+        &mut tool,
+        0.0,
+        1.6,
+        0.16,
+        Color::from_rgb(0.34, 0.22, 0.12),
+        5,
+    );
+    cone(
+        &mut tool,
+        1.2,
+        3.4,
+        1.15,
+        Color::from_rgb(0.10, 0.34, 0.16),
+        6,
+    );
+    cone(
+        &mut tool,
+        2.4,
+        4.6,
+        0.85,
+        Color::from_rgb(0.14, 0.40, 0.18),
+        6,
+    );
+    cone(
+        &mut tool,
+        3.5,
+        5.6,
+        0.5,
+        Color::from_rgb(0.18, 0.46, 0.20),
+        5,
+    );
+    finish_mesh(tool)
+}
+
+fn distant_broad_mesh() -> Gd<ArrayMesh> {
+    let mut tool = SurfaceTool::new_gd();
+    tool.begin(PrimitiveType::TRIANGLES);
+    cylinder(
+        &mut tool,
+        0.0,
+        2.2,
+        0.18,
+        Color::from_rgb(0.36, 0.28, 0.18),
+        5,
+    );
+    cone(
+        &mut tool,
+        1.8,
+        4.4,
+        1.3,
+        Color::from_rgb(0.22, 0.40, 0.16),
+        6,
+    );
+    finish_mesh(tool)
+}
+
 fn add_furniture(parent: &mut Gd<Node3D>, course: &Course, field: &Field) {
-    let mesh = rail_mesh();
-    let mut spots = Vec::new();
+    // One strip, so a bend does not leave a gap or a beam across the lane.
+    // The old mesh put an 8 m bar on local Z, which is across the road.
     let length = course.length_m();
+    let mut posts: Vec<Vector3> = Vec::new();
     let mut distance = 0.0;
     while distance < length {
         let here = course.tangent_at(distance);
-        let next = course.tangent_at(distance + 8.0);
-        let turn = here[0] * next[2] - here[2] * next[0];
-        let side = if turn >= 0.0 { 1.0 } else { -1.0 };
+        let ahead = course.tangent_at(distance + 10.0);
+        let turn = here[0] * ahead[2] - here[2] * ahead[0];
         let at = course.position_at(distance);
-        let right = Vector3::new(-here[2], 0.0, here[0]);
-        let outward = right * side * 4.4;
-        let sample_x = at[0] + outward.x;
-        let sample_z = at[2] + outward.z;
-        let drop = at[1] - field.height(sample_x, sample_z);
-        if turn.abs() > 0.035 || drop > 1.1 {
-            let yaw = here[2].atan2(here[0]);
-            spots.push(Instance {
-                position: Vector3::new(at[0], at[1] + 0.08, at[2]) + outward,
-                yaw,
-                scale: 1.0,
-            });
+        let mut outward = Vector3::new(-here[2], 0.0, here[0]);
+        let span = outward.length();
+        if span < 1.0e-4 {
+            distance += 4.0;
+            continue;
         }
-        distance += 8.0;
+        outward /= span;
+        // Positive turn is to the left. The rail belongs on the outside.
+        if turn >= 0.0 {
+            outward = -outward;
+        }
+        let place = Vector3::new(at[0], 0.0, at[2]) + outward * 4.65;
+        let ground = field.height(place.x, place.z);
+        let drop = at[1] - ground;
+        if turn.abs() > 0.045 || drop > 1.3 {
+            posts.push(Vector3::new(place.x, ground, place.z));
+        }
+        distance += 4.0;
     }
-    if spots.is_empty() {
+    if posts.len() < 2 {
         return;
     }
-    let mut multi = MultiMesh::new_gd();
-    multi.set_transform_format(TransformFormat::TRANSFORM_3D);
-    multi.set_mesh(&mesh);
-    multi.set_instance_count(spots.len() as i32);
-    for (index, spot) in spots.iter().enumerate() {
-        let basis = Basis::IDENTITY
-            .rotated(Vector3::UP, spot.yaw)
-            .scaled(Vector3::ONE);
-        multi.set_instance_transform(index as i32, Transform3D::new(basis, spot.position));
+    let post_colour = Color::from_rgb(0.62, 0.64, 0.66);
+    let beam_colour = Color::from_rgb(0.78, 0.80, 0.82);
+    let mut tool = SurfaceTool::new_gd();
+    tool.begin(PrimitiveType::TRIANGLES);
+    let mut previous: Option<Vector3> = None;
+    for post in posts {
+        rail_post(&mut tool, post, post_colour);
+        if let Some(before) = previous {
+            let gap = before.distance_to(post);
+            if gap < 6.5 {
+                rail_beam(&mut tool, before, post, beam_colour);
+            }
+        }
+        previous = Some(post);
     }
-    let mut node = MultiMeshInstance3D::new_alloc();
+    let mut mesh = tool.commit().unwrap_or_else(ArrayMesh::new_gd);
+    let mut material = StandardMaterial3D::new_gd();
+    material.set_flag(Flags::ALBEDO_FROM_VERTEX_COLOR, true);
+    material.set_roughness(0.55);
+    mesh.surface_set_material(0, &material);
+    let mut node = MeshInstance3D::new_alloc();
     node.set_name("GuardRails");
-    node.set_multimesh(&multi);
+    node.set_mesh(&mesh);
     parent.add_child(&node);
+}
+
+fn rail_post(tool: &mut Gd<SurfaceTool>, base: Vector3, color: Color) {
+    // 0.75 m above the verge, a little buried so it meets a slope.
+    box_tri(
+        tool,
+        base + Vector3::new(0.0, 0.32, 0.0),
+        Vector3::new(0.08, 0.95, 0.08),
+        color,
+    );
+}
+
+fn rail_beam(tool: &mut Gd<SurfaceTool>, from: Vector3, to: Vector3, color: Color) {
+    let mut along = to - from;
+    along.y = 0.0;
+    let length = along.length();
+    if length < 0.2 {
+        return;
+    }
+    along /= length;
+    let side = Vector3::new(-along.z, 0.0, along.x) * 0.035;
+    let up = Vector3::new(0.0, 0.04, 0.0);
+    let a = from + Vector3::new(0.0, 0.72, 0.0);
+    let b = to + Vector3::new(0.0, 0.72, 0.0);
+    let corners = [a - side - up, a + side - up, a + side + up, a - side + up];
+    let far = [b - side - up, b + side - up, b + side + up, b - side + up];
+    let quads = [
+        [0, 1, 2, 3],
+        [5, 4, 7, 6],
+        [0, 4, 7, 3],
+        [1, 5, 6, 2],
+        [3, 2, 6, 7],
+        [4, 5, 1, 0],
+    ];
+    let all = [
+        corners[0], corners[1], corners[2], corners[3], far[0], far[1], far[2], far[3],
+    ];
+    for face in quads {
+        let p = [all[face[0]], all[face[1]], all[face[2]], all[face[3]]];
+        let normal = (p[1] - p[0]).cross(p[3] - p[0]).normalized();
+        for vertex in [p[0], p[1], p[2], p[0], p[2], p[3]] {
+            tool.set_normal(normal);
+            tool.set_color(color);
+            tool.add_vertex(vertex);
+        }
+    }
 }
 
 fn add_arch(parent: &mut Gd<Node3D>, course: &Course) {
@@ -435,24 +607,6 @@ fn finish_mesh(mut tool: Gd<SurfaceTool>) -> Gd<ArrayMesh> {
     material.set_roughness(0.9);
     mesh.surface_set_material(0, &material);
     mesh
-}
-
-fn rail_mesh() -> Gd<ArrayMesh> {
-    let mut tool = SurfaceTool::new_gd();
-    tool.begin(PrimitiveType::TRIANGLES);
-    box_tri(
-        &mut tool,
-        Vector3::new(0.0, 0.45, 0.0),
-        Vector3::new(0.1, 0.9, 0.1),
-        Color::from_rgb(0.55, 0.56, 0.58),
-    );
-    box_tri(
-        &mut tool,
-        Vector3::new(0.0, 0.85, 4.0),
-        Vector3::new(0.08, 0.08, 8.0),
-        Color::from_rgb(0.72, 0.74, 0.76),
-    );
-    finish_mesh(tool)
 }
 
 fn cone(tool: &mut Gd<SurfaceTool>, y0: f32, y1: f32, radius: f32, color: Color, sides: i32) {

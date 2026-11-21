@@ -13,6 +13,8 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::course_sel::CourseChoice;
+
 /// Lowest accepted rider mass, in kilograms.
 pub const MIN_RIDER_MASS_KG: f32 = 30.0;
 /// Highest accepted rider mass, in kilograms.
@@ -48,6 +50,13 @@ pub const MAX_DASHBOARD_PORT: u16 = 65535;
 /// Default TCP port for the TV dashboard.
 pub const DEFAULT_DASHBOARD_PORT: u16 = 7878;
 
+/// Lowest music volume. `0` is silent.
+pub const MIN_MUSIC_VOLUME: u8 = 0;
+/// Highest music volume.
+pub const MAX_MUSIC_VOLUME: u8 = 100;
+/// Default music volume, on a scale of 0 to 100.
+pub const DEFAULT_MUSIC_VOLUME: u8 = 60;
+
 const HEADER: &str = "\
 # Penguin Pass settings
 #
@@ -57,6 +66,11 @@ const HEADER: &str = "\
 # tv_dashboard_port is a TCP port from 1024 to 65535.
 # control_trainer: when false, the game only reads the trainer and never sends grade.
 # Delete last_trainer_id to forget the remembered trainer.
+# course: \"penguin_pass\", or { terrain = \"desert\", distance_km = 10, seed = 7 }.
+# terrain is flat, rolling, mountain, or desert. A missing course is Penguin Pass.
+# A saved course that cannot be built falls back to Penguin Pass.
+# music_volume is 0 to 100. music_folder is the player's own folder of music files.
+# Delete music_folder to choose no folder. A folder that is not on disk is kept.
 ";
 
 /// Rider, trainer, and display preferences.
@@ -126,6 +140,25 @@ pub struct Settings {
     /// set on it.
     #[serde(default = "default_true")]
     pub control_trainer: bool,
+    /// Course to load on the next launch.
+    ///
+    /// Missing from older files, which load as [`CourseChoice::PenguinPass`].
+    /// A value that does not parse also loads as Penguin Pass, and the warning
+    /// names it. Building the course happens when the session starts.
+    #[serde(default)]
+    pub course: CourseChoice,
+    /// Playback volume for the rider's music, from 0 to 100.
+    ///
+    /// The default is [`DEFAULT_MUSIC_VOLUME`]. Godot applies this to the
+    /// player. The session only stores it.
+    #[serde(default = "default_music_volume", deserialize_with = "de_music_volume")]
+    pub music_volume: u8,
+    /// Folder of music files the rider picked.
+    ///
+    /// `None` when no folder has been chosen. A path that is not on disk is
+    /// kept. [`Settings::missing_music_folder`] reports that case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub music_folder: Option<PathBuf>,
 }
 
 impl Default for Settings {
@@ -140,6 +173,9 @@ impl Default for Settings {
             tv_dashboard_port: default_dashboard_port(),
             fullscreen: default_true(),
             control_trainer: default_true(),
+            course: CourseChoice::PenguinPass,
+            music_volume: default_music_volume(),
+            music_folder: None,
         }
     }
 }
@@ -166,6 +202,10 @@ const fn default_dashboard_port() -> u16 {
 
 const fn default_true() -> bool {
     true
+}
+
+const fn default_music_volume() -> u8 {
+    DEFAULT_MUSIC_VOLUME
 }
 
 impl Settings {
@@ -214,7 +254,29 @@ impl Settings {
         {
             settings.last_trainer_id = None;
         }
+        settings.music_volume = u8::try_from(round_u16(
+            f64::from(settings.music_volume),
+            u16::from(DEFAULT_MUSIC_VOLUME),
+            u16::from(MIN_MUSIC_VOLUME),
+            u16::from(MAX_MUSIC_VOLUME),
+        ))
+        .unwrap_or(DEFAULT_MUSIC_VOLUME);
+        if settings.music_folder.as_ref().is_some_and(|path| {
+            path.as_os_str().is_empty() || path.to_string_lossy().trim().is_empty()
+        }) {
+            settings.music_folder = None;
+        }
         settings
+    }
+
+    /// The chosen music folder when it is not on disk.
+    ///
+    /// `None` when no folder is set or the path exists. The stored path is
+    /// left as it is either way, so the menu can say the folder is missing
+    /// without forgetting the rider's choice.
+    #[must_use]
+    pub fn missing_music_folder(&self) -> Option<&Path> {
+        self.music_folder.as_deref().filter(|path| !path.exists())
     }
 
     /// Rider profile for [`pp_course::Ride`], using these masses and FTP.
@@ -400,6 +462,18 @@ fn notes_from(value: &toml::Value) -> Result<Vec<String>, String> {
             )?,
             "tv_dashboard_enabled" | "fullscreen" | "control_trainer" => expect_bool(key, item)?,
             "last_trainer_id" => expect_string(key, item)?,
+            "course" if CourseChoice::from_toml(item).is_none() => {
+                notes.push("course could not be read; using Penguin Pass".to_owned());
+            }
+            "music_volume" => note_u16(
+                &mut notes,
+                key,
+                item,
+                u16::from(DEFAULT_MUSIC_VOLUME),
+                u16::from(MIN_MUSIC_VOLUME),
+                u16::from(MAX_MUSIC_VOLUME),
+            )?,
+            "music_folder" => expect_string(key, item)?,
             _ => {}
         }
     }
@@ -646,6 +720,16 @@ fn de_dashboard_port<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u16, 
     )
 }
 
+fn de_music_volume<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
+    let volume = de_u16(
+        deserializer,
+        u16::from(DEFAULT_MUSIC_VOLUME),
+        u16::from(MIN_MUSIC_VOLUME),
+        u16::from(MAX_MUSIC_VOLUME),
+    )?;
+    Ok(u8::try_from(volume).unwrap_or(DEFAULT_MUSIC_VOLUME))
+}
+
 /// Quote bare `nan` and `inf` tokens. Standard TOML rejects them, and a hand
 /// edit should be clamped rather than treated as a broken file.
 fn quote_non_finite(src: &str) -> String {
@@ -833,6 +917,8 @@ mod tests {
         assert_eq!(settings.tv_dashboard_port, 7878);
         assert!(settings.fullscreen);
         assert!(settings.control_trainer);
+        assert_eq!(settings.music_volume, 60);
+        assert_eq!(settings.music_folder, None);
 
         let profile = settings.rider_profile();
         let defaults = RiderProfile::default();
@@ -857,6 +943,13 @@ mod tests {
             tv_dashboard_port: 9000,
             fullscreen: false,
             control_trainer: false,
+            course: CourseChoice::Generated {
+                terrain: pp_routegen::TerrainPreset::Desert,
+                distance_km: 10,
+                seed: 7,
+            },
+            music_volume: 40,
+            music_folder: Some(PathBuf::from("/music/rides")),
         };
 
         settings.save(&path).expect("save");
@@ -864,6 +957,10 @@ mod tests {
         assert!(text.starts_with('#'), "{text}");
         assert!(text.contains("what the legs feel"), "{text}");
         assert!(text.contains("trainer_difficulty"), "{text}");
+        assert!(text.contains("terrain"), "{text}");
+        assert!(text.contains("penguin_pass"), "{text}");
+        assert!(text.contains("music_volume"), "{text}");
+        assert!(text.contains("music_folder"), "{text}");
         assert!(tmp_files(path.parent().expect("parent")).is_empty());
 
         let loaded = Settings::load(&path);
@@ -931,6 +1028,53 @@ mod tests {
         assert!(loaded.settings.fullscreen);
         assert!(loaded.settings.control_trainer);
         assert_eq!(loaded.settings.last_trainer_id, None);
+        assert_eq!(loaded.settings.course, CourseChoice::PenguinPass);
+        assert_eq!(loaded.settings.music_volume, DEFAULT_MUSIC_VOLUME);
+        assert_eq!(loaded.settings.music_folder, None);
+        assert!(loaded.settings.missing_music_folder().is_none());
+    }
+
+    #[test]
+    fn music_volume_clamps_and_a_missing_folder_is_kept() {
+        let dir = TempDir::new();
+        let path = write(
+            &dir,
+            "music.toml",
+            "music_volume = 250\nmusic_folder = \"/no/such/penguin-pass-tunes\"\n",
+        );
+        let loaded = Settings::load(&path);
+        assert_eq!(loaded.settings.music_volume, 100);
+        assert_eq!(
+            loaded.settings.music_folder.as_deref(),
+            Some(Path::new("/no/such/penguin-pass-tunes"))
+        );
+        assert_eq!(
+            loaded.settings.missing_music_folder(),
+            Some(Path::new("/no/such/penguin-pass-tunes"))
+        );
+        let warning = loaded.warning.expect("volume was clamped");
+        assert!(warning.contains("music_volume"), "{warning}");
+
+        let present = dir.path().join("tunes");
+        fs::create_dir(&present).expect("folder");
+        let mut settings = loaded.settings;
+        settings.music_folder = Some(present.clone());
+        assert!(settings.missing_music_folder().is_none());
+        settings.music_volume = 140;
+        assert_eq!(settings.normalized().music_volume, 100);
+        settings.music_folder = Some(PathBuf::from("   "));
+        assert_eq!(settings.normalized().music_folder, None);
+    }
+
+    #[test]
+    fn unreadable_course_keeps_the_rest_of_the_file() {
+        let dir = TempDir::new();
+        let path = write(&dir, "course.toml", "ftp_w = 250\ncourse = 4\n");
+        let loaded = Settings::load(&path);
+        assert_eq!(loaded.settings.ftp_w, 250);
+        assert_eq!(loaded.settings.course, CourseChoice::PenguinPass);
+        let warning = loaded.warning.expect("course warning");
+        assert!(warning.contains("course"), "{warning}");
     }
 
     #[test]

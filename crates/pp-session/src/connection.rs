@@ -67,6 +67,8 @@ pub fn plain_failure(raw: &str) -> String {
     } else if text.contains("timeout") || text.contains("timed out") || text.contains("not answer")
     {
         "The trainer did not answer in time.".to_owned()
+    } else if text.contains("control not permitted") || text.contains("control refused") {
+        "This trainer reports power only and cannot change resistance.".to_owned()
     } else if text.contains("no trainer")
         || text.contains("not in range")
         || text.contains("not found")
@@ -103,6 +105,10 @@ mod tests {
         assert_eq!(
             plain_failure("no trainer matches Neo"),
             "That trainer is not in range."
+        );
+        assert_eq!(
+            plain_failure("control not permitted"),
+            "This trainer reports power only and cannot change resistance."
         );
         assert_eq!(
             plain_failure("something else"),

@@ -1358,6 +1358,26 @@
       "notes": "Road shoulder. Native sample is 3 m."
     },
     {
+      "id": "ground_sand",
+      "pack": "polyhaven",
+      "kind": "ground_texture",
+      "path": "res://assets/third_party/polyhaven/textures/sand_01_diff_1k.jpg",
+      "license": "CC0-1.0",
+      "resolution": [
+        1024,
+        1024
+      ],
+      "maps": {
+        "albedo": "res://assets/third_party/polyhaven/textures/sand_01_diff_1k.jpg",
+        "normal": "",
+        "roughness": ""
+      },
+      "normal_space": "opengl",
+      "tile_m": 4.0,
+      "native_sample_m": 1.5,
+      "notes": "Dry trampled sand. Albedo only; the terrain shader does not read a normal. Tile at 4 m."
+    },
+    {
       "id": "road_asphalt",
       "pack": "polyhaven",
       "kind": "road_texture",

@@ -1,0 +1,242 @@
+# Build a single-file Flatpak of the exported game.
+# Tags and manual runs only, so this does not run on a normal push.
+# The export job links the Rust library on the runner. org.freedesktop.Platform
+# 26.08 ships glibc 2.44, which is newer than Ubuntu 26.04's glibc 2.43.
+# The ubuntu-latest move to Ubuntu 26.04 was scheduled to finish on
+# 19 November 2026. The label is pinned here so a later move cannot
+# link the library against a newer glibc.
+
+name: Flatpak
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flatpak-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PP_NATIVE: "1"
+  RUNTIME_VERSION: "26.08"
+  RUNTIME_GLIBC: "2.44"
+
+jobs:
+  export:
+    name: export
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/rust-setup
+
+      - name: Restore Godot 4.7.2
+        uses: actions/cache@v6
+        with:
+          path: tools/godot/4.7.2
+          key: godot-4.7.2-stable-linux-x86_64-editor-and-templates
+
+      - name: Download and verify Godot
+        run: ./x fetch
+
+      - name: Export the player
+        run: ./x export
+
+      - name: Check glibc symbols fit the runtime
+        run: |
+          set -euo pipefail
+          if ! command -v objdump >/dev/null; then
+            sudo apt-get update
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils
+          fi
+          echo "runner: $(ldd --version | head -n 1)"
+          echo "runtime: org.freedesktop.Platform ${RUNTIME_VERSION} (glibc ${RUNTIME_GLIBC})"
+          dir=dist/penguin-pass-linux-x86_64
+          lib="$dir/libpp_godot.release.so"
+          if [[ ! -f "$lib" ]]; then
+            lib="$dir/bin/libpp_godot.release.so"
+          fi
+          sh ./packaging/flatpak/check-glibc.sh "$RUNTIME_GLIBC" \
+            "$dir/penguin-pass.x86_64" \
+            "$lib"
+
+      - name: Upload the export log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: export-log
+          path: dist/logs/export.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload the player directory
+        uses: actions/upload-artifact@v7
+        with:
+          name: player-export
+          path: dist/penguin-pass-linux-x86_64
+          if-no-files-found: error
+          retention-days: 2
+
+  bundle:
+    name: bundle
+    needs: export
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the player directory
+        uses: actions/download-artifact@v8
+        with:
+          name: player-export
+          path: dist/penguin-pass-linux-x86_64
+
+      - name: Check the export layout
+        run: |
+          set -euo pipefail
+          dir=dist/penguin-pass-linux-x86_64
+          # upload-artifact stores a directory's contents. If the directory
+          # name is also in the archive, flatten that one extra level.
+          if [[ ! -f "$dir/penguin-pass.x86_64" && -f "$dir/penguin-pass-linux-x86_64/penguin-pass.x86_64" ]]; then
+            mv "$dir/penguin-pass-linux-x86_64" "${dir}.nested"
+            rm -rf "$dir"
+            mv "${dir}.nested" "$dir"
+          fi
+          test -f "$dir/penguin-pass.x86_64"
+          test -f "$dir/penguin-pass.pck"
+          if [[ ! -f "$dir/libpp_godot.release.so" && ! -f "$dir/bin/libpp_godot.release.so" ]]; then
+            echo "bundle: release library missing" >&2
+            find "$dir" -print >&2
+            exit 1
+          fi
+          find "$dir" -maxdepth 2 -printf '%s %p\n' | sort -n
+
+      - name: Install Flatpak tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            flatpak flatpak-builder appstream desktop-file-utils binutils
+
+      - name: Restore the freedesktop runtime
+        uses: actions/cache@v6
+        with:
+          path: /home/runner/.local/share/flatpak
+          key: flatpak-freedesktop-${{ env.RUNTIME_VERSION }}-${{ runner.os }}-x86_64
+
+      - name: Install the freedesktop runtime
+        run: |
+          set -euo pipefail
+          flatpak remote-add --user --if-not-exists freedesktop \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive freedesktop \
+            "org.freedesktop.Platform//${RUNTIME_VERSION}" \
+            "org.freedesktop.Sdk//${RUNTIME_VERSION}"
+
+      - name: Stamp the metainfo version
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            ver=${GITHUB_REF_NAME#v}
+          else
+            ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          fi
+          [[ -n "$ver" ]]
+          date=$(date -u +%Y-%m-%d)
+          python3 packaging/flatpak/stamp-release.py \
+            packaging/flatpak/io.github.shotah.PenguinPass.metainfo.xml \
+            "$ver" "$date"
+          echo "BUNDLE_VERSION=$ver" >> "$GITHUB_ENV"
+
+      - name: Validate the metainfo and the desktop file
+        run: |
+          set -euo pipefail
+          appstreamcli validate --explain --no-net \
+            packaging/flatpak/io.github.shotah.PenguinPass.metainfo.xml
+          desktop-file-validate packaging/flatpak/io.github.shotah.PenguinPass.desktop
+
+      - name: Build the bundle
+        run: |
+          set -euo pipefail
+          flatpak-builder \
+            --user \
+            --disable-rofiles-fuse \
+            --force-clean \
+            --arch=x86_64 \
+            --repo="$RUNNER_TEMP/repo" \
+            --install-deps-from=freedesktop \
+            --state-dir="$RUNNER_TEMP/flatpak-builder" \
+            "$RUNNER_TEMP/build" \
+            packaging/flatpak/io.github.shotah.PenguinPass.yml
+          out="$RUNNER_TEMP/penguin-pass-${BUNDLE_VERSION}-x86_64.flatpak"
+          flatpak build-bundle \
+            --arch=x86_64 \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            "$RUNNER_TEMP/repo" \
+            "$out" \
+            io.github.shotah.PenguinPass
+          mkdir -p dist/flatpak
+          cp -a "$out" dist/flatpak/
+          sha256sum "dist/flatpak/$(basename "$out")"
+          stat -c '%n %s bytes' "dist/flatpak/$(basename "$out")"
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: flatpak-bundle
+          path: dist/flatpak/*.flatpak
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: release
+    needs: bundle
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download the bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: flatpak-bundle
+          path: dist/flatpak
+
+      - name: Attach the bundle to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/flatpak/*.flatpak)
+          if [[ ${#files[@]} -ne 1 ]]; then
+            echo "release: expected one .flatpak, found ${#files[@]}" >&2
+            ls -la dist/flatpak >&2
+            exit 1
+          fi
+          bundle=${files[0]}
+          name=$(basename "$bundle")
+          hash=$(sha256sum "$bundle" | awk '{print $1}')
+          tag=${GITHUB_REF_NAME}
+          echo "release: $name"
+          echo "sha256: $hash"
+          notes=$(printf '%s\n' \
+            "Linux Flatpak bundle." \
+            "" \
+            "Install: flatpak install --user ./${name}" \
+            "" \
+            "sha256: ${hash}")
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$bundle" --clobber
+          else
+            gh release create "$tag" "$bundle" \
+              --title "Penguin Pass ${tag}" \
+              --notes "$notes"
+          fi

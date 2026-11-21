@@ -47,6 +47,16 @@ pub enum RideEvent {
         /// Time for that lap, in seconds.
         time_s: f64,
     },
+    /// [`crate::Session::set_course`] swapped in a new course.
+    CourseSelected {
+        /// [`crate::CourseChoice::label`] of the course now loaded.
+        name: String,
+    },
+    /// A saved course could not be built, so the ride is Penguin Pass.
+    CourseUnavailable {
+        /// Plain-language reason from the route generator.
+        detail: String,
+    },
 }
 
 #[derive(Debug, Default)]

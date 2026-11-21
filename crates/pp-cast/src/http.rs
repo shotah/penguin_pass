@@ -17,7 +17,6 @@ use futures_util::stream::{self, Stream};
 use pp_core::Telemetry;
 use serde::Serialize;
 use std::convert::Infallible;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 
@@ -49,7 +48,7 @@ const FONT_CACHE: &str = "public, max-age=31536000";
 pub(crate) struct AppState {
     pub(crate) telemetry: watch::Sender<Telemetry>,
     pub(crate) status: watch::Sender<RideStatus>,
-    pub(crate) course: Arc<CourseProfile>,
+    pub(crate) course: watch::Sender<CourseProfile>,
     pub(crate) shutdown: watch::Sender<bool>,
 }
 
@@ -139,7 +138,7 @@ async fn telemetry(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn course(State(state): State<AppState>) -> impl IntoResponse {
-    no_store(Json(state.course.as_ref().clone()))
+    no_store(Json(state.course.borrow().clone()))
 }
 
 async fn status(State(state): State<AppState>) -> impl IntoResponse {

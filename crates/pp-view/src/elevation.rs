@@ -1,7 +1,7 @@
 //! Elevation-strip geometry. Points in, a polyline in a rectangle out.
 
 /// One point in strip pixels.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Pt {
     /// Pixels from the left.
     pub x: f32,

@@ -6,6 +6,8 @@
 
 use glam::{Quat, Vec3};
 
+use crate::build::RiderBuild;
+
 /// Outer radius of the wheel with its tyre (700c x 30), in meters.
 pub(crate) const WHEEL_RADIUS: f32 = 0.34;
 /// Radius of the tyre's round section, in meters.
@@ -157,10 +159,60 @@ pub(crate) struct Rig {
     pub bar_clamp: Vec3,
     /// Mid-hip point with the rider seated.
     pub hip_seated: Vec3,
+    /// Half the distance between the hip joints.
+    pub hip_half: f32,
+    /// Thigh length, hip to knee.
+    pub thigh: f32,
+    /// Shin length, knee to ankle.
+    pub shin: f32,
+    /// Mid-hip point up to the waist pivot.
+    pub waist_up: f32,
+    /// Right shoulder joint in torso space.
+    pub shoulder: Vec3,
+    /// Top of the neck in torso space.
+    pub head_pivot: Vec3,
+    /// Upper arm length, shoulder to elbow.
+    pub upper_arm: f32,
+    /// Forearm length, elbow to wrist.
+    pub forearm: f32,
+    /// Ankle joint in foot space.
+    pub ankle: Vec3,
+    /// Eye point in head space.
+    pub eye: Vec3,
+    /// Centre of the bar inside a closed hand, in hand space.
+    pub grip: Vec3,
 }
 
 impl Rig {
+    /// The reference bike and the reference rider.
     pub fn new() -> Self {
+        let build = RiderBuild::default();
+        // The build's literals and these constants are the same numbers.
+        // Checking here keeps both sides live, and fails a debug build if
+        // one of them is edited alone.
+        debug_assert_eq!(build.hip_half, HIP_HALF);
+        debug_assert_eq!(build.thigh, THIGH);
+        debug_assert_eq!(build.shin, SHIN);
+        debug_assert_eq!(build.waist_up, WAIST_UP);
+        debug_assert_eq!(Vec3::from_array(build.shoulder), SHOULDER_LOCAL);
+        debug_assert_eq!(Vec3::from_array(build.head_pivot), HEAD_PIVOT_LOCAL);
+        debug_assert_eq!(build.upper_arm, UPPER_ARM);
+        debug_assert_eq!(build.forearm, FOREARM);
+        debug_assert_eq!(Vec3::from_array(build.ankle), ANKLE_LOCAL);
+        debug_assert_eq!(Vec3::from_array(build.eye), EYE_LOCAL);
+        debug_assert_eq!(Vec3::from_array(build.grip), GRIP_LOCAL);
+        debug_assert_eq!(build.saddle_height, SADDLE_HEIGHT);
+        debug_assert_eq!(build.reach, REACH);
+        debug_assert_eq!(build.stack, STACK);
+        debug_assert_eq!(build.seat_tube, SEAT_TUBE);
+        debug_assert_eq!(build.stem_length, STEM_LENGTH);
+        Self::from_build(&build)
+    }
+
+    /// The same bike, fitted to `build`. Wheels, cranks, and angles stay.
+    /// Stack, reach, saddle height, seat tube, and stem follow the build,
+    /// and so do the limb lengths the pose solver uses.
+    pub fn from_build(build: &RiderBuild) -> Self {
         let bb = at(0.0, BB_HEIGHT);
         let drop = WHEEL_RADIUS - BB_HEIGHT;
         let rear_axle = at(-(CHAINSTAY * CHAINSTAY - drop * drop).sqrt(), WHEEL_RADIUS);
@@ -168,7 +220,7 @@ impl Rig {
         let (head_sin, head_cos) = HEAD_ANGLE_DEG.to_radians().sin_cos();
         let steer_axis = Vec3::new(0.0, head_sin, head_cos);
         let steer_fwd = Vec3::new(0.0, head_cos, -head_sin);
-        let head_top = at(REACH, BB_HEIGHT + STACK);
+        let head_top = at(build.reach, BB_HEIGHT + build.stack);
         let head_bottom = head_top - steer_axis * HEAD_TUBE;
         // Slide down the steering axis until the offset axle is at wheel height.
         let down = (head_bottom.y + FORK_OFFSET * head_cos - WHEEL_RADIUS) / head_sin;
@@ -176,13 +228,13 @@ impl Rig {
 
         let (seat_sin, seat_cos) = SEAT_ANGLE_DEG.to_radians().sin_cos();
         let seat_dir = Vec3::new(0.0, seat_sin, seat_cos);
-        let seat_top = bb + seat_dir * SEAT_TUBE;
-        let saddle_top = bb + seat_dir * SADDLE_HEIGHT;
+        let seat_top = bb + seat_dir * build.seat_tube;
+        let saddle_top = bb + seat_dir * build.saddle_height;
 
         let stem_base = head_top + steer_axis * STEM_STACK;
         let (drop_sin, drop_cos) = STEM_DROP_DEG.to_radians().sin_cos();
         let stem_dir = steer_fwd * drop_cos - steer_axis * drop_sin;
-        let bar_clamp = stem_base + stem_dir * STEM_LENGTH;
+        let bar_clamp = stem_base + stem_dir * build.stem_length;
 
         let hip_seated = saddle_top + Vec3::new(0.0, HIP_ABOVE_SADDLE, 0.015);
 
@@ -200,6 +252,17 @@ impl Rig {
             stem_base,
             bar_clamp,
             hip_seated,
+            hip_half: build.hip_half,
+            thigh: build.thigh,
+            shin: build.shin,
+            waist_up: build.waist_up,
+            shoulder: Vec3::from_array(build.shoulder),
+            head_pivot: Vec3::from_array(build.head_pivot),
+            upper_arm: build.upper_arm,
+            forearm: build.forearm,
+            ankle: Vec3::from_array(build.ankle),
+            eye: Vec3::from_array(build.eye),
+            grip: Vec3::from_array(build.grip),
         }
     }
 

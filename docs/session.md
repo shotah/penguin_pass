@@ -28,6 +28,8 @@ The session starts on the simulated rider and does not open Bluetooth until `sta
 
 Turning `control_trainer` off or on while a trainer is open drops that connection on a background thread and opens a new one in the new mode. If a link was requested, the session connects to the same id again. Until that link is up the keyboard rider stays out, and the status line says `reconnecting`.
 
+The spawn copies `rider_mass_kg` and `bike_mass_kg` into the trainer config. Tacx FE-C uses the rider weight (page 55) so a slope feels like the rider's weight. Changing either mass in settings updates the on-screen physics immediately. The open trainer keeps the weight it was given until the next connection.
+
 `connect` queues a connection. The trainer becomes the active source only once its state is connected, and `last_trainer_id` is updated then. The caller saves settings when it wants that id kept.
 
 If a connected trainer later reports disconnected or failed, the session keeps the trainer object. The trainer reconnects on its own with backoff. Power is 0 W until samples resume. The simulated rider is not swapped in: a rider who stops pedaling is not pushed by the keyboard target.
@@ -79,6 +81,8 @@ tv_dashboard_enabled = true
 tv_dashboard_port = 7878
 fullscreen = true
 control_trainer = true
+music_volume = 60
+music_folder = "/home/rider/Music/rides"
 ```
 
 | Field | Default | Valid |
@@ -92,8 +96,46 @@ control_trainer = true
 | `tv_dashboard_port` | 7878 | 1024 to 65535 |
 | `fullscreen` | true | true or false |
 | `control_trainer` | true | true sends grade; false only reads |
+| `course` | `penguin_pass` | `"penguin_pass"`, or `{ terrain, distance_km, seed }` |
+| `music_volume` | 60 | 0 to 100 |
+| `music_folder` | absent | path to the rider's music folder |
 
 `fullscreen` is stored here. Godot applies it to the window. The session does not.
+
+`course` is the route loaded at the next start. `terrain` is `flat`, `rolling`, `mountain`, or `desert`. An older file with no `course` key loads Penguin Pass. A saved course that cannot be generated also loads Penguin Pass, and the session queues `CourseUnavailable` instead of crashing.
+
+`music_volume` is the playback level Godot applies, from 0 to 100. `music_folder` is the rider's own folder of music files. An older file without these keys loads volume 60 and no folder. A folder that is not on disk is kept. `Settings::missing_music_folder` returns that path so the menu can say it is missing.
+
+## Ride trace
+
+Set `PENGUIN_PASS_TRACE_DIR` to a directory before the session is built, or call `Session::set_trace_dir` with that directory. `./x play --trace` creates `target/traces/<stamp>/` and exports the variable. Unset or empty means no file and no work on a tick. The variable is read once, when the session is constructed.
+
+The file is `<dir>/ride.csv`. The directory is created if it is missing. On open the session prints `pp-session: trace <absolute path>` to stderr. If the file cannot be opened it prints `pp-session: trace not opened <path>: <reason>` and the ride continues.
+
+One row per tick in `ready` and `riding`. Rows stop after `end_ride`. The writer is buffered, flushed at least once a second, and flushed again on `end_ride` and when the session is dropped. pp-trainer may later write `<dir>/ble.csv` beside this file. `unix_ms` is the wall clock in both, so the rows can be joined.
+
+| Column | Meaning |
+| --- | --- |
+| `unix_ms` | Wall clock, milliseconds since the Unix epoch, read once per tick |
+| `clock_s` | Session clock after the tick, seconds |
+| `dt_s` | Frame duration the tick accepted, seconds |
+| `phase` | `ready` or `riding` |
+| `source` | `sim`, `trainer`, or `none` |
+| `link` | `idle`, `scanning`, `connecting`, `connected`, `disconnected`, or `failed` |
+| `power_w` | Watts this tick fed to the physics and the summary. Empty when the source did not report power |
+| `cadence_rpm` | Cadence this tick fed onward. Empty when it was not reported |
+| `trainer_speed_kph` | Wheel speed on the trainer sample. Empty when the sample has none |
+| `heart_rate_bpm` | Heart rate this tick fed onward. Empty when it was not reported |
+| `sample_changed` | `1` when this tick's sample differs from the previous tick, otherwise `0` |
+| `sample_age_ms` | Age of the sample. Empty: the trainer sample has no timestamp |
+| `game_speed_kph` | Speed from the bike model |
+| `game_accel_mps2` | Change in game speed over the tick, divided by `dt_s`. Empty when `dt_s` is 0 |
+| `grade_pct` | Course grade under the rider |
+| `grade_sent_pct` | Grade most recently commanded to the trainer. Empty until one is sent |
+| `distance_m` | Distance ridden |
+| `power_3s_w` | Three-second mean power. Empty when the window has no sample |
+
+Seconds and speeds use three decimal places. Watts use one. An empty cell means the value does not exist. The file never writes `NaN` or `None`.
 
 ## Where Godot stores the file
 
@@ -109,16 +151,24 @@ The HUD refreshes numbers a few times a second. `tick` still runs every frame. T
 
 **Next kilometre and skyline.** `fill_ahead(1000.0, step_m, &mut buffer)` for the road ahead. It wraps at the lap and reuses the buffer. `course().profile(step_m)` is the whole lap for the skyline. `course_facts` is the name, length, total ascent, and the steepest grades.
 
-**Connection chip.** `connection`, not the status line. `phase` is idle, searching, connecting, connected, reconnecting, or failed. `resistance` is `Controlled` or `ReadingOnly`. Reading only covers both the settings toggle and a trainer that refused control. `bluetooth_available` is false when the adapter cannot start. `failure_reason` is one sentence; `failure_detail` is the raw text for the log. `status().line` is unchanged.
+**Connection chip.** `connection`, not the status line. `phase` is idle, searching, connecting, connected, reconnecting, or failed. `resistance` is `Controlled` or `ReadingOnly`. Reading only covers the settings toggle. When the trainer itself refuses control, `resistance` is still `ReadingOnly` and the status line says the trainer reports power only and cannot change resistance. `plain_failure` turns the trainer's `control not permitted` text into that same sentence. `bluetooth_available` is false when the adapter cannot start. `failure_reason` is one sentence when the link failed; `failure_detail` is the raw text for the log.
 
 **TV chip.** `status().dashboard`, `dashboard_urls`, and `dashboard_error`. Each publish also sends `CastServer::publish_status` with FTP, the link phase, the resistance mode, and the 3-second power.
 
-**Pairing rows.** `pairing` returns the list, strongest first, ties by name then id. `signal_bars` maps RSSI to 0..=4 and `signal_word` is the label. Unknown RSSI is 0 bars. A trainer stays for `PAIRING_HOLD_S` (8 s) after it was last seen. `remembered` flags `last_trainer_id`. `search_again` drops the current scan and starts a new one. The scan only lists Fitness Machine devices, so the list does not say whether a unit can control resistance.
+**Pairing rows.** `pairing` returns the list, strongest first, ties by name then id. `signal_bars` maps RSSI to 0..=4 and `signal_word` is the label. Unknown RSSI is 0 bars. A trainer stays for `PAIRING_HOLD_S` (8 s) after it was last seen. `remembered` flags `last_trainer_id`. `search_again` drops the current scan and starts a new one. Each row carries `ftms`, `cycling_power`, and `fec` from the advertisement. A device can take resistance when `ftms` or `fec` is set. A row with only `cycling_power` is a power meter.
 
 **Summary.** `summary` at any time, then `end_ride` to freeze it. `end_ride` also sets a controlled trainer back to 0 % grade. Ticks after that do not move the bike until `restart`, which clears the totals. Elapsed time is the ride clock. Moving time is time spent above 0.5 m/s. Ascent is elevation gained, not the course total. Average power includes known zeros and leaves out time while the link was down. Maximum power is the highest full 1-second average, not one sample. Average cadence ignores zeros. Heart rate is reported only when a strap covered at least 5 seconds and 10 % of the elapsed time. `laps` has each lap's time, average power, and average speed.
 
 **Title card.** `course_facts` for the name, length, and ascent. `connection` for the trainer mark.
 
-**Toasts.** `drain_events`. The queue holds 32 and drops the oldest. It reports a trainer connecting, the link dropping, a reconnect, control refused, a lap finished, a dashboard bind failure, `save_settings`, and `note_settings_load` when the file was damaged.
+**Title screen.** A new session starts in `Riding`, so a game that never calls these keeps moving. `hold_at_start` zeros the ride and waits in `Ready`. In `Ready`, `tick` still scans, pairs, updates `readout`, and publishes the dashboard, but distance, the ride clock, laps, and `summary` stay put, and a controlled trainer is sent grade 0. Pedalling does not move the bike. `begin_ride` leaves `Ready` and starts the clock from zero. It does nothing in `Riding` or `Ended`. `end_ride` is `Ended`, and `ride_ended` agrees. `restart` still clears the ride and runs it (`Riding`). `phase` reports the three.
+
+**Course picker.** `course_catalog` is six routes, built once in the background at startup and cached: Penguin Pass, Rolling 5 km (seed 3), Rolling 10 km (seed 3), Mountain 10 km (seed 11), Desert 10 km (seed 7), Flat 10 km (seed 1). Each row has length, ascent, grade range, theme, and at most 64 profile points. `set_course` builds the choice, resets the ride to zero, keeps the current phase and the trainer, refreshes facts, the road ahead, the summary, and the lap length, tells the TV, and queues `CourseSelected`. A failure leaves the old course and returns a sentence. `reroll(index)` replaces one generated row with the next seed (`None` for Penguin Pass or a bad index) and does not change the ride. `CourseChoice::theme_name` is `desert` or `alpine`. `label` is `Penguin Pass` or `Desert 10 km`.
+
+**Toasts.** `drain_events`. The queue holds 32 and drops the oldest. It reports a trainer connecting, the link dropping, a reconnect, control refused, a lap finished, a dashboard bind failure, `save_settings`, `note_settings_load` when the file was damaged, `CourseSelected`, and `CourseUnavailable` when a saved course could not be built.
+
+**TV course.** The dashboard profile follows `set_course`. `GET /api/course` returns the new outline, and an open page refreshes it.
+
+**Music.** `settings().music_volume` is 0 to 100, default 60. `settings().music_folder` is the rider's folder, or absent. `missing_music_folder` is that path when it is not on disk.
 
 **Power hint.** `SIM_POWER_STEP_W` is 25 W. The simulated-rider mockup still draws ±10 W.

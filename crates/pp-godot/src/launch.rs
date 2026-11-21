@@ -38,6 +38,12 @@ pub struct Launch {
     pub dashboard_loopback: bool,
     /// After the first frame, confirm Quit in the menu.
     pub quit_from_menu: bool,
+    /// Skip the title screen and start already riding.
+    pub skip_title: bool,
+    /// Play title, start, end, and quit. The release exit check.
+    pub play_through: bool,
+    /// Start with the music bus muted.
+    pub no_music: bool,
 }
 
 impl Launch {
@@ -69,6 +75,9 @@ impl Launch {
             dashboard_port: flags.dashboard_port,
             dashboard_loopback: flags.dashboard_loopback,
             quit_from_menu: flags.quit_from_menu,
+            skip_title: flags.skip_title,
+            play_through: flags.play_through,
+            no_music: flags.no_music,
         }
     }
 }
@@ -80,6 +89,7 @@ fn read_env() -> LaunchEnv {
         settings: env_string("PENGUIN_PASS_SETTINGS"),
         dashboard_port: env_string("PENGUIN_PASS_DASHBOARD_PORT"),
         dashboard_loopback: env_string("PENGUIN_PASS_DASHBOARD_LOOPBACK"),
+        no_music: env_string("PENGUIN_PASS_NO_MUSIC"),
     }
 }
 

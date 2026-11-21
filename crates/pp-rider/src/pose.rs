@@ -5,11 +5,7 @@ use std::f32::consts::PI;
 use glam::{Mat3, Quat, Vec3};
 
 use crate::mesh::PartId;
-use crate::rig::{
-    ANKLE_LOCAL, CRANK_LENGTH, DROP_FROM_CLAMP, DROP_SLOPE, EYE_LOCAL, FOREARM, Frame, GRIP_LOCAL,
-    HEAD_PIVOT_LOCAL, HIP_HALF, HOOD_FROM_CLAMP, PEDAL_X, Rig, SHIN, SHOULDER_LOCAL, THIGH,
-    UPPER_ARM, WAIST_UP,
-};
+use crate::rig::{CRANK_LENGTH, DROP_FROM_CLAMP, DROP_SLOPE, Frame, HOOD_FROM_CLAMP, PEDAL_X, Rig};
 
 /// Largest steering angle the pose accepts, in radians (about 26 degrees).
 /// [`PoseInput::steer_rad`] is clamped to plus or minus this.
@@ -282,8 +278,9 @@ fn bone(from: Vec3, to: Vec3, out: Vec3, front_out: bool) -> Frame {
 }
 
 /// Placement of the right hand relative to the bar clamp, bars straight.
-/// The hand's origin is the wrist.
-fn hand_on_bar(tuck: f32) -> Frame {
+/// The hand's origin is the wrist. `grip_local` is the centre of the bar
+/// inside the closed hand.
+fn hand_on_bar(tuck: f32, grip_local: Vec3) -> Frame {
     // On the hood: the wrist behind and above it, the palm turned inward,
     // the fingers round the hood's body.
     let hood = Frame::new(
@@ -303,7 +300,7 @@ fn hand_on_bar(tuck: f32) -> Frame {
             Vec3::X,
             along_bar.cross(Vec3::X),
         ));
-    let drop = Frame::new(DROP_FROM_CLAMP - grip * GRIP_LOCAL, grip);
+    let drop = Frame::new(DROP_FROM_CLAMP - grip * grip_local, grip);
     Frame::new(
         hood.pos.lerp(drop.pos, tuck),
         hood.rot.slerp(drop.rot, tuck),
@@ -351,7 +348,7 @@ pub(crate) fn solve(rig: &Rig, input: &PoseInput) -> Solved {
     let roll = effort * SWAY_ROLL * sin1 + 0.35 * bike_roll;
     let yaw = -effort * SWAY_YAW * (crank + 0.6).sin() - STEER_FOLLOW * steer;
     let nod = -effort * SWAY_NOD * cos2;
-    let waist = posture.hip + pelvis_pitch * Vec3::new(0.0, WAIST_UP, 0.0);
+    let waist = posture.hip + pelvis_pitch * Vec3::new(0.0, rig.waist_up, 0.0);
     let torso = Frame::new(
         waist,
         Quat::from_rotation_y(yaw)
@@ -362,7 +359,7 @@ pub(crate) fn solve(rig: &Rig, input: &PoseInput) -> Solved {
 
     // Head: rides on the neck but keeps facing up the road.
     let head = Frame::new(
-        torso.point(HEAD_PIVOT_LOCAL),
+        torso.point(rig.head_pivot),
         Quat::from_rotation_z(-0.3 * roll) * Quat::from_rotation_x(-posture.head_pitch),
     );
     frames[PartId::Head.index()] = head;
@@ -371,7 +368,7 @@ pub(crate) fn solve(rig: &Rig, input: &PoseInput) -> Solved {
         shoulder: [Vec3::ZERO; 2],
         shoulder_reach: [0.0; 2],
     };
-    let hand_right = hand_on_bar(tuck);
+    let hand_right = hand_on_bar(tuck, rig.grip);
     let clamp = Frame::new(rig.bar_clamp, Quat::IDENTITY);
 
     for (i, side) in [-1.0_f32, 1.0].into_iter().enumerate() {
@@ -386,14 +383,14 @@ pub(crate) fn solve(rig: &Rig, input: &PoseInput) -> Solved {
             pedal,
             bike.rot * Quat::from_rotation_x(-toe_down(theta, stand)),
         );
-        let ankle = foot.point(ANKLE_LOCAL);
-        let hip = pelvis.point(Vec3::new(side * HIP_HALF, 0.0, 0.0));
+        let ankle = foot.point(rig.ankle);
+        let hip = pelvis.point(Vec3::new(side * rig.hip_half, 0.0, 0.0));
         // The knee leads forward and tucks in a little over the top. Out of
         // the saddle it opens out instead, to clear the rocking top tube.
         let top = 0.5 * (1.0 - sin);
         let inward = 0.06 * top * (1.0 - stand) - 0.12 * stand;
         let pole = bike.rot * Vec3::new(-side * inward, 0.25, -1.0);
-        let (knee, out) = two_bone(hip, ankle, THIGH, SHIN, pole);
+        let (knee, out) = two_bone(hip, ankle, rig.thigh, rig.shin, pole);
         let (pedal_id, thigh_id, shin_id, foot_id) = if left {
             (PartId::PedalL, PartId::ThighL, PartId::ShinL, PartId::FootL)
         } else {
@@ -413,20 +410,20 @@ pub(crate) fn solve(rig: &Rig, input: &PoseInput) -> Solved {
         let hand = steering.then(clamp.then(hand_local));
         let wrist = hand.pos;
         let mut shoulder = torso.point(Vec3::new(
-            side * SHOULDER_LOCAL.x,
-            SHOULDER_LOCAL.y,
-            SHOULDER_LOCAL.z,
+            side * rig.shoulder.x,
+            rig.shoulder.y,
+            rig.shoulder.z,
         ));
         // A hand that the turned bars carry out of reach pulls the
         // shoulder forward, as a real shoulder does.
-        let reach = (UPPER_ARM + FOREARM) * ARM_REACH;
+        let reach = (rig.upper_arm + rig.forearm) * ARM_REACH;
         let gap = (wrist - shoulder).length() - reach;
         if gap > 0.0 {
             shoulder += (wrist - shoulder).normalize() * gap;
             joints.shoulder_reach[i] = gap;
         }
         let pole = Vec3::new(side * 0.30, -1.0, 0.40);
-        let (elbow, out) = two_bone(shoulder, wrist, UPPER_ARM, FOREARM, pole);
+        let (elbow, out) = two_bone(shoulder, wrist, rig.upper_arm, rig.forearm, pole);
         let (upper_id, fore_id, hand_id) = if left {
             (PartId::UpperArmL, PartId::ForearmL, PartId::HandL)
         } else {
@@ -442,7 +439,7 @@ pub(crate) fn solve(rig: &Rig, input: &PoseInput) -> Solved {
         saddle_top: bike.point(rig.saddle_top).to_array(),
         hood_l: steering.point(rig.hood(-1.0)).to_array(),
         hood_r: steering.point(rig.hood(1.0)).to_array(),
-        eye: head.point(EYE_LOCAL).to_array(),
+        eye: head.point(rig.eye).to_array(),
         eye_forward: (head.rot * Vec3::NEG_Z).to_array(),
         rear_axle: bike.point(rig.rear_axle).to_array(),
         front_axle: steering.point(rig.front_axle).to_array(),

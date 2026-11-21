@@ -3,9 +3,10 @@
 //! This crate turns bytes into values and values into bytes. It does not open
 //! a socket, start a runtime, or talk to BlueZ. The `pp-trainer` crate does that.
 //!
-//! Field widths follow the Bluetooth GATT Specification Supplement and the
-//! Fitness Machine Service 1.0 specification. See the module docs on each
-//! message for the two places those documents disagree.
+//! Field widths follow the Bluetooth GATT Specification Supplement, the
+//! Fitness Machine Service 1.0 specification, and the ANT+ FE-C profile for
+//! the Tacx BLE frames. See the module docs on each message for the places
+//! those documents disagree.
 
 #![forbid(unsafe_code)]
 
@@ -13,6 +14,7 @@ mod control;
 mod cycling_power;
 mod error;
 mod feature;
+mod fec;
 mod heart_rate;
 mod indoor_bike;
 mod uuid;
@@ -30,18 +32,22 @@ pub use feature::{
     FitnessMachineFeature, SupportedPowerRange, TARGET_FEATURE_INDOOR_BIKE_SIMULATION,
     TARGET_FEATURE_POWER,
 };
+pub use fec::{
+    FecChecksum, FecData, FecMessage, GeneralFeData, SpecificTrainerData, TrackResistance,
+    UserConfiguration,
+};
 pub use heart_rate::HeartRateMeasurement;
 pub use indoor_bike::IndoorBikeData;
 pub use uuid::{
     CYCLING_POWER_MEASUREMENT_UUID, CYCLING_POWER_MEASUREMENT_UUID16, CYCLING_POWER_SERVICE_UUID,
-    CYCLING_POWER_SERVICE_UUID16, FITNESS_MACHINE_CONTROL_POINT_UUID,
-    FITNESS_MACHINE_CONTROL_POINT_UUID16, FITNESS_MACHINE_FEATURE_UUID,
-    FITNESS_MACHINE_FEATURE_UUID16, FITNESS_MACHINE_STATUS_UUID, FITNESS_MACHINE_STATUS_UUID16,
-    FTMS_SERVICE_UUID, FTMS_SERVICE_UUID16, HEART_RATE_MEASUREMENT_UUID,
-    HEART_RATE_MEASUREMENT_UUID16, HEART_RATE_SERVICE_UUID, HEART_RATE_SERVICE_UUID16,
-    INDOOR_BIKE_DATA_UUID, INDOOR_BIKE_DATA_UUID16, SUPPORTED_POWER_RANGE_UUID,
-    SUPPORTED_POWER_RANGE_UUID16, SUPPORTED_RESISTANCE_LEVEL_RANGE_UUID,
-    SUPPORTED_RESISTANCE_LEVEL_RANGE_UUID16, uuid16,
+    CYCLING_POWER_SERVICE_UUID16, FEC_NOTIFY_UUID, FEC_SERVICE_UUID, FEC_WRITE_UUID,
+    FITNESS_MACHINE_CONTROL_POINT_UUID, FITNESS_MACHINE_CONTROL_POINT_UUID16,
+    FITNESS_MACHINE_FEATURE_UUID, FITNESS_MACHINE_FEATURE_UUID16, FITNESS_MACHINE_STATUS_UUID,
+    FITNESS_MACHINE_STATUS_UUID16, FTMS_SERVICE_UUID, FTMS_SERVICE_UUID16,
+    HEART_RATE_MEASUREMENT_UUID, HEART_RATE_MEASUREMENT_UUID16, HEART_RATE_SERVICE_UUID,
+    HEART_RATE_SERVICE_UUID16, INDOOR_BIKE_DATA_UUID, INDOOR_BIKE_DATA_UUID16,
+    SUPPORTED_POWER_RANGE_UUID, SUPPORTED_POWER_RANGE_UUID16,
+    SUPPORTED_RESISTANCE_LEVEL_RANGE_UUID, SUPPORTED_RESISTANCE_LEVEL_RANGE_UUID16, uuid16,
 };
 
 #[cfg(test)]
@@ -59,6 +65,7 @@ mod fuzz {
             let _ = ControlPointResponse::parse(&bytes);
             let _ = FitnessMachineFeature::parse(&bytes);
             let _ = SupportedPowerRange::parse(&bytes);
+            let _ = FecMessage::parse(&bytes);
         }
 
         #[test]

@@ -19,8 +19,15 @@ credits and the Steam page.
 | Gravel Ground 01 | Rob Tuytel, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/gravel_ground_01 | Road shoulder |
 | Rock Ground 02 | Rob Tuytel, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/rock_ground_02 | Scree |
 | Snow 02 | Rob Tuytel, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/snow_02 | Snow |
+| Sand 01 | Rob Tuytel, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/sand_01 | Desert sand |
 | Kloppenheim 06 (Pure Sky) | Greg Zaal, sky edits by Jarod Guest, via Poly Haven | CC0 1.0 | https://polyhaven.com/a/kloppenheim_06_puresky | Sky |
 | Barlow Semi Condensed 1.408 (Medium, SemiBold, Bold) | Jeremy Tribby and The Barlow Project Authors | SIL OFL 1.1 | https://github.com/jpt/barlow | All interface text and numbers |
+| Zen Theme | beardalaxy, via OpenGameArt | CC0 1.0 | https://opengameart.org/content/zen-theme | Title-screen music |
+| Cyber March | iamoneabe, via OpenGameArt | CC0 1.0 | https://opengameart.org/content/cyber-march | Ride music |
+| Bathing in the sun electronic, Pro Sensory, Rocking the Synth Machine, Forever, Intense Fight | Pro Sensory, via OpenGameArt | CC0 1.0 | https://opengameart.org/content/bathing-in-the-sun-electronic | Ride music |
+
+Per-track pages, download links, and checksums for the music are in
+`godot/assets/music/CREDITS.md`.
 
 Optional ambientCG wording, if a credit is given anyway: "Created using
 Grass001 from ambientCG.com, licensed under the Creative Commons CC0 1.0

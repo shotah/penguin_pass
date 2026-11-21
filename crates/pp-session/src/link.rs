@@ -36,13 +36,34 @@ pub trait TrainerFactory: Send {
 
     /// Start a trainer in `mode`.
     ///
-    /// [`crate::Session`] calls this with [`SessionMode::Control`] when
-    /// [`crate::Settings::control_trainer`] is set, and [`SessionMode::ReadOnly`]
-    /// when it is not. The default ignores `mode` and calls [`Self::spawn`],
-    /// so existing factories keep working. [`BleTrainerFactory`] honors `mode`.
+    /// [`crate::Session`] reaches this through [`Self::spawn_configured`]
+    /// unless a factory overrides that method. The mode is
+    /// [`SessionMode::Control`] when [`crate::Settings::control_trainer`] is
+    /// set, and [`SessionMode::ReadOnly`] when it is not. The default ignores
+    /// `mode` and calls [`Self::spawn`], so existing factories keep working.
+    /// [`BleTrainerFactory`] honors `mode`.
     fn spawn_mode(&mut self, mode: SessionMode) -> Result<Box<dyn TrainerLink>, String> {
         let _ = mode;
         self.spawn()
+    }
+
+    /// Start a trainer in `mode` and tell it the rider and bicycle mass.
+    ///
+    /// Masses are kilograms. `None` leaves the trainer's stored weight.
+    /// [`crate::Session`] passes the settings masses here. A weight edited
+    /// while a trainer is already connected is sent on the next spawn, not
+    /// on the open link. The default ignores the masses and calls
+    /// [`Self::spawn_mode`], so a factory written against `spawn_mode` keeps
+    /// compiling. [`BleTrainerFactory`] copies the masses into
+    /// [`TrainerConfig`].
+    fn spawn_configured(
+        &mut self,
+        mode: SessionMode,
+        rider_mass_kg: Option<f32>,
+        bike_mass_kg: Option<f32>,
+    ) -> Result<Box<dyn TrainerLink>, String> {
+        let _ = (rider_mass_kg, bike_mass_kg);
+        self.spawn_mode(mode)
     }
 }
 
@@ -55,9 +76,15 @@ pub trait TrainerFactory: Send {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BleTrainerFactory;
 
-fn spawn_trainer(mode: SessionMode) -> Result<Box<dyn TrainerLink>, String> {
+fn spawn_trainer(
+    mode: SessionMode,
+    rider_mass_kg: Option<f32>,
+    bike_mass_kg: Option<f32>,
+) -> Result<Box<dyn TrainerLink>, String> {
     let config = TrainerConfig {
         mode,
+        rider_mass_kg,
+        bike_mass_kg,
         ..TrainerConfig::default()
     };
     match BleTrainer::spawn_with(config) {
@@ -68,11 +95,20 @@ fn spawn_trainer(mode: SessionMode) -> Result<Box<dyn TrainerLink>, String> {
 
 impl TrainerFactory for BleTrainerFactory {
     fn spawn(&mut self) -> Result<Box<dyn TrainerLink>, String> {
-        spawn_trainer(SessionMode::Control)
+        self.spawn_mode(SessionMode::Control)
     }
 
     fn spawn_mode(&mut self, mode: SessionMode) -> Result<Box<dyn TrainerLink>, String> {
-        spawn_trainer(mode)
+        self.spawn_configured(mode, None, None)
+    }
+
+    fn spawn_configured(
+        &mut self,
+        mode: SessionMode,
+        rider_mass_kg: Option<f32>,
+        bike_mass_kg: Option<f32>,
+    ) -> Result<Box<dyn TrainerLink>, String> {
+        spawn_trainer(mode, rider_mass_kg, bike_mass_kg)
     }
 }
 

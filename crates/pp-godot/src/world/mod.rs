@@ -39,7 +39,8 @@ pub fn build_environment(parent: &mut Gd<Node3D>, theme: &Theme, catalog: &Catal
     sky_mat.set_use_debanding(true);
 
     let mut sky = Sky::new_gd();
-    if let Some(panorama) = catalog.sky_texture() {
+    let use_photo = theme.sky.panorama != "none";
+    if use_photo && let Some(panorama) = catalog.sky_texture() {
         let mut photo = godot::classes::PanoramaSkyMaterial::new_gd();
         photo.set_panorama(&panorama);
         photo.set_energy_multiplier(theme.sky.energy);
@@ -87,6 +88,21 @@ pub fn build_environment(parent: &mut Gd<Node3D>, theme: &Theme, catalog: &Catal
     sun.set_param(LightParam::SHADOW_MAX_DISTANCE, theme.sun.shadow_distance);
     sun.set_blend_splits(true);
     parent.add_child(&sun);
+}
+
+/// Checksum of the scatter the world would build for this course and theme.
+///
+/// Uses the same centreline samples, the same ground drop under the ribbon,
+/// and the same relief as [`build_course`], so it matches the live world.
+pub fn scatter_checksum(course: &Course, theme: &Theme) -> i64 {
+    let samples = terrain::sample_centerline(course);
+    let raw: Vec<[f32; 3]> = samples
+        .iter()
+        .map(|sample| [sample.position.x, sample.position.y, sample.position.z])
+        .collect();
+    let mut field = terrain::Field::new(&raw, theme.seed as i32);
+    field.use_relief(theme.relief.clone(), theme.seed);
+    scenery::recompute_checksum(&field, theme).1
 }
 
 /// Road, terrain, trees, the start arch, and the kilometer posts.

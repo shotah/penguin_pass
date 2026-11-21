@@ -1,0 +1,65 @@
+# Penguin Pass single-file bundle.
+# The dir source is the player directory from ./x export. The workflow
+# creates that directory before flatpak-builder runs. Nothing here is built
+# from Rust inside the sandbox: the export already contains the Godot
+# binary, the pck, and libpp_godot.release.so.
+app-id: io.github.shotah.PenguinPass
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: penguin-pass
+finish-args:
+  # GPU. Vulkan, and Godot's GL fallback.
+  - --device=dri
+  # Game controllers as evdev nodes under /dev/input.
+  # Flatpak has had this since 1.15.6 (stable in 1.16). It is narrower
+  # than --device=all, which exposes every device node.
+  - --device=input
+  # X11 shared memory, for a session that is not Wayland.
+  - --share=ipc
+  # LAN HTTP server for the TV dashboard.
+  - --share=network
+  - --socket=wayland
+  # X11 only when Wayland is not available.
+  - --socket=fallback-x11
+  # Audio. PipeWire on SteamOS provides the PulseAudio socket.
+  - --socket=pulseaudio
+  # Filtered system bus: the game may talk to BlueZ and nothing else.
+  - --system-talk-name=org.bluez
+  # Optional music folder. Read-only, and only the XDG Music directory.
+  - --filesystem=xdg-music:ro
+modules:
+  - name: penguin-pass
+    buildsystem: simple
+    only-arches:
+      - x86_64
+    build-options:
+      strip: false
+      no-debuginfo: true
+    build-commands:
+      - sh install-player.sh
+    sources:
+      - type: dir
+        path: ../../dist/penguin-pass-linux-x86_64
+      - type: file
+        path: install-player.sh
+      - type: file
+        path: penguin-pass.sh
+      - type: file
+        path: io.github.shotah.PenguinPass.desktop
+      - type: file
+        path: io.github.shotah.PenguinPass.metainfo.xml
+      - type: file
+        path: io.github.shotah.PenguinPass.svg
+      - type: file
+        path: icons/64.png
+        dest: icons
+      - type: file
+        path: icons/128.png
+        dest: icons
+      - type: file
+        path: icons/256.png
+        dest: icons
+      - type: file
+        path: icons/512.png
+        dest: icons

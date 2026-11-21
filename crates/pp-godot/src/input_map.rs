@@ -87,6 +87,13 @@ pub fn install() {
         None,
     );
     bind_keys(&mut map, "menu_back", &[Key::ESCAPE], &[JoyButton::B], None);
+    bind_keys(
+        &mut map,
+        "music_next",
+        &[Key::N],
+        &[JoyButton::RIGHT_SHOULDER],
+        None,
+    );
 }
 
 fn bind_keys(

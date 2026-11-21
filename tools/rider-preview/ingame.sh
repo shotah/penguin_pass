@@ -5,6 +5,7 @@
 #   ONLY=sequence,stand tools/rider-preview/ingame.sh
 #   OUT=/some/dir tools/rider-preview/ingame.sh   write somewhere else
 #   tools/rider-preview/ingame.sh bench           timings at the switchback
+#   tools/rider-preview/ingame.sh world           course build stats and world pictures
 #   tools/rider-preview/ingame.sh shot ARGS...    godot/tests/shot.gd with ARGS
 #
 # Uses the game library already in godot/bin; run ./x build first. Every
@@ -28,7 +29,7 @@ fi
 mkdir -p "$HERE/.cache" "$ROOT/godot/.godot"
 SETTINGS="$HERE/.cache/ingame-settings.toml"
 printf 'fullscreen = false\ntv_dashboard_enabled = true\n' >"$SETTINGS"
-SAFE=(--no-bluetooth --settings "$SETTINGS" --dashboard-port 0 --dashboard-loopback)
+SAFE=(--no-bluetooth --no-music --settings "$SETTINGS" --dashboard-port 0 --dashboard-loopback)
 
 # Script mode loads only the extensions named in this list (see ./x smoke).
 if [[ ! -s "$ROOT/godot/.godot/extension_list.cfg" ]]; then
@@ -44,7 +45,7 @@ run() {
     "${godot_cmd[@]}" --path "$ROOT/godot" --script "$script" -- "${SAFE[@]}" "$@" >"$log" 2>&1
     code=$?
     set -e
-    grep -E '^(RIDER_|PENGUIN_PASS_(SHOT|FRAME_MS|READY_MS|VIEW))' "$log" || true
+    grep -E '^(RIDER_|WORLD_|PENGUIN_PASS_(SHOT|FRAME_MS|READY_MS|VIEW|WORLD))|leaked|ObjectDB' "$log" || true
     if [[ "$code" -ne 0 ]]; then
         echo "ingame: Godot exited $code; full log follows" >&2
         cat "$log" >&2
@@ -60,6 +61,9 @@ case "${1:-pictures}" in
         ;;
     bench)
         run "$HERE/ingame.gd" --bench
+        ;;
+    world)
+        run "$HERE/world.gd" --out-dir "$ROOT/docs/img/world" --rider-dir "$ROOT/docs/img/rider"
         ;;
     shot)
         shift

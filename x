@@ -288,7 +288,19 @@ cmd_play() {
         cmd_build
         PROFILE="$saved_profile"
     fi
-    exec "$ROOT/tools/penguin-pass.sh" "$@"
+    # --trace records this ride to target/traces/<stamp>/ for diagnosis.
+    local args=() arg
+    for arg in "$@"; do
+        if [[ "$arg" == --trace ]]; then
+            PENGUIN_PASS_TRACE_DIR="$ROOT/target/traces/$(date +%Y%m%d-%H%M%S)"
+            mkdir -p "$PENGUIN_PASS_TRACE_DIR"
+            export PENGUIN_PASS_TRACE_DIR
+            echo "play: tracing this ride to $PENGUIN_PASS_TRACE_DIR" >&2
+        else
+            args+=("$arg")
+        fi
+    done
+    exec "$ROOT/tools/penguin-pass.sh" "${args[@]}"
 }
 
 cmd_export() {

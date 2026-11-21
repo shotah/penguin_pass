@@ -1,4 +1,4 @@
-//! List nearby FTMS trainers, or print live samples from one of them.
+//! List nearby trainers, or print live samples from one of them.
 //!
 //! With no arguments this scans for about eight seconds. `--connect` subscribes
 //! to measurements and does not request control. `--grade` requests control,
@@ -10,7 +10,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use pp_core::{TrainerCommand, TrainerSample};
-use pp_trainer::{BleTrainer, ConnectionState, SessionMode, Trainer, TrainerConfig};
+use pp_trainer::{
+    BleTrainer, ConnectionState, HeartRateLink, SessionMode, Trainer, TrainerConfig,
+    spawn_ble_heart_rate,
+};
 
 fn main() -> ExitCode {
     let args = match Args::parse(env::args().skip(1)) {
@@ -37,6 +40,8 @@ fn main() -> ExitCode {
         }
     };
 
+    let heart = spawn_ble_heart_rate();
+
     if let Err(err) = scan(&trainer, args.scan_seconds) {
         eprintln!("{err}");
         return ExitCode::from(1);
@@ -44,8 +49,11 @@ fn main() -> ExitCode {
 
     let Some(query) = args.connect else {
         print_discovered(&trainer);
+        println!();
+        print_straps(&heart);
         return ExitCode::SUCCESS;
     };
+    drop(heart);
 
     if !trainer
         .discovered()
@@ -53,7 +61,7 @@ fn main() -> ExitCode {
         .any(|device| matches_query(device, &query))
     {
         print_discovered(&trainer);
-        eprintln!("no FTMS trainer matches {query}");
+        eprintln!("no trainer matches {query}");
         return ExitCode::from(1);
     }
 
@@ -187,16 +195,59 @@ fn scan(trainer: &BleTrainer, seconds: u64) -> Result<(), String> {
 fn print_discovered(trainer: &BleTrainer) {
     let found = trainer.discovered();
     if found.is_empty() {
-        println!("no FTMS trainers found");
+        println!("no trainers found");
         return;
     }
-    println!("{} FTMS trainers", found.len());
+    println!("{} trainers", found.len());
+    for device in found {
+        let services = advertised_services(&device);
+        match device.rssi_dbm {
+            Some(rssi) => {
+                println!("{}  {rssi} dBm  {}  [{services}]", device.id, device.name);
+            }
+            None => println!("{}  {}  [{services}]", device.id, device.name),
+        }
+    }
+}
+
+fn print_straps(heart: &Result<Box<dyn HeartRateLink>, String>) {
+    let heart = match heart {
+        Ok(heart) => heart,
+        Err(err) => {
+            eprintln!("heart-rate: {err}");
+            println!("no heart-rate straps found");
+            return;
+        }
+    };
+    if let ConnectionState::Failed(reason) = heart.state() {
+        eprintln!("heart-rate: {reason}");
+    }
+    let found = heart.discovered();
+    if found.is_empty() {
+        println!("no heart-rate straps found");
+        return;
+    }
+    println!("{} heart-rate straps", found.len());
     for device in found {
         match device.rssi_dbm {
             Some(rssi) => println!("{}  {rssi} dBm  {}", device.id, device.name),
             None => println!("{}  {}", device.id, device.name),
         }
     }
+}
+
+fn advertised_services(device: &pp_trainer::DiscoveredTrainer) -> String {
+    let mut parts = Vec::new();
+    if device.ftms {
+        parts.push("ftms");
+    }
+    if device.cycling_power {
+        parts.push("power");
+    }
+    if device.fec {
+        parts.push("fe-c");
+    }
+    parts.join(",")
 }
 
 fn matches_query(device: &pp_trainer::DiscoveredTrainer, query: &str) -> bool {

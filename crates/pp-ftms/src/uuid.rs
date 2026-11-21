@@ -72,6 +72,15 @@ pub const HEART_RATE_MEASUREMENT_UUID16: u16 = 0x2A37;
 /// Heart Rate Measurement, 128-bit form.
 pub const HEART_RATE_MEASUREMENT_UUID: Uuid = uuid16(HEART_RATE_MEASUREMENT_UUID16);
 
+/// Tacx FE-C over BLE service.
+///
+/// Not a Bluetooth SIG uuid. Tacx documents it in "FE-C over BLE" (2015).
+pub const FEC_SERVICE_UUID: Uuid = Uuid::from_u128(0x6e40fec1_b5a3_f393_e0a9_e50e24dcca9e);
+/// Trainer-to-app notifications on the Tacx FE-C service.
+pub const FEC_NOTIFY_UUID: Uuid = Uuid::from_u128(0x6e40fec2_b5a3_f393_e0a9_e50e24dcca9e);
+/// App-to-trainer writes on the Tacx FE-C service.
+pub const FEC_WRITE_UUID: Uuid = Uuid::from_u128(0x6e40fec3_b5a3_f393_e0a9_e50e24dcca9e);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +130,18 @@ mod tests {
         assert_eq!(
             HEART_RATE_MEASUREMENT_UUID.to_string(),
             "00002a37-0000-1000-8000-00805f9b34fb"
+        );
+        assert_eq!(
+            FEC_SERVICE_UUID.to_string(),
+            "6e40fec1-b5a3-f393-e0a9-e50e24dcca9e"
+        );
+        assert_eq!(
+            FEC_NOTIFY_UUID.to_string(),
+            "6e40fec2-b5a3-f393-e0a9-e50e24dcca9e"
+        );
+        assert_eq!(
+            FEC_WRITE_UUID.to_string(),
+            "6e40fec3-b5a3-f393-e0a9-e50e24dcca9e"
         );
     }
 }

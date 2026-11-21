@@ -1,7 +1,7 @@
 //! The ride: physics, trainer, and the TV dashboard on one frame tick.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -13,11 +13,13 @@ use pp_course::{Course, Ride};
 use pp_trainer::{ConnectionState, DiscoveredTrainer, SessionMode, SimTrainer, Trainer};
 
 use crate::connection::{self, ConnectionStatus, LinkPhase, ResistanceMode};
+use crate::course_sel::{self, CourseChoice, CourseOption, RidePhase};
 use crate::events::{EventQueue, RideEvent};
 use crate::link::{BleTrainerFactory, TrainerFactory, TrainerLink};
 use crate::readout::{LiveReadout, PowerWindow};
 use crate::settings::{LoadedSettings, Settings};
 use crate::stats::RideStats;
+use crate::trace::{RideTrace, SampleStamp, TraceTick};
 
 /// Keyboard power change, in watts, applied by [`Session::nudge_sim_power`].
 pub const SIM_POWER_STEP_W: u16 = 25;
@@ -97,6 +99,12 @@ pub struct PairingEntry {
     pub bars: u8,
     /// `true` when this row matches [`Settings::last_trainer_id`](crate::Settings::last_trainer_id).
     pub remembered: bool,
+    /// Advertises the Fitness Machine Service.
+    pub ftms: bool,
+    /// Advertises the Cycling Power Service.
+    pub cycling_power: bool,
+    /// Advertises the Tacx FE-C service.
+    pub fec: bool,
 }
 
 struct SeenTrainer {
@@ -104,6 +112,9 @@ struct SeenTrainer {
     name: String,
     rssi_dbm: Option<i16>,
     last_seen_s: f64,
+    ftms: bool,
+    cycling_power: bool,
+    fec: bool,
 }
 
 struct Observation {
@@ -217,15 +228,23 @@ pub struct Session {
     control_notified: bool,
     stored_phase: LinkPhase,
     last_dashboard_error: Option<String>,
+    phase: RidePhase,
+    choice: CourseChoice,
+    catalog: Option<Vec<CourseOption>>,
+    trace: RideTrace,
+    last_grade_sent: Option<f32>,
+    traced_speed_mps: f32,
 }
 
 impl Session {
-    /// Start on Penguin Pass with the simulated rider and `settings`.
+    /// Start in [`RidePhase::Riding`] on `settings.course` with the simulated rider.
     ///
-    /// When the dashboard is enabled this binds it. A bind failure is stored
-    /// on [`SessionStatus::dashboard_error`] and does not fail construction.
-    /// Bluetooth is not opened until [`Session::start_scan`] or
-    /// [`Session::connect`].
+    /// The default course is Penguin Pass. A saved course that cannot be
+    /// generated falls back to Penguin Pass and queues
+    /// [`RideEvent::CourseUnavailable`]. When the dashboard is enabled this
+    /// binds it. A bind failure is stored on [`SessionStatus::dashboard_error`]
+    /// and does not fail construction. Bluetooth is not opened until
+    /// [`Session::start_scan`] or [`Session::connect`].
     #[must_use]
     pub fn new(settings: Settings) -> Self {
         Self::with_options(settings, SessionOptions::default())
@@ -234,11 +253,14 @@ impl Session {
     /// [`Session::new`] with a caller-supplied trainer factory and dashboard bind.
     #[must_use]
     pub fn with_options(settings: Settings, options: SessionOptions) -> Self {
-        let settings = settings.normalized();
+        course_sel::warm_catalog();
+        let mut settings = settings.normalized();
+        let (course, choice, fallback) = course_sel::open_course(&settings.course);
+        settings.course = choice.clone();
         let mut sim = SimTrainer::new("Simulated rider");
         sim.set_power(0);
         sim.set_cadence(0.0);
-        let ride = Ride::new(Course::penguin_pass(), settings.rider_profile());
+        let ride = Ride::new(course, settings.rider_profile());
         let (steepest_up_pct, steepest_down_pct) = grade_extremes(ride.course());
         let mut session = Self {
             settings,
@@ -272,9 +294,32 @@ impl Session {
             control_notified: false,
             stored_phase: LinkPhase::Idle,
             last_dashboard_error: None,
+            phase: RidePhase::Riding,
+            choice,
+            catalog: None,
+            trace: RideTrace::from_env(),
+            last_grade_sent: None,
+            traced_speed_mps: 0.0,
         };
+        if let Some(detail) = fallback {
+            session.events.push(RideEvent::CourseUnavailable { detail });
+        }
         session.start_dashboard();
         session
+    }
+
+    /// Write each later tick to `dir/ride.csv`, or stop when `dir` is `None`.
+    ///
+    /// Construction opens the same file when `PENGUIN_PASS_TRACE_DIR` names a
+    /// directory. That variable is read only then. Tests pass the directory
+    /// here. A missing directory is created. If the file cannot be opened,
+    /// one warning is printed and the ride continues.
+    pub fn set_trace_dir(&mut self, dir: Option<PathBuf>) {
+        self.trace.flush();
+        self.trace = match dir {
+            Some(dir) => RideTrace::open(&dir),
+            None => RideTrace::off(),
+        };
     }
 
     /// Advance the ride by `dt_s` seconds and return the new telemetry.
@@ -292,11 +337,14 @@ impl Session {
     pub fn tick(&mut self, dt_s: f64) -> Telemetry {
         self.reap_drops();
         self.poll_dashboard();
-        if self.ride_ended {
+        if self.phase == RidePhase::Ended {
             let frame = self.ride.telemetry();
             self.publish_dashboard(frame);
             self.note_dashboard_event();
             return frame;
+        }
+        if self.phase == RidePhase::Ready {
+            return self.tick_ready(dt_s);
         }
         self.poll_auto();
         self.observe_link();
@@ -318,9 +366,33 @@ impl Session {
         self.note_link_events();
         self.refresh_pairing();
         self.send_grade(telemetry.grade_pct);
+        self.trace_tick(dt, &observed, telemetry.speed_mps, &telemetry);
         self.publish_dashboard(telemetry);
         self.note_dashboard_event();
         telemetry
+    }
+
+    fn tick_ready(&mut self, dt_s: f64) -> Telemetry {
+        self.poll_auto();
+        self.observe_link();
+        let dt = accepted_dt(dt_s);
+        self.clock_s += dt;
+        let observed = self.observe_power();
+        self.power.record(self.clock_s, dt, observed.power_w);
+        self.note_link_events();
+        self.refresh_pairing();
+        self.send_grade(0.0);
+        let motion = self.ride.telemetry();
+        self.trace_tick(dt, &observed, motion.speed_mps, &motion);
+        let mut frame = self.ride.telemetry();
+        if let Some(power) = observed.power_w {
+            frame.power_w = power;
+        }
+        frame.cadence_rpm = observed.cadence_rpm;
+        frame.heart_rate_bpm = observed.heart_rate_bpm;
+        self.publish_dashboard(frame);
+        self.note_dashboard_event();
+        frame
     }
 
     /// Add `steps` times [`SIM_POWER_STEP_W`] watts to the simulated target.
@@ -369,7 +441,11 @@ impl Session {
             return;
         }
         self.connect_error = None;
-        match self.factory.spawn_mode(self.trainer_mode()) {
+        match self.factory.spawn_configured(
+            self.trainer_mode(),
+            Some(self.settings.rider_mass_kg),
+            Some(self.settings.bike_mass_kg),
+        ) {
             Ok(trainer) => {
                 self.trainer = Some(trainer);
                 self.spawn_error = None;
@@ -506,8 +582,18 @@ impl Session {
         let old_endpoint = self.dashboard_endpoint();
         let rider_changed = new.rider_profile() != self.settings.rider_profile();
         let control_changed = new.control_trainer != self.settings.control_trainer;
+        let requested = new.course.clone();
+        let choice = self.choice.clone();
         self.settings = new;
-        if rider_changed {
+        self.settings.course = choice.clone();
+        if requested != choice {
+            if let Err(detail) = self.set_course(requested) {
+                self.events.push(RideEvent::CourseUnavailable { detail });
+                if rider_changed {
+                    self.ride.set_rider(self.settings.rider_profile());
+                }
+            }
+        } else if rider_changed {
             self.ride.set_rider(self.settings.rider_profile());
         }
         if control_changed {
@@ -530,10 +616,119 @@ impl Session {
         self.ride.telemetry()
     }
 
-    /// Penguin Pass course, for the 3D world and the HUD profile.
+    /// Course the session is riding, for the 3D world and the HUD profile.
     #[must_use]
     pub fn course(&self) -> &Course {
         self.ride.course()
+    }
+
+    /// Title, riding, or summary.
+    ///
+    /// A new session is [`RidePhase::Riding`]. [`Self::hold_at_start`] waits
+    /// at the title. [`Self::ride_ended`] is true only in [`RidePhase::Ended`].
+    #[must_use]
+    pub fn phase(&self) -> RidePhase {
+        self.phase
+    }
+
+    /// Zero the ride and wait at the title.
+    ///
+    /// Distance, the ride clock, laps, and the summary go back to zero.
+    /// The phase becomes [`RidePhase::Ready`]. The trainer connection and
+    /// the simulated power target stay. The next ticks keep trainer I/O,
+    /// scanning, pairing, the live readout, and the TV dashboard running,
+    /// and they send grade 0 instead of the road grade.
+    pub fn hold_at_start(&mut self) {
+        self.phase = RidePhase::Ready;
+        self.ride_ended = false;
+        self.stats.clear();
+        self.power.clear();
+        self.rebuild_ride();
+    }
+
+    /// Leave [`RidePhase::Ready`] and start the ride clock from zero.
+    ///
+    /// Does nothing when the phase is [`RidePhase::Riding`] or
+    /// [`RidePhase::Ended`].
+    pub fn begin_ride(&mut self) {
+        if self.phase != RidePhase::Ready {
+            return;
+        }
+        self.phase = RidePhase::Riding;
+        self.ride_ended = false;
+    }
+
+    /// Course currently loaded.
+    #[must_use]
+    pub fn course_choice(&self) -> &CourseChoice {
+        &self.choice
+    }
+
+    /// The proof-of-concept course list.
+    ///
+    /// Computed once per process and cached on this session. The first call
+    /// waits if the background build started in [`Self::new`] is still running.
+    #[must_use]
+    pub fn course_catalog(&mut self) -> &[CourseOption] {
+        if self.catalog.is_none() {
+            self.catalog = Some(course_sel::shared_catalog());
+        }
+        self.catalog.as_deref().unwrap_or(&[])
+    }
+
+    /// Replace one generated catalog row with the next seed.
+    ///
+    /// Index 0 is Penguin Pass and returns `None`. An index past the end
+    /// returns `None`. The ride stays on [`Self::course_choice`] until
+    /// [`Self::set_course`].
+    pub fn reroll(&mut self, index: usize) -> Option<&CourseOption> {
+        if self.catalog.is_none() {
+            self.catalog = Some(course_sel::shared_catalog());
+        }
+        let CourseChoice::Generated {
+            terrain,
+            distance_km,
+            seed,
+        } = self.catalog.as_ref()?.get(index)?.choice.clone()
+        else {
+            return None;
+        };
+        let choice = CourseChoice::Generated {
+            terrain,
+            distance_km,
+            seed: seed.wrapping_add(1),
+        };
+        let option = course_sel::course_option(&choice).ok()?;
+        self.catalog.as_mut()?[index] = option;
+        self.catalog.as_ref()?.get(index)
+    }
+
+    /// Build `choice`, swap it in, and reset the ride to zero.
+    ///
+    /// The phase, the trainer connection, and the other settings stay.
+    /// Course facts, the road ahead, the summary, and the lap length follow
+    /// the new course. The TV dashboard is told, and
+    /// [`RideEvent::CourseSelected`] is queued. On failure the old course
+    /// stays and the string is a plain sentence.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the route cannot be generated. Penguin Pass
+    /// does not fail.
+    pub fn set_course(&mut self, choice: CourseChoice) -> Result<(), String> {
+        let course = course_sel::build_course(&choice)?;
+        let (steepest_up_pct, steepest_down_pct) = grade_extremes(&course);
+        self.ride = Ride::new(course, self.settings.rider_profile());
+        self.steepest_up_pct = steepest_up_pct;
+        self.steepest_down_pct = steepest_down_pct;
+        self.stats.clear();
+        self.power.clear();
+        self.choice = choice.clone();
+        self.settings.course = choice;
+        let name = self.ride.course().name().to_owned();
+        self.events.push(RideEvent::CourseSelected { name });
+        self.push_dashboard_course();
+        Ok(())
     }
 
     /// Rider profile the physics are using right now.
@@ -553,6 +748,7 @@ impl Session {
     /// trainer connection are left as they are. A ride ended with
     /// [`Session::end_ride`] runs again.
     pub fn restart(&mut self) {
+        self.phase = RidePhase::Riding;
         self.ride_ended = false;
         self.stats.clear();
         self.power.clear();
@@ -614,6 +810,9 @@ impl Session {
                 rssi_dbm: seen.rssi_dbm,
                 bars: crate::signal::signal_bars(seen.rssi_dbm),
                 remembered: self.trainer_is_remembered(&seen.id, &seen.name),
+                ftms: seen.ftms,
+                cycling_power: seen.cycling_power,
+                fec: seen.fec,
             })
             .collect();
         entries.sort_by(|left, right| {
@@ -655,13 +854,15 @@ impl Session {
         }
         self.stats.finish();
         self.ride_ended = true;
+        self.phase = RidePhase::Ended;
         self.send_flat_grade();
+        self.trace.flush();
     }
 
     /// Whether [`Session::end_ride`] is in effect.
     #[must_use]
     pub fn ride_ended(&self) -> bool {
-        self.ride_ended
+        self.phase == RidePhase::Ended
     }
 
     /// Facts for the title card and the course line.
@@ -789,9 +990,11 @@ impl Session {
                 return;
             }
             let _ = trainer.send(command);
+            self.last_grade_sent = Some(scaled);
             return;
         }
         let _ = self.sim.send(command);
+        self.last_grade_sent = Some(scaled);
     }
 
     fn observe_link(&mut self) {
@@ -1083,12 +1286,18 @@ impl Session {
                     seen.name = found.name;
                     seen.rssi_dbm = found.rssi_dbm;
                     seen.last_seen_s = self.clock_s;
+                    seen.ftms = found.ftms;
+                    seen.cycling_power = found.cycling_power;
+                    seen.fec = found.fec;
                 } else {
                     self.seen.push(SeenTrainer {
                         id: found.id,
                         name: found.name,
                         rssi_dbm: found.rssi_dbm,
                         last_seen_s: self.clock_s,
+                        ftms: found.ftms,
+                        cycling_power: found.cycling_power,
+                        fec: found.fec,
                     });
                 }
             }
@@ -1112,6 +1321,67 @@ impl Session {
             })
     }
 
+    fn trace_tick(
+        &mut self,
+        dt_s: f64,
+        observed: &Observation,
+        game_speed_mps: f32,
+        frame: &Telemetry,
+    ) {
+        if !self.trace.is_recording() {
+            self.traced_speed_mps = game_speed_mps;
+            return;
+        }
+        let previous_speed_mps = self.traced_speed_mps;
+        self.traced_speed_mps = game_speed_mps;
+        let phase = match self.phase {
+            RidePhase::Ready => "ready",
+            RidePhase::Riding => "riding",
+            RidePhase::Ended => "ended",
+        };
+        let source = if !self.using_trainer {
+            "sim"
+        } else if self
+            .trainer
+            .as_ref()
+            .is_some_and(|trainer| matches!(trainer.state(), ConnectionState::Connected))
+        {
+            "trainer"
+        } else {
+            "none"
+        };
+        let link = self
+            .trainer
+            .as_ref()
+            .map(|trainer| match trainer.state() {
+                ConnectionState::Disconnected => "disconnected",
+                ConnectionState::Scanning => "scanning",
+                ConnectionState::Connecting => "connecting",
+                ConnectionState::Connected => "connected",
+                ConnectionState::Failed(_) => "failed",
+            })
+            .unwrap_or("idle");
+        self.trace.record(&TraceTick {
+            clock_s: self.clock_s,
+            dt_s,
+            phase,
+            source,
+            link,
+            sample: SampleStamp {
+                power_w: observed.power_w,
+                cadence_rpm: observed.cadence_rpm,
+                trainer_speed_kph: observed.physics.speed_kph,
+                heart_rate_bpm: observed.heart_rate_bpm,
+            },
+            previous_speed_mps,
+            game_speed_mps,
+            grade_pct: frame.grade_pct,
+            grade_sent_pct: self.last_grade_sent,
+            distance_m: frame.distance_m,
+            power_3s_w: self.power.average_3s(self.clock_s),
+        });
+    }
+
     fn send_flat_grade(&mut self) {
         if !self.using_trainer || !self.controlling_trainer() {
             return;
@@ -1123,6 +1393,7 @@ impl Session {
             return;
         }
         let _ = trainer.send(TrainerCommand::SetGrade { grade_pct: 0.0 });
+        self.last_grade_sent = Some(0.0);
     }
 
     fn trainer_mode(&self) -> SessionMode {
@@ -1134,8 +1405,10 @@ impl Session {
     }
 
     fn resistance_phrase(&self) -> &'static str {
-        if self.settings.control_trainer {
+        if self.controlling_trainer() {
             "resistance follows the road"
+        } else if self.control_refused() {
+            "reports power only and cannot change resistance"
         } else {
             "reading only"
         }
@@ -1252,15 +1525,35 @@ impl Session {
         }
     }
 
+    fn push_dashboard_course(&self) {
+        let profile = cast_profile(self.ride.course());
+        let mut dash = lock_dash(&self.dash);
+        if dash.phase == DashboardRun::Running {
+            if let Some(server) = dash.server.as_ref() {
+                server.set_course(profile);
+            } else {
+                dash.pending_course = Some(profile);
+                return;
+            }
+            dash.pending_course = None;
+        } else {
+            dash.pending_course = Some(profile);
+        }
+    }
+
     fn publish_dashboard(&self, telemetry: Telemetry) {
         self.poll_dashboard();
         let status = self.cast_status();
-        let dash = lock_dash(&self.dash);
-        if dash.phase == DashboardRun::Running
-            && let Some(server) = &dash.server
-        {
-            server.publish(telemetry);
-            server.publish_status(status);
+        let mut dash = lock_dash(&self.dash);
+        if dash.phase == DashboardRun::Running {
+            let pending = dash.pending_course.take();
+            if let Some(server) = &dash.server {
+                if let Some(profile) = pending {
+                    server.set_course(profile);
+                }
+                server.publish(telemetry);
+                server.publish_status(status);
+            }
         }
     }
 
@@ -1344,6 +1637,7 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
+        self.trace.flush();
         if let Some(trainer) = self.trainer.take() {
             self.defer_drop(trainer);
         }
@@ -1376,6 +1670,7 @@ impl Drop for Session {
 trait DashboardHost: Send {
     fn publish(&self, telemetry: Telemetry);
     fn publish_status(&self, status: pp_cast::RideStatus);
+    fn set_course(&self, course: CourseProfile);
     fn urls(&self) -> Vec<String>;
 }
 
@@ -1386,6 +1681,10 @@ impl DashboardHost for CastServer {
 
     fn publish_status(&self, status: pp_cast::RideStatus) {
         CastServer::publish_status(self, status);
+    }
+
+    fn set_course(&self, course: CourseProfile) {
+        CastServer::set_course(self, course);
     }
 
     fn urls(&self) -> Vec<String> {
@@ -1420,6 +1719,7 @@ struct DashState {
     phase: DashboardRun,
     error: Option<String>,
     server: Option<Box<dyn DashboardHost>>,
+    pending_course: Option<CourseProfile>,
     current: Option<PendingDash>,
     retired: Vec<PendingDash>,
     drop_threads: Vec<JoinHandle<()>>,
@@ -1431,6 +1731,7 @@ impl Default for DashState {
             phase: DashboardRun::Off,
             error: None,
             server: None,
+            pending_course: None,
             current: None,
             retired: Vec::new(),
             drop_threads: Vec::new(),
@@ -1594,10 +1895,12 @@ mod tests {
     use crate::events::RideEvent;
     use crate::link::TrainerFactory;
     use crate::settings::LoadedSettings;
+    use crate::{CourseChoice, RidePhase, TerrainPreset};
     use pp_core::{RiderProfile, TrainerCommand, TrainerSample};
     use pp_course::Ride;
     use pp_trainer::{ConnectionState, DiscoveredTrainer, Trainer, TrainerError};
     use std::net::{Ipv4Addr, TcpListener};
+    use std::path::PathBuf;
     use std::sync::{Arc, Mutex, MutexGuard};
     use std::time::{Duration, Instant};
 
@@ -1618,6 +1921,7 @@ mod tests {
         drop_count: u32,
         modes: Vec<SessionMode>,
         sends: u32,
+        spawns: Vec<(SessionMode, Option<f32>, Option<f32>)>,
     }
 
     #[derive(Clone)]
@@ -1638,6 +1942,7 @@ mod tests {
                 drop_count: 0,
                 modes: Vec::new(),
                 sends: 0,
+                spawns: Vec::new(),
             })))
         }
 
@@ -1691,6 +1996,10 @@ mod tests {
 
         fn modes(&self) -> Vec<SessionMode> {
             lock(&self.0).modes.clone()
+        }
+
+        fn spawns(&self) -> Vec<(SessionMode, Option<f32>, Option<f32>)> {
+            lock(&self.0).spawns.clone()
         }
 
         fn sends(&self) -> u32 {
@@ -1787,6 +2096,18 @@ mod tests {
                 inner: Arc::clone(&self.inner),
             }))
         }
+
+        fn spawn_configured(
+            &mut self,
+            mode: SessionMode,
+            rider_mass_kg: Option<f32>,
+            bike_mass_kg: Option<f32>,
+        ) -> Result<Box<dyn TrainerLink>, String> {
+            lock(&self.inner)
+                .spawns
+                .push((mode, rider_mass_kg, bike_mass_kg));
+            self.spawn_mode(mode)
+        }
     }
 
     struct FailingFactory;
@@ -1822,6 +2143,9 @@ mod tests {
             id: "neo-1".to_owned(),
             name: "Tacx Neo 2T".to_owned(),
             rssi_dbm: Some(-45),
+            ftms: true,
+            cycling_power: true,
+            fec: true,
         }
     }
 
@@ -2067,7 +2391,7 @@ mod tests {
         handle.set_warning(Some("control not permitted".to_owned()));
         assert_eq!(
             session.status().line,
-            "Tacx Neo 2T: connected, resistance follows the road (control not permitted)"
+            "Tacx Neo 2T: connected, reports power only and cannot change resistance (control not permitted)"
         );
 
         session.set_sim_power(900);
@@ -2134,6 +2458,9 @@ mod tests {
             id: "AA:BB:CC:DD:EE:FF".to_owned(),
             name: "Tacx Neo 2T".to_owned(),
             rssi_dbm: None,
+            ftms: true,
+            cycling_power: true,
+            fec: true,
         }]);
         session.tick(0.0);
         assert_eq!(handle.connects(), vec!["Neo".to_owned()]);
@@ -2584,6 +2911,10 @@ mod tests {
         assert!(up.bluetooth_available);
         handle.set_warning(Some("control not permitted".to_owned()));
         assert_eq!(session.connection().resistance, ResistanceMode::ReadingOnly);
+        assert_eq!(
+            session.status().line,
+            "Tacx Neo 2T: connected, reports power only and cannot change resistance (control not permitted)"
+        );
         handle.set_state(ConnectionState::Disconnected);
         session.tick(0.0);
         assert_eq!(session.connection().phase, LinkPhase::Reconnecting);
@@ -2601,21 +2932,33 @@ mod tests {
                 id: "b".to_owned(),
                 name: "Bravo".to_owned(),
                 rssi_dbm: Some(-88),
+                ftms: false,
+                cycling_power: true,
+                fec: false,
             },
             DiscoveredTrainer {
                 id: "a2".to_owned(),
                 name: "Alpha".to_owned(),
                 rssi_dbm: Some(-65),
+                ftms: true,
+                cycling_power: false,
+                fec: false,
             },
             DiscoveredTrainer {
                 id: "neo-1".to_owned(),
                 name: "Tacx Neo 2T".to_owned(),
                 rssi_dbm: Some(-65),
+                ftms: true,
+                cycling_power: true,
+                fec: true,
             },
             DiscoveredTrainer {
                 id: "mystery".to_owned(),
                 name: "Hidden".to_owned(),
                 rssi_dbm: None,
+                ftms: false,
+                cycling_power: false,
+                fec: false,
             },
         ]);
         session.start_scan();
@@ -2628,6 +2971,14 @@ mod tests {
         let hidden = rows.iter().find(|row| row.id == "mystery").unwrap();
         assert_eq!(hidden.bars, 0);
         assert!(!hidden.remembered);
+        let bravo = rows.iter().find(|row| row.id == "b").unwrap();
+        assert!(bravo.cycling_power);
+        assert!(!bravo.ftms && !bravo.fec);
+        let neo = rows.iter().find(|row| row.id == "neo-1").unwrap();
+        assert!(neo.ftms && neo.fec);
+        let alpha = rows.iter().find(|row| row.id == "a2").unwrap();
+        assert!(alpha.ftms);
+        assert!(!alpha.fec);
 
         handle.set_discovered(vec![]);
         session.tick(1.0);
@@ -2641,6 +2992,35 @@ mod tests {
         assert!(handle.modes().len() > before);
         assert_eq!(session.connection().phase, LinkPhase::Searching);
         assert!(matches!(session.status().source, ActiveSource::Simulated));
+    }
+
+    #[test]
+    fn trainer_spawn_receives_the_rider_mass_and_a_later_edit_waits_for_the_next_link() {
+        let handle = Handle::new();
+        let mut session = session_with(offline(), &handle);
+        session.start_scan();
+        assert_eq!(
+            handle.spawns(),
+            vec![(SessionMode::Control, Some(75.0), Some(9.0))]
+        );
+
+        let mut settings = session.settings().clone();
+        settings.rider_mass_kg = 90.0;
+        settings.bike_mass_kg = 11.0;
+        session.apply_settings(settings);
+        assert_eq!(session.rider().rider_mass_kg, 90.0);
+        assert_eq!(session.rider().bike_mass_kg, 11.0);
+        assert_eq!(handle.spawns().len(), 1);
+
+        session.disconnect();
+        session.start_scan();
+        assert_eq!(
+            handle.spawns(),
+            vec![
+                (SessionMode::Control, Some(75.0), Some(9.0)),
+                (SessionMode::Control, Some(90.0), Some(11.0)),
+            ]
+        );
     }
 
     #[test]
@@ -2867,6 +3247,339 @@ mod tests {
         );
     }
 
+    #[test]
+    fn ready_holds_the_bike_and_sends_a_flat_grade() {
+        let handle = Handle::new();
+        handle.set_discovered(vec![neo()]);
+        let mut session = session_with(offline(), &handle);
+        assert_eq!(session.phase(), RidePhase::Riding);
+        assert!(!session.ride_ended());
+
+        session.connect("neo-1");
+        handle.set_state(ConnectionState::Connected);
+        session.tick(0.0);
+        ride_until(&mut session, &handle, 1.0);
+        let ridden = session.telemetry();
+        assert!(ridden.distance_m > 0.0);
+        assert!(ridden.elapsed_s > 0.0);
+
+        session.hold_at_start();
+        assert_eq!(session.phase(), RidePhase::Ready);
+        assert!(!session.ride_ended());
+        assert_eq!(session.telemetry().distance_m, 0.0);
+        assert_eq!(session.telemetry().elapsed_s, 0.0);
+        assert_eq!(session.summary().distance_m, 0.0);
+        handle.set_power(400);
+        handle.clear_grades();
+        let held = session.tick(1.0);
+        assert_eq!(held.distance_m, 0.0);
+        assert_eq!(held.elapsed_s, 0.0);
+        assert_eq!(held.speed_mps, 0.0);
+        assert_eq!(held.lap, 0);
+        assert_eq!(session.summary().elapsed_s, 0.0);
+        assert_eq!(session.summary().distance_m, 0.0);
+        let grades = handle.grades();
+        assert!(!grades.is_empty(), "a ready tick commands the trainer");
+        assert!(grades.iter().all(|grade| *grade == 0.0), "{grades:?}");
+        assert_eq!(session.readout().power_w, Some(400.0));
+        assert_eq!(session.connection().phase, LinkPhase::Connected);
+
+        session.begin_ride();
+        assert_eq!(session.phase(), RidePhase::Riding);
+        let started = session.tick(0.5);
+        assert!(started.elapsed_s > 0.0 && started.elapsed_s < 1.0);
+        assert!(started.distance_m > 0.0);
+
+        session.end_ride();
+        assert_eq!(session.phase(), RidePhase::Ended);
+        assert!(session.ride_ended());
+        session.begin_ride();
+        assert_eq!(session.phase(), RidePhase::Ended);
+        session.restart();
+        assert_eq!(session.phase(), RidePhase::Riding);
+        assert!(!session.ride_ended());
+    }
+
+    #[test]
+    fn set_course_resets_the_ride_and_keeps_phase_and_the_trainer() {
+        let handle = Handle::new();
+        handle.set_discovered(vec![neo()]);
+        let mut session = session_with(offline(), &handle);
+        session.connect("neo-1");
+        handle.set_state(ConnectionState::Connected);
+        session.tick(0.0);
+        session.hold_at_start();
+        let before = session.course_facts();
+        let _ = session.drain_events();
+        let choice = CourseChoice::Generated {
+            terrain: TerrainPreset::Rolling,
+            distance_km: 5,
+            seed: 3,
+        };
+        session.set_course(choice.clone()).expect("rolling 5 km");
+        assert_eq!(session.phase(), RidePhase::Ready);
+        assert_eq!(session.course_choice(), &choice);
+        let facts = session.course_facts();
+        assert_eq!(facts.name, "Rolling 5 km");
+        assert!(
+            (facts.length_m - 5_000.0).abs() < 200.0,
+            "{}",
+            facts.length_m
+        );
+        assert_ne!(facts.length_m, before.length_m);
+        let mut ahead = Vec::new();
+        session.fill_ahead(200.0, 20.0, &mut ahead);
+        assert!(ahead.len() > 2, "{ahead:?}");
+        assert!(ahead.last().expect("ahead").ahead_m <= 200.0);
+        assert_eq!(session.summary().distance_m, 0.0);
+        assert_eq!(session.distance_left_m(), facts.length_m);
+        assert_eq!(session.telemetry().elapsed_s, 0.0);
+        assert_eq!(session.connection().phase, LinkPhase::Connected);
+        assert!(session.drain_events().iter().any(|event| {
+            matches!(event, RideEvent::CourseSelected { name } if name == "Rolling 5 km")
+        }));
+
+        let err = session
+            .set_course(CourseChoice::Generated {
+                terrain: TerrainPreset::Desert,
+                distance_km: 1,
+                seed: 7,
+            })
+            .expect_err("shorter than the generator allows");
+        assert!(err.contains("could not build"), "{err}");
+        assert_eq!(session.course_choice(), &choice);
+        assert_eq!(session.course_facts().name, "Rolling 5 km");
+        assert_eq!(session.connection().phase, LinkPhase::Connected);
+    }
+
+    #[test]
+    fn saved_course_missing_or_unbuildable_falls_back_to_penguin_pass() {
+        let dir = std::env::temp_dir().join(format!(
+            "pp-session-course-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp");
+        let path = dir.join("old.toml");
+        std::fs::write(&path, "ftp_w = 210\ntv_dashboard_enabled = false\n").expect("write");
+        let loaded = crate::Settings::load(&path);
+        assert!(loaded.warning.is_none(), "{:?}", loaded.warning);
+        assert_eq!(loaded.settings.course, CourseChoice::PenguinPass);
+        assert_eq!(loaded.settings.ftp_w, 210);
+        let mut session = Session::new(loaded.settings);
+        assert_eq!(session.course_choice(), &CourseChoice::PenguinPass);
+        assert_eq!(session.course_facts().name, "Penguin Pass");
+        assert!(
+            !session
+                .drain_events()
+                .iter()
+                .any(|event| { matches!(event, RideEvent::CourseUnavailable { .. }) })
+        );
+
+        let mut settings = offline();
+        settings.ftp_w = 240;
+        settings.course = CourseChoice::Generated {
+            terrain: TerrainPreset::Desert,
+            distance_km: 1,
+            seed: 7,
+        };
+        let mut session = Session::new(settings);
+        assert_eq!(session.course_choice(), &CourseChoice::PenguinPass);
+        assert_eq!(session.settings().ftp_w, 240);
+        assert_eq!(session.course_facts().name, "Penguin Pass");
+        assert!(session.drain_events().iter().any(|event| {
+            matches!(event, RideEvent::CourseUnavailable { detail } if detail.contains("could not build"))
+        }));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn catalog_is_fixed_cached_and_reroll_changes_one_seed() {
+        let mut session = Session::new(offline());
+        let started = Instant::now();
+        let catalog = session.course_catalog();
+        eprintln!("course_catalog first call {:?}", started.elapsed());
+        assert_eq!(catalog.len(), 6);
+        assert_eq!(catalog[0].name, "Penguin Pass");
+        assert_eq!(catalog[0].theme, "alpine");
+        assert!(matches!(catalog[0].choice, CourseChoice::PenguinPass));
+        assert_eq!(catalog[1].name, "Rolling 5 km");
+        assert_eq!(catalog[2].name, "Rolling 10 km");
+        assert_eq!(catalog[3].name, "Mountain 10 km");
+        assert_eq!(catalog[3].theme, "alpine");
+        assert_eq!(catalog[4].name, "Desert 10 km");
+        assert_eq!(catalog[4].theme, "desert");
+        assert_eq!(catalog[5].name, "Flat 10 km");
+        assert_eq!(catalog[5].theme, "alpine");
+        assert!((catalog[1].length_m - 5_000.0).abs() < 200.0);
+        assert!((catalog[5].length_m - 10_000.0).abs() < 200.0);
+        for option in catalog {
+            assert!(option.profile.len() <= 64, "{}", option.profile.len());
+            assert!(option.profile.len() >= 2, "{}", option.name);
+        }
+        let cached_at = Instant::now();
+        let again = session.course_catalog();
+        let cached = cached_at.elapsed();
+        eprintln!("course_catalog cached call {cached:?}");
+        assert!(cached < Duration::from_millis(5), "{cached:?}");
+        assert_eq!(again[4].name, "Desert 10 km");
+
+        assert!(session.reroll(0).is_none());
+        assert!(session.reroll(9).is_none());
+        let rolled = session.reroll(5).expect("new flat route");
+        match &rolled.choice {
+            CourseChoice::Generated {
+                terrain,
+                distance_km,
+                seed,
+            } => {
+                assert_eq!(*terrain, TerrainPreset::Flat);
+                assert_eq!(*distance_km, 10);
+                assert_eq!(*seed, 2);
+            }
+            CourseChoice::PenguinPass => panic!("flat row should stay generated"),
+        }
+        assert_eq!(session.course_catalog()[5].name, "Flat 10 km");
+        assert_eq!(session.course_choice(), &CourseChoice::PenguinPass);
+    }
+
+    #[test]
+    fn set_course_updates_the_dashboard_profile() {
+        let mut session = Session::with_options(
+            Settings::default(),
+            SessionOptions {
+                trainer_factory: Box::new(FailingFactory),
+                dashboard_host: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                dashboard_port: Some(0),
+            },
+        );
+        let status = wait_dashboard(&mut session, |status| {
+            !status.dashboard_urls.is_empty() || status.dashboard_error.is_some()
+        });
+        assert_eq!(status.dashboard, DashboardRun::Running);
+        let urls = status.dashboard_urls;
+        let choice = CourseChoice::Generated {
+            terrain: TerrainPreset::Rolling,
+            distance_km: 5,
+            seed: 3,
+        };
+        session.set_course(choice).expect("rolling 5 km");
+        session.tick(0.0);
+        let profile = fetch_course(&urls[0]);
+        assert_eq!(profile.name, "Rolling 5 km");
+        assert!((profile.length_m - 5_000.0).abs() < 200.0);
+    }
+
+    #[test]
+    fn ride_trace_records_each_tick_until_the_ride_ends() {
+        let dir = trace_dir("rows");
+        let handle = Handle::new();
+        handle.set_discovered(vec![neo()]);
+        let mut session = session_with(offline(), &handle);
+        session.set_trace_dir(Some(dir.clone()));
+        session.hold_at_start();
+        session.tick(0.1);
+
+        session.begin_ride();
+        session.connect("neo-1");
+        handle.set_state(ConnectionState::Connected);
+        let first = TrainerSample {
+            power_w: Some(100),
+            cadence_rpm: Some(80.0),
+            speed_kph: Some(15.0),
+            heart_rate_bpm: None,
+        };
+        handle.set_sample(Some(first));
+        session.tick(0.2);
+        session.tick(0.2);
+        handle.set_sample(Some(TrainerSample {
+            power_w: Some(140),
+            ..first
+        }));
+        session.tick(0.2);
+        session.end_ride();
+        session.tick(0.2);
+        session.tick(0.2);
+        drop(session);
+
+        let text = std::fs::read_to_string(dir.join("ride.csv")).expect("trace file");
+        let mut lines = text.lines();
+        assert_eq!(
+            lines.next(),
+            Some(concat!(
+                "unix_ms,clock_s,dt_s,phase,source,link,power_w,cadence_rpm,",
+                "trainer_speed_kph,heart_rate_bpm,sample_changed,sample_age_ms,",
+                "game_speed_kph,game_accel_mps2,grade_pct,grade_sent_pct,distance_m,power_3s_w"
+            ))
+        );
+        let rows: Vec<&str> = lines.collect();
+        assert_eq!(rows.len(), 4, "{text}");
+        let mut previous_ms = 0u64;
+        let changed: Vec<&str> = rows
+            .iter()
+            .map(|row| {
+                let cells: Vec<&str> = row.split(',').collect();
+                assert_eq!(cells.len(), 18, "{row}");
+                assert!(
+                    cells[11].is_empty(),
+                    "sample age is not on the sample: {row}"
+                );
+                let unix_ms: u64 = cells[0].parse().expect("unix_ms");
+                assert!(unix_ms >= previous_ms, "{unix_ms} then {previous_ms}");
+                previous_ms = unix_ms;
+                cells[10]
+            })
+            .collect();
+        assert_eq!(rows[0].split(',').nth(3), Some("ready"));
+        assert_eq!(rows[0].split(',').nth(4), Some("sim"));
+        assert_eq!(rows[0].split(',').nth(8), Some(""));
+        assert_eq!(rows[1].split(',').nth(3), Some("riding"));
+        assert_eq!(rows[1].split(',').nth(4), Some("trainer"));
+        assert_eq!(rows[1].split(',').nth(5), Some("connected"));
+        assert_eq!(rows[1].split(',').nth(6), Some("100.0"));
+        assert_eq!(rows[1].split(',').nth(7), Some("80.0"));
+        assert_eq!(rows[1].split(',').nth(8), Some("15.000"));
+        assert_eq!(rows[1].split(',').nth(9), Some(""));
+        assert_eq!(changed, ["1", "1", "0", "1"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ride_trace_is_absent_without_a_directory_and_a_bad_directory_still_rides() {
+        let quiet = trace_dir("quiet");
+        let mut session = Session::new(offline());
+        session.set_trace_dir(None);
+        session.set_sim_power(30);
+        assert_eq!(session.tick(0.2).power_w, 30.0);
+        assert!(!quiet.join("ride.csv").exists());
+        drop(session);
+
+        let blocked = quiet.join("not-a-directory");
+        std::fs::write(&blocked, b"x").expect("blocker");
+        let mut session = Session::new(offline());
+        session.set_trace_dir(Some(blocked));
+        session.set_sim_power(40);
+        assert_eq!(session.tick(0.2).power_w, 40.0);
+        assert!(!quiet.join("ride.csv").exists());
+        let _ = std::fs::remove_dir_all(&quiet);
+    }
+
+    fn trace_dir(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "pp-session-trace-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&path).expect("trace dir");
+        path
+    }
+
     fn free_port() -> u16 {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind");
         let port = listener.local_addr().expect("addr").port();
@@ -2886,6 +3599,27 @@ mod tests {
             match client.get(&url).send() {
                 Ok(response) => match response.json::<Telemetry>() {
                     Ok(telemetry) => return telemetry,
+                    Err(err) => last = err.to_string(),
+                },
+                Err(err) => last = err.to_string(),
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("GET {url} failed: {last}");
+    }
+
+    fn fetch_course(base: &str) -> pp_cast::CourseProfile {
+        let url = format!("{base}api/course");
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .no_proxy()
+            .build()
+            .expect("client");
+        let mut last = String::new();
+        for _ in 0..25 {
+            match client.get(&url).send() {
+                Ok(response) => match response.json::<pp_cast::CourseProfile>() {
+                    Ok(course) => return course,
                     Err(err) => last = err.to_string(),
                 },
                 Err(err) => last = err.to_string(),

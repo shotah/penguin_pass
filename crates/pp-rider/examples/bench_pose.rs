@@ -9,7 +9,7 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use pp_rider::{PartId, PoseInput, RiderModel, RiderStyle};
+use pp_rider::{PartId, PoseInput, RiderModel, RiderPreset, RiderStyle};
 
 /// Number of poses to time in each mode.
 const CALLS: u32 = 2_000_000;
@@ -30,7 +30,19 @@ fn main() {
         ("standing", 1.0, 0.0),
         ("tucked", 0.0, 1.0),
     ];
-    for (name, stand, tuck) in modes {
+    time_model("nils", &model, &modes);
+    let start = Instant::now();
+    let sigrid = RiderModel::build_preset(&RiderPreset::sigrid());
+    println!(
+        "build, sigrid: {:.2} ms for {} triangles",
+        start.elapsed().as_secs_f64() * 1000.0,
+        sigrid.triangle_count()
+    );
+    time_model("sigrid", &sigrid, &modes);
+}
+
+fn time_model(who: &str, model: &RiderModel, modes: &[(&str, f32, f32)]) {
+    for &(name, stand, tuck) in modes {
         let mut checksum = 0.0_f32;
         let start = Instant::now();
         for i in 0..CALLS {
@@ -48,7 +60,7 @@ fn main() {
         }
         let per_call = start.elapsed().as_secs_f64() / f64::from(CALLS);
         println!(
-            "pose, {name}: {:.0} ns per call (checksum {checksum})",
+            "pose, {who}, {name}: {:.0} ns per call (checksum {checksum})",
             per_call * 1.0e9
         );
     }

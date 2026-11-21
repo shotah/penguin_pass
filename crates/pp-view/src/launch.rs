@@ -26,6 +26,12 @@ pub struct LaunchFlags {
     pub dashboard_loopback: bool,
     /// Open the menu and confirm Quit. For the release-export exit check.
     pub quit_from_menu: bool,
+    /// Skip the title screen and start the ride. Scripted shots and smoke use this.
+    pub skip_title: bool,
+    /// Title, start, ride, end, then quit. The release exit check.
+    pub play_through: bool,
+    /// Start silent. A settings change can still raise the volume.
+    pub no_music: bool,
 }
 
 /// Environment values the game already read. Empty strings count as unset.
@@ -41,6 +47,8 @@ pub struct LaunchEnv {
     pub dashboard_port: Option<String>,
     /// `PENGUIN_PASS_DASHBOARD_LOOPBACK`.
     pub dashboard_loopback: Option<String>,
+    /// `PENGUIN_PASS_NO_MUSIC`.
+    pub no_music: Option<String>,
 }
 
 /// User arguments win over the environment. Later flags win over earlier ones.
@@ -50,6 +58,9 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
     let mut dashboard_port = nonempty(&env.dashboard_port).and_then(|value| value.parse().ok());
     let mut dashboard_loopback = is_flag(env.dashboard_loopback.as_deref());
     let mut quit_from_menu = false;
+    let mut skip_title = false;
+    let mut play_through = false;
+    let mut no_music = is_flag(env.no_music.as_deref());
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -57,6 +68,9 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
             "--no-bluetooth" => mode = TrainerMode::Off,
             "--dashboard-loopback" => dashboard_loopback = true,
             "--quit-from-menu" => quit_from_menu = true,
+            "--skip-title" => skip_title = true,
+            "--play-through" => play_through = true,
+            "--no-music" => no_music = true,
             "--settings" => {
                 if let Some(value) = args.get(index + 1) {
                     settings_path = Some(PathBuf::from(value));
@@ -81,6 +95,9 @@ pub fn parse_launch(args: &[String], env: &LaunchEnv) -> LaunchFlags {
         dashboard_port,
         dashboard_loopback,
         quit_from_menu,
+        skip_title,
+        play_through,
+        no_music,
     }
 }
 
@@ -126,6 +143,9 @@ mod tests {
             "--dashboard-loopback".to_owned(),
             "--fake-trainer".to_owned(),
             "--quit-from-menu".to_owned(),
+            "--skip-title".to_owned(),
+            "--play-through".to_owned(),
+            "--no-music".to_owned(),
         ];
         let flags = parse_launch(&args, &env);
         assert_eq!(flags.mode, TrainerMode::Fake);
@@ -136,6 +156,9 @@ mod tests {
         assert_eq!(flags.dashboard_port, Some(0));
         assert!(flags.dashboard_loopback);
         assert!(flags.quit_from_menu);
+        assert!(flags.skip_title);
+        assert!(flags.play_through);
+        assert!(flags.no_music);
     }
 
     #[test]
@@ -143,6 +166,9 @@ mod tests {
         let flags = parse_launch(&[], &LaunchEnv::default());
         assert_eq!(flags.mode, TrainerMode::Real);
         assert!(!flags.quit_from_menu);
+        assert!(!flags.skip_title);
+        assert!(!flags.play_through);
+        assert!(!flags.no_music);
         assert!(flags.settings_path.is_none());
         assert!(flags.dashboard_port.is_none());
         assert!(!flags.dashboard_loopback);

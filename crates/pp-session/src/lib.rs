@@ -22,6 +22,7 @@
 #![forbid(unsafe_code)]
 
 mod connection;
+mod course_sel;
 mod events;
 mod link;
 mod readout;
@@ -29,13 +30,16 @@ mod session;
 mod settings;
 mod signal;
 mod stats;
+mod trace;
 mod zones;
 
 pub use connection::{ConnectionStatus, LinkPhase, ResistanceMode, plain_failure};
+pub use course_sel::{CourseChoice, CourseOption, RidePhase};
 pub use events::{EVENT_QUEUE_CAP, RideEvent};
 pub use link::{BleTrainerFactory, TrainerFactory, TrainerLink};
 pub use pp_core::{RiderProfile, Telemetry};
 pub use pp_course::Course;
+pub use pp_routegen::TerrainPreset;
 pub use pp_trainer::{ConnectionState, DiscoveredTrainer, SessionMode, Trainer, TrainerError};
 pub use readout::{LiveReadout, MAX_POWER_WINDOW_S, POWER_AVERAGE_WINDOW_S};
 pub use session::{
@@ -44,10 +48,11 @@ pub use session::{
     SessionOptions, SessionStatus,
 };
 pub use settings::{
-    DEFAULT_BIKE_MASS_KG, DEFAULT_DASHBOARD_PORT, DEFAULT_FTP_W, DEFAULT_RIDER_MASS_KG,
-    DEFAULT_TRAINER_DIFFICULTY, LoadedSettings, MAX_BIKE_MASS_KG, MAX_DASHBOARD_PORT, MAX_FTP_W,
-    MAX_RIDER_MASS_KG, MAX_TRAINER_DIFFICULTY, MIN_BIKE_MASS_KG, MIN_DASHBOARD_PORT, MIN_FTP_W,
-    MIN_RIDER_MASS_KG, MIN_TRAINER_DIFFICULTY, Settings, SettingsError,
+    DEFAULT_BIKE_MASS_KG, DEFAULT_DASHBOARD_PORT, DEFAULT_FTP_W, DEFAULT_MUSIC_VOLUME,
+    DEFAULT_RIDER_MASS_KG, DEFAULT_TRAINER_DIFFICULTY, LoadedSettings, MAX_BIKE_MASS_KG,
+    MAX_DASHBOARD_PORT, MAX_FTP_W, MAX_MUSIC_VOLUME, MAX_RIDER_MASS_KG, MAX_TRAINER_DIFFICULTY,
+    MIN_BIKE_MASS_KG, MIN_DASHBOARD_PORT, MIN_FTP_W, MIN_MUSIC_VOLUME, MIN_RIDER_MASS_KG,
+    MIN_TRAINER_DIFFICULTY, Settings, SettingsError,
 };
 pub use signal::{
     SIGNAL_FAIR_DBM, SIGNAL_GOOD_DBM, SIGNAL_STRONG_DBM, SIGNAL_WEAK_DBM, signal_bars, signal_word,

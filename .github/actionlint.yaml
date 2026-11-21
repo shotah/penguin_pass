@@ -1,0 +1,5 @@
+# actionlint 1.7.12, the copy the pre-commit hook runs, does not know the
+# ubuntu-26.04 hosted label. The Flatpak jobs pin that image.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

@@ -41,6 +41,7 @@
 mod animate;
 mod bike;
 mod body;
+mod build;
 #[cfg(test)]
 mod check;
 mod geo;
@@ -54,6 +55,7 @@ mod style;
 mod tests;
 
 pub use animate::{RideAnimator, RideSample};
+pub use build::{RiderBuild, RiderPreset};
 pub use mesh::{Material, Part, PartId, Surface};
 pub use model::RiderModel;
 pub use pose::{Anchors, MAX_STEER_RAD, PartTransform, Pose, PoseInput};

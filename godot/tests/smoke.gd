@@ -18,6 +18,7 @@ func _init() -> void:
 	OS.set_environment("PENGUIN_PASS_FAKE_TRAINER", "1")
 	OS.set_environment("PENGUIN_PASS_DASHBOARD_PORT", "0")
 	OS.set_environment("PENGUIN_PASS_DASHBOARD_LOOPBACK", "1")
+	OS.set_environment("PENGUIN_PASS_NO_MUSIC", "1")
 	var version := _probe()
 	if version.is_empty():
 		return
@@ -68,6 +69,32 @@ func _probe() -> String:
 
 
 func _exercise(game: Node, version: String) -> void:
+	if int(game.debug_ready_ms()) > 5000:
+		_fail("ready took %s ms" % game.debug_ready_ms())
+		return
+	if str(game.debug_screen()) != "title":
+		_fail("launch screen is '%s', expected title" % game.debug_screen())
+		return
+	var held: float = game.distance_m()
+	game.debug_advance(1.0)
+	if float(game.distance_m()) > held + 0.05:
+		_fail("the rider moved on the title screen")
+		return
+	if game.debug_music_tracks() < 1:
+		_fail("music player has no tracks")
+		return
+	if str(game.debug_music_scene()) != "title":
+		_fail("title music did not start: %s" % game.debug_music_scene())
+		return
+	if not _settings_hides(game):
+		return
+	game.debug_start_ride()
+	if str(game.debug_screen()) != "ride":
+		_fail("Start did not begin the ride: %s" % game.debug_screen())
+		return
+	if str(game.debug_music_scene()) != "ride":
+		_fail("ride music did not start: %s" % game.debug_music_scene())
+		return
 	game.debug_set_target_power(200.0)
 	for _i in 180:
 		game.debug_advance(1.0 / 60.0)
@@ -191,6 +218,8 @@ func _exercise(game: Node, version: String) -> void:
 		return
 	if not _menu_and_trainer(game):
 		return
+	if not _end_and_course(game):
+		return
 	if game is Node:
 		game.free()
 	print("PENGUIN_PASS_SMOKE_OK %s" % version)
@@ -299,6 +328,112 @@ func _menu_and_trainer(game: Node) -> bool:
 	game.debug_advance(1.0)
 	if float(game.distance_m()) <= before:
 		_fail("ride stopped when Bluetooth was unavailable")
+		return false
+	return true
+
+
+func _settings_hides(game: Node) -> bool:
+	# Title → Settings → Escape. The panel node must hide, not only the state.
+	game.debug_show_title()
+	game.debug_menu_action("down")
+	game.debug_menu_action("down")
+	game.debug_menu_action("down")
+	game.debug_menu_action("accept")
+	if not game.debug_settings_visible():
+		_fail("settings panel did not show from the title")
+		return false
+	var quiet: float = game.debug_music_bus_db()
+	for _step in 8:
+		game.debug_menu_action("down")
+	game.debug_menu_action("right")
+	if abs(float(game.debug_music_bus_db()) - quiet) < 0.05:
+		_fail("music volume did not change the bus")
+		return false
+	game.debug_press_back()
+	if game.debug_settings_visible():
+		_fail("settings panel stayed visible after Escape from the title")
+		return false
+	if str(game.debug_screen()) != "title":
+		_fail("Escape from settings did not return to the title")
+		return false
+	# Trainer panel, then Escape back through settings. Same back handler as B.
+	game.debug_show_title()
+	game.debug_menu_action("down")
+	game.debug_menu_action("down")
+	game.debug_menu_action("accept")
+	if not game.debug_settings_visible():
+		_fail("trainer panel did not show")
+		return false
+	game.debug_press_back()
+	if not game.debug_settings_visible():
+		_fail("leaving the trainer list should still show settings")
+		return false
+	game.debug_press_back()
+	if game.debug_settings_visible():
+		_fail("trainer panel stayed visible after leaving settings")
+		return false
+	game.debug_clear_trainer()
+	# Ride → pause → Settings → the same back key.
+	game.debug_show_title()
+	game.debug_start_ride()
+	game.debug_press_back()
+	game.debug_menu_action("down")
+	game.debug_menu_action("down")
+	game.debug_menu_action("accept")
+	if not game.debug_settings_visible():
+		_fail("settings panel did not show from the pause menu")
+		return false
+	game.debug_press_back()
+	if game.debug_settings_visible():
+		_fail("settings panel stayed visible after Escape from a ride")
+		return false
+	if str(game.debug_screen()) != "pause":
+		_fail("Escape from settings did not return to pause: %s" % game.debug_screen())
+		return false
+	game.debug_show_title()
+	return true
+
+
+func _end_and_course(game: Node) -> bool:
+	game.debug_menu_close()
+	game.debug_menu_action("back")
+	if str(game.debug_screen()) != "pause":
+		_fail("pause did not open: %s" % game.debug_screen())
+		return false
+	game.debug_menu_action("down")
+	game.debug_menu_action("down")
+	game.debug_menu_action("accept")
+	if str(game.debug_menu_title()) != "Settings":
+		_fail("settings did not open from pause: %s" % game.debug_menu_title())
+		return false
+	game.debug_menu_action("back")
+	game.debug_menu_action("down")
+	game.debug_menu_action("accept")
+	game.debug_menu_action("right")
+	game.debug_menu_action("accept")
+	if str(game.debug_screen()) != "summary":
+		_fail("end ride did not show the summary: %s" % game.debug_screen())
+		return false
+	game.debug_menu_action("down")
+	game.debug_menu_action("accept")
+	if str(game.debug_screen()) != "title":
+		_fail("summary did not return to the title: %s" % game.debug_screen())
+		return false
+	var penguin: float = game.course_length_m()
+	if not game.debug_load_course("rolling", 10, 3):
+		_fail("generated course did not load")
+		return false
+	if abs(float(game.course_length_m()) - penguin) < 1.0:
+		_fail("generated course length did not change")
+		return false
+	game.debug_menu_action("down")
+	game.debug_menu_action("accept")
+	if str(game.debug_screen()) != "course":
+		_fail("course picker did not open: %s" % game.debug_screen())
+		return false
+	game.debug_menu_action("accept")
+	if abs(float(game.course_length_m()) - penguin) > 1.0:
+		_fail("picking Penguin Pass did not switch back")
 		return false
 	return true
 

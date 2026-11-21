@@ -11,7 +11,8 @@ use crate::rig::{
     WHEEL_RADIUS,
 };
 use crate::{
-    MAX_STEER_RAD, PartId, PartTransform, Pose, PoseInput, RiderModel, RiderStyle, StyleColor,
+    MAX_STEER_RAD, PartId, PartTransform, Pose, PoseInput, RiderModel, RiderPreset, RiderStyle,
+    StyleColor,
 };
 
 /// Triangle budget for the whole bike and rider.
@@ -1263,4 +1264,333 @@ fn the_rider_clears_the_bike() {
         }
         println!("knee to top tube, {name}: {:.0} mm clear", closest * 1000.0);
     }
+}
+
+fn sigrid() -> RiderModel {
+    RiderModel::build_preset(&RiderPreset::sigrid())
+}
+
+/// Hip, knee, and ankle using this rider's shin length.
+fn leg_joints_of(pose: &Pose, side: f32, shin: f32) -> (Vec3, Vec3, Vec3) {
+    let [_, thigh, shin_id, _] = leg(side);
+    (
+        origin(pose, thigh),
+        origin(pose, shin_id),
+        place(pose, shin_id, Vec3::new(0.0, -shin, 0.0)),
+    )
+}
+
+/// Half-width of the saddle shell at `z` metres from the saddle top, along
+/// the bike. Matches the stations in `bike::frame`.
+fn saddle_half_width(z: f32) -> f32 {
+    const STATIONS: [(f32, f32); 7] = [
+        (-0.130, 0.015),
+        (-0.090, 0.021),
+        (-0.030, 0.031),
+        (0.030, 0.053),
+        (0.075, 0.069),
+        (0.106, 0.066),
+        (0.124, 0.046),
+    ];
+    if z <= STATIONS[0].0 || z >= STATIONS[6].0 {
+        return 0.0;
+    }
+    for pair in STATIONS.windows(2) {
+        let (z0, w0) = pair[0];
+        let (z1, w1) = pair[1];
+        if (z0..=z1).contains(&z) {
+            let t = (z - z0) / (z1 - z0);
+            return w0 + (w1 - w0) * t;
+        }
+    }
+    0.0
+}
+
+fn deepest_into_saddle(model: &RiderModel) -> f32 {
+    let mut deepest = 0.0_f32;
+    let body = [
+        PartId::Pelvis,
+        PartId::ThighL,
+        PartId::ThighR,
+        PartId::Torso,
+    ];
+    for (_, mode) in riding_modes() {
+        for step in (0..360).step_by(3) {
+            let pose = model.pose(&PoseInput {
+                crank_angle_rad: (step as f32).to_radians(),
+                ..mode
+            });
+            let saddle = Vec3::from_array(pose.anchors.saddle_top);
+            let right = rotation(&pose, PartId::Frame) * Vec3::X;
+            let up = rotation(&pose, PartId::Frame) * Vec3::Y;
+            let back = rotation(&pose, PartId::Frame) * Vec3::Z;
+            for id in body {
+                for surface in model.part(id).surfaces() {
+                    for p in &surface.positions {
+                        let rel = place(&pose, id, Vec3::from_array(*p)) - saddle;
+                        let x = rel.dot(right);
+                        let y = rel.dot(up);
+                        let z = rel.dot(back);
+                        // The saddle body only: below the top, above the rails,
+                        // and inside the nose-to-tail plan. The thighs pass
+                        // the saddle's rectangle on their way to the pedals.
+                        if !(-0.040..0.0).contains(&y) {
+                            continue;
+                        }
+                        let half = saddle_half_width(z);
+                        if x.abs() <= half {
+                            deepest = deepest.max(-y);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    deepest
+}
+
+fn deepest_into_top_tube(model: &RiderModel) -> f32 {
+    let rig = model.rig();
+    let radius = 0.023;
+    let mut deepest = 0.0_f32;
+    let parts = [
+        PartId::Pelvis,
+        PartId::ThighL,
+        PartId::ThighR,
+        PartId::ShinL,
+        PartId::ShinR,
+    ];
+    let seat_join = rig.seat_top - rig.seat_dir * 0.030;
+    let head_high = rig.head_top - rig.steer_axis * 0.032;
+    for (_, mode) in riding_modes() {
+        for step in (0..360).step_by(3) {
+            let pose = model.pose(&PoseInput {
+                crank_angle_rad: (step as f32).to_radians(),
+                ..mode
+            });
+            let tube_a = place(&pose, PartId::Frame, seat_join);
+            let tube_b = place(&pose, PartId::Frame, head_high);
+            for id in parts {
+                for surface in model.part(id).surfaces() {
+                    for p in &surface.positions {
+                        let world = place(&pose, id, Vec3::from_array(*p));
+                        let into = radius - distance_to_segment(world, tube_a, tube_b);
+                        deepest = deepest.max(into);
+                    }
+                }
+            }
+        }
+    }
+    deepest
+}
+
+fn time_poses(model: &RiderModel) -> f64 {
+    let mut sink = 0.0_f32;
+    let start = std::time::Instant::now();
+    for i in 0..30_000 {
+        let pose = model.pose(&PoseInput {
+            crank_angle_rad: i as f32 * 0.017,
+            wheel_angle_rad: i as f32 * 0.011,
+            steer_rad: 0.12,
+            effort: 0.7,
+            stand: if i % 3 == 0 { 1.0 } else { 0.0 },
+            tuck: if i % 3 == 1 { 1.0 } else { 0.0 },
+        });
+        sink += pose.anchors.eye[1];
+    }
+    std::hint::black_box(sink);
+    start.elapsed().as_secs_f64()
+}
+
+#[test]
+fn presets_name_both_riders_and_nils_is_the_reference_model() {
+    let all = RiderPreset::all();
+    assert_eq!(all.map(|preset| preset.id), ["nils", "sigrid"]);
+    assert_eq!(all.map(|preset| preset.name), ["Nils", "Sigrid"]);
+    assert!(RiderPreset::get("no-such-rider").is_none());
+    let nils = RiderPreset::nils();
+    assert_eq!(
+        RiderModel::build_preset(&nils).parts(),
+        RiderModel::build(&RiderStyle::default()).parts()
+    );
+    assert_ne!(
+        RiderModel::build_preset(&RiderPreset::sigrid()).parts(),
+        RiderModel::build(&RiderStyle::default()).parts()
+    );
+}
+
+#[test]
+fn sigrid_is_a_valid_mesh_near_the_triangle_budget() {
+    let reference = model();
+    let model = sigrid();
+    for part in model.parts() {
+        assert!(!part.surfaces().is_empty(), "{}: no geometry", part.name());
+        check::assert_part_valid(part);
+        for shell in check::shells(part) {
+            assert!(
+                shell.closed,
+                "{}: open shell of {} triangles near {:?}",
+                part.name(),
+                shell.triangles,
+                shell.sample
+            );
+            assert!(
+                shell.volume_m3 > 0.0,
+                "{}: inward shell near {:?}",
+                part.name(),
+                shell.sample
+            );
+        }
+    }
+    let reference_count = reference.triangle_count();
+    let count = model.triangle_count();
+    println!("triangles: sigrid {count}, nils {reference_count}");
+    let limit = reference_count + reference_count / 10;
+    assert!(
+        count <= limit,
+        "{count} triangles is more than 10% over {reference_count}"
+    );
+    assert!(count + 200 > reference_count, "sigrid lost a lot of mesh");
+    assert!(
+        model.part(PartId::Head).triangle_count() > reference.part(PartId::Head).triangle_count()
+    );
+}
+
+#[test]
+fn sigrid_reaches_without_clamping_in_every_posture() {
+    let model = sigrid();
+    let rig = model.rig();
+    for (name, mode) in riding_modes() {
+        let mut knee_min = f32::MAX;
+        let mut knee_max = f32::MIN;
+        let mut elbow_min = f32::MAX;
+        for step in 0..360 {
+            let input = PoseInput {
+                crank_angle_rad: (step as f32).to_radians(),
+                steer_rad: 0.1 * (step as f32 * 0.05).sin(),
+                ..mode
+            };
+            let pose = model.pose(&input);
+            let joints = solve(rig, &input).joints;
+            for (i, side) in [-1.0_f32, 1.0].into_iter().enumerate() {
+                let context = format!("{name}, {step} deg, side {side}");
+                let (hip, knee, ankle) = leg_joints_of(&pose, side, rig.shin);
+                let [_, _, _, foot] = leg(side);
+                assert!(
+                    (hip.distance(knee) - rig.thigh).abs() < 1.0e-4,
+                    "{context}: thigh"
+                );
+                assert!(
+                    (knee.distance(ankle) - rig.shin).abs() < 1.0e-4,
+                    "{context}: shin"
+                );
+                assert!(
+                    ankle.distance(place(&pose, foot, rig.ankle)) < 1.0e-4,
+                    "{context}: ankle left the shoe"
+                );
+                let span = hip.distance(ankle);
+                assert!(
+                    span < rig.thigh + rig.shin - 1.0e-3,
+                    "{context}: leg locked straight ({span} m)"
+                );
+                let angle = (hip - knee).angle_between(ankle - knee).to_degrees();
+                knee_min = knee_min.min(angle);
+                knee_max = knee_max.max(angle);
+
+                let [upper, fore, hand] = arm(side);
+                let (shoulder, elbow, wrist) = (
+                    origin(&pose, upper),
+                    origin(&pose, fore),
+                    origin(&pose, hand),
+                );
+                assert!(
+                    (shoulder.distance(elbow) - rig.upper_arm).abs() < 1.0e-4,
+                    "{context}: upper arm"
+                );
+                assert!(
+                    (elbow.distance(wrist) - rig.forearm).abs() < 1.0e-4,
+                    "{context}: forearm"
+                );
+                assert!(
+                    joints.shoulder_reach[i] == 0.0,
+                    "{context}: shoulder pulled {} m",
+                    joints.shoulder_reach[i]
+                );
+                let elbow_angle = (shoulder - elbow).angle_between(wrist - elbow).to_degrees();
+                elbow_min = elbow_min.min(elbow_angle);
+                assert!(
+                    (80.0..172.0).contains(&elbow_angle),
+                    "{context}: elbow {elbow_angle}"
+                );
+                let hood = Vec3::from_array(if side < 0.0 {
+                    pose.anchors.hood_l
+                } else {
+                    pose.anchors.hood_r
+                });
+                if mode.tuck == 0.0 {
+                    assert!(
+                        wrist.distance(hood) < 0.12,
+                        "{context}: wrist left the hood"
+                    );
+                }
+            }
+        }
+        println!(
+            "sigrid {name}: knee {knee_min:.1}..{knee_max:.1} deg, softest elbow {elbow_min:.1}"
+        );
+        let (low, high) = if mode.stand > 0.0 {
+            (60.0, 165.0)
+        } else {
+            (60.0, 155.0)
+        };
+        assert!((low..=high).contains(&knee_min) && (low..=high).contains(&knee_max));
+    }
+}
+
+#[test]
+fn sigrid_does_not_enter_the_saddle_or_the_top_tube_any_further() {
+    let nils = model();
+    let sigrid = sigrid();
+    let nils_saddle = deepest_into_saddle(&nils);
+    let sigrid_saddle = deepest_into_saddle(&sigrid);
+    let nils_tube = deepest_into_top_tube(&nils);
+    let sigrid_tube = deepest_into_top_tube(&sigrid);
+    println!(
+        "saddle penetration mm: nils {:.1}, sigrid {:.1}; top tube mm: nils {:.1}, sigrid {:.1}",
+        nils_saddle * 1000.0,
+        sigrid_saddle * 1000.0,
+        nils_tube * 1000.0,
+        sigrid_tube * 1000.0
+    );
+    assert!(
+        sigrid_saddle <= nils_saddle + 0.001,
+        "sigrid sits {:.1} mm further into the saddle",
+        (sigrid_saddle - nils_saddle) * 1000.0
+    );
+    assert!(
+        sigrid_tube <= nils_tube + 0.001,
+        "sigrid enters the top tube {:.1} mm further",
+        (sigrid_tube - nils_tube) * 1000.0
+    );
+}
+
+#[test]
+fn sigrid_pose_is_not_materially_slower() {
+    let nils = model();
+    let sigrid = sigrid();
+    let _ = time_poses(&nils);
+    let _ = time_poses(&sigrid);
+    let nils_s = time_poses(&nils).min(time_poses(&nils));
+    let sigrid_s = time_poses(&sigrid).min(time_poses(&sigrid));
+    println!(
+        "pose 30000 calls: nils {:.2} ms, sigrid {:.2} ms ({:.1}%)",
+        nils_s * 1000.0,
+        sigrid_s * 1000.0,
+        (sigrid_s / nils_s - 1.0) * 100.0
+    );
+    assert!(
+        sigrid_s <= nils_s * 1.08,
+        "sigrid pose is {:.1}% slower",
+        (sigrid_s / nils_s - 1.0) * 100.0
+    );
 }

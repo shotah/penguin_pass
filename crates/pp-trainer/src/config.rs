@@ -52,6 +52,15 @@ pub struct TrainerConfig {
     pub cw_kg_per_m: f32,
     /// Whether the session requests control.
     pub mode: SessionMode,
+    /// Rider mass, in kilograms, sent in an FE-C user-configuration page.
+    ///
+    /// `None` sends the invalid weight, so the trainer keeps its own rider mass.
+    /// The session crate owns the rider profile and copies it here at spawn.
+    pub rider_mass_kg: Option<f32>,
+    /// Bicycle mass, in kilograms, not including the rider.
+    ///
+    /// `None` sends the invalid bicycle weight on the FE-C user-configuration page.
+    pub bike_mass_kg: Option<f32>,
 }
 
 impl Default for TrainerConfig {
@@ -67,6 +76,8 @@ impl Default for TrainerConfig {
             crr: DEFAULT_CRR,
             cw_kg_per_m: DEFAULT_CW_KG_PER_M,
             mode: SessionMode::Control,
+            rider_mass_kg: None,
+            bike_mass_kg: None,
         }
     }
 }

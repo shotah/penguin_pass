@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="title desc">
+  <title id="title">Penguin Pass</title>
+  <desc id="desc">A penguin in a cycling helmet beside a road that winds up to a sunlit mountain pass.</desc>
+
+  <defs>
+    <clipPath id="badge">
+      <rect width="512" height="512" rx="96"/>
+    </clipPath>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1b3e"/>
+      <stop offset="0.5" stop-color="#27508f"/>
+      <stop offset="0.78" stop-color="#f08a4b"/>
+      <stop offset="1" stop-color="#f6c177"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffe9a8" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="snow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d7e3f4"/>
+    </linearGradient>
+  </defs>
+
+  <g clip-path="url(#badge)">
+    <!-- Sky and the sun rising through the pass -->
+    <rect width="512" height="512" fill="url(#sky)"/>
+    <circle cx="262" cy="288" r="150" fill="url(#glow)"/>
+    <circle cx="262" cy="288" r="68" fill="#ffd166"/>
+
+    <!-- Far ridge -->
+    <path d="M-20 400 L70 268 L128 330 L196 250 L262 340 L330 262 L396 322 L450 250 L540 400 Z" fill="#1c3566" opacity="0.55"/>
+
+    <!-- Left peak -->
+    <path d="M-40 430 L150 150 L310 430 Z" fill="#22386b"/>
+    <path d="M150 150 L310 430 L190 430 Z" fill="#1a2c57"/>
+    <path d="M150 150 L196 231 L177 242 L159 219 L141 240 L121 216 L96 230 Z" fill="#f4f8ff"/>
+
+    <!-- Right peak -->
+    <path d="M214 430 L378 118 L552 430 Z" fill="#2e4a86"/>
+    <path d="M378 118 L552 430 L420 430 Z" fill="#243c70"/>
+    <path d="M378 118 L428 208 L407 222 L388 199 L367 224 L347 201 L331 208 Z" fill="#f4f8ff"/>
+
+    <!-- Snowfield -->
+    <path d="M0 396 Q256 332 512 396 V512 H0 Z" fill="url(#snow)"/>
+
+    <!-- Road winding up to the pass -->
+    <path d="M214 512 C222 468 330 468 338 436 C344 412 262 412 258 392 C255 372 262 360 262 344
+             L270 344 C271 362 296 374 300 392 C306 418 426 410 414 444 C404 474 366 484 372 512 Z" fill="#39425a"/>
+    <g fill="none" stroke="#f4f8ff" stroke-linecap="round">
+      <path d="M293 512 C296 474 370 470 376 440" stroke-width="5" stroke-dasharray="15 13"/>
+      <path d="M376 440 C380 414 283 414 279 392" stroke-width="3" stroke-dasharray="10 9"/>
+      <path d="M279 392 C277 374 266 362 266 346" stroke-width="1.6" stroke-dasharray="6 5"/>
+    </g>
+
+    <!-- Penguin, scaled about its feet -->
+    <g transform="translate(136 494) scale(1.15) translate(-136 -494)">
+      <ellipse cx="112" cy="494" rx="22" ry="9" fill="#f59e0b"/>
+      <ellipse cx="160" cy="494" rx="22" ry="9" fill="#f59e0b"/>
+      <ellipse cx="70" cy="404" rx="15" ry="50" transform="rotate(14 70 404)" fill="#0b1220"/>
+      <ellipse cx="134" cy="406" rx="64" ry="90" fill="#111a2e"/>
+      <ellipse cx="146" cy="420" rx="43" ry="70" fill="#ffffff"/>
+      <ellipse cx="194" cy="402" rx="13" ry="46" transform="rotate(-16 194 402)" fill="#0b1220"/>
+      <circle cx="138" cy="312" r="46" fill="#111a2e"/>
+      <ellipse cx="156" cy="328" rx="24" ry="20" fill="#ffffff"/>
+      <circle cx="162" cy="324" r="5.5" fill="#111a2e"/>
+      <path d="M176 318 L212 329 L176 340 Z" fill="#f59e0b"/>
+      <path d="M176 329 L212 329 L176 340 Z" fill="#d97706"/>
+
+      <!-- Cycling helmet -->
+      <path d="M88 306 A50 50 0 0 1 188 306 L188 311 Q138 294 88 311 Z" fill="#e63946"/>
+      <path d="M88 311 Q138 294 188 311 L188 316 Q138 300 88 316 Z" fill="#b3202c"/>
+      <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.92">
+        <path d="M110 290 L121 273"/>
+        <path d="M136 284 L138 264"/>
+        <path d="M163 289 L154 272"/>
+      </g>
+    </g>
+  </g>
+
+  <rect x="4" y="4" width="504" height="504" rx="92" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="8"/>
+</svg>

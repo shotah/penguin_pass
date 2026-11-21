@@ -416,6 +416,27 @@ async fn status_starts_neutral_then_reflects_publish_status() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn set_course_replaces_the_profile_the_page_reads() {
+    let server = start(course());
+    let client = client();
+    let url = format!("http://{}/api/course", server.local_addr());
+    let first: CourseProfile = send_get(&client, &url).await.json().await.expect("course");
+    assert_eq!(first.name, "Test Loop");
+
+    let replacement = CourseProfile {
+        name: "Desert 10 km".to_owned(),
+        length_m: 10_000.0,
+        points: vec![ProfilePoint {
+            distance_m: 0.0,
+            elevation_m: 1.0,
+        }],
+    };
+    server.set_course(replacement.clone());
+    let got: CourseProfile = send_get(&client, &url).await.json().await.expect("course");
+    assert_eq!(got, replacement);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn status_event_is_separate_from_telemetry_events() {
     let server = start(CourseProfile::default());
     let status = sample_status();
