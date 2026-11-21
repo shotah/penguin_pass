@@ -2,7 +2,6 @@
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -143,13 +142,16 @@ pub(crate) fn save(path: &Path, store: &Store) -> Result<(), StoreError> {
 }
 
 fn write_private(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)
-        .map_err(StoreError::Write)?;
+    let mut options = OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    // Owner-only on Unix. Windows has no mode bits; the file stays in the
+    // user's profile with the default ACL.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path).map_err(StoreError::Write)?;
     file.write_all(bytes).map_err(StoreError::Write)?;
     file.sync_all().map_err(StoreError::Write)?;
     Ok(())

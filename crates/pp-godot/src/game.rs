@@ -10,7 +10,10 @@ use std::sync::Arc;
 use godot::classes::input::MouseMode;
 use godot::classes::node::PhysicsInterpolationMode;
 use godot::classes::node::ProcessMode;
-use godot::classes::{INode3D, Input, InputEvent, Node3D, Time};
+use godot::classes::{
+    INode3D, Input, InputEvent, InputEventJoypadButton, InputEventJoypadMotion, InputEventKey,
+    Node3D, Time,
+};
 use godot::obj::{Base, Gd, WithBaseField};
 use godot::prelude::*;
 use pp_core::{Telemetry, TrainerSample};
@@ -60,6 +63,8 @@ pub struct Game {
     pad_down: bool,
     lane_moved: bool,
     pad_badge: crate::hud::PadBadge,
+    input_mode: pp_view::prompts::InputMode,
+    input_locked: bool,
     pad_preview: bool,
     trainer_preview: Option<(String, String)>,
     ride_file: Option<pp_view::rides::RideFileNote>,
@@ -126,6 +131,8 @@ impl INode3D for Game {
             pad_down: false,
             lane_moved: false,
             pad_badge: crate::hud::PadBadge::Off,
+            input_mode: pp_view::prompts::InputMode::Keyboard,
+            input_locked: false,
             pad_preview: false,
             trainer_preview: None,
             ride_file: None,
@@ -198,6 +205,12 @@ impl INode3D for Game {
         menu::apply_window_mode(session.settings().fullscreen);
         let course = session.course().clone();
         self.hub = hub;
+        if let Some(mode) = launch.input_mode {
+            self.input_mode = mode;
+            self.input_locked = true;
+        } else if !Input::singleton().get_connected_joypads().is_empty() {
+            self.input_mode = pp_view::prompts::InputMode::Gamepad;
+        }
         self.launch = Some(launch);
         self.session = Some(session);
         godot_print!("PENGUIN_PASS_SETTINGS {}", self.settings_path().display());
@@ -387,6 +400,7 @@ impl INode3D for Game {
     }
 
     fn unhandled_input(&mut self, event: Gd<InputEvent>) {
+        self.note_device(&event);
         if event.is_echo() {
             return;
         }
@@ -778,6 +792,18 @@ impl Game {
     pub fn debug_show_title(&mut self) {
         self.session_mut().hold_at_start();
         self.session_mut().set_sim_power(0);
+        self.fish_preview = false;
+        self.shell = Shell::new(false);
+        if let Some(menu) = self.menu.as_mut() {
+            menu.close();
+        }
+        self.sync_music();
+    }
+
+    /// Show the title menu without sending the rider back to the start.
+    #[func]
+    pub fn debug_park_title(&mut self) {
+        self.fish_preview = false;
         self.shell = Shell::new(false);
         if let Some(menu) = self.menu.as_mut() {
             menu.close();
@@ -1311,6 +1337,7 @@ impl Game {
         if let Some(mut hud) = self.hud.clone() {
             hud.bind_mut().set_chrome(ride_chrome(&play));
         }
+        self.push_prompts();
         let side = crate::road::flat_right(tangent);
         let position = position + side * lane.offset_m;
         let lean = (turn * telemetry.speed_mps * 0.18 + lane.lean_rad).clamp(-0.35, 0.35);
@@ -1753,11 +1780,52 @@ impl Game {
         }
     }
 
+    fn note_device(&mut self, event: &Gd<InputEvent>) {
+        if self.input_locked || event.is_echo() {
+            return;
+        }
+        if event.clone().try_cast::<InputEventKey>().is_ok() {
+            self.input_mode = pp_view::prompts::InputMode::Keyboard;
+        } else if event.clone().try_cast::<InputEventJoypadButton>().is_ok() {
+            self.input_mode = pp_view::prompts::InputMode::Gamepad;
+        } else if let Ok(motion) = event.clone().try_cast::<InputEventJoypadMotion>()
+            && motion.get_axis_value().abs() >= 0.5
+        {
+            self.input_mode = pp_view::prompts::InputMode::Gamepad;
+        }
+    }
+
+    fn push_prompts(&mut self) {
+        let play = self.session().play();
+        let prompts = pp_view::prompts::ride_prompts(
+            self.input_mode,
+            play.powerup_held.is_some(),
+            play.workout.is_some(),
+        );
+        if let Some(mut hud) = self.hud.clone() {
+            hud.bind_mut().set_prompts(prompts);
+        }
+        let footer = pp_view::prompts::menu_footer(self.input_mode);
+        if let Some(screens) = self.screens.as_mut() {
+            screens.set_footer(&footer);
+        }
+        if let Some(menu) = self.menu.as_mut() {
+            menu.set_footer(&footer);
+        }
+    }
+
     fn poll_zwift(&mut self) {
         let Some(link) = self.controllers.as_mut() else {
             return;
         };
         let events = link.drain_events();
+        if !self.input_locked
+            && events
+                .iter()
+                .any(|event| matches!(event, pp_controllers::ControllerEvent::Pressed { .. }))
+        {
+            self.input_mode = pp_view::prompts::InputMode::Zwift;
+        }
         let riding = self.shell.screen() == Screen::Riding;
         let skip_shift = pp_view::controllers::batch_has_paddle(&events);
         let actions: Vec<_> = events
@@ -2135,6 +2203,9 @@ impl Game {
     }
 
     fn announce_track(&mut self) {
+        if self.launch.as_ref().is_some_and(|launch| launch.no_music) {
+            return;
+        }
         let title = self
             .music
             .as_ref()
@@ -2731,22 +2802,14 @@ fn zwift_word(state: &pp_controllers::LinkState) -> String {
 }
 
 fn preview_fish(distance_m: f64) -> Vec<crate::fish::FishSpot> {
-    let mut spots = Vec::new();
-    for slot in 0..5u8 {
-        spots.push(crate::fish::FishSpot {
+    (0..3u8)
+        .map(|slot| crate::fish::FishSpot {
             index: u32::from(slot),
-            distance_m: distance_m + 22.0 + f64::from(slot) * 8.0,
+            distance_m: distance_m + 18.0 + f64::from(slot) * 14.0,
             slot,
-            golden: false,
-        });
-    }
-    spots.push(crate::fish::FishSpot {
-        index: 9,
-        distance_m: distance_m + 8.0,
-        slot: 2,
-        golden: true,
-    });
-    spots
+            golden: slot == 2,
+        })
+        .collect()
 }
 
 fn pose(course: &Course, lap_distance_m: f64) -> (Vector3, Vector3) {

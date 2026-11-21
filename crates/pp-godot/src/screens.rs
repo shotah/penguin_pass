@@ -185,7 +185,10 @@ impl Screens {
         detail.add_theme_color_override("font_color", ui_style::MIST);
         box_.add_child(&detail);
 
-        let mut hints = ui_style::label("Move    Select", Role::Unit);
+        let mut hints = ui_style::label(
+            &pp_view::prompts::menu_footer(pp_view::prompts::InputMode::Keyboard),
+            Role::Unit,
+        );
         hints.set_name("Hints");
         box_.add_child(&hints);
 
@@ -329,6 +332,11 @@ impl Screens {
                     ui_style::SNOW
                 },
             );
+            label.add_theme_color_override("font_outline_color", ui_style::INK);
+            label.add_theme_constant_override(
+                "outline_size",
+                if on_title && !focused { 6 } else { 0 },
+            );
             if let Some(panel) = self.row_panels.get_mut(index) {
                 panel.set_visible(true);
                 if focused {
@@ -349,6 +357,15 @@ impl Screens {
             self.progress_scroll.set_v_scroll(offset.max(0));
         }
         self.detail.set_text(&view.detail);
+        let outline = if on_title { 6 } else { 0 };
+        self.detail
+            .add_theme_color_override("font_outline_color", ui_style::INK);
+        self.detail
+            .add_theme_constant_override("outline_size", outline);
+        self.hints
+            .add_theme_color_override("font_outline_color", ui_style::INK);
+        self.hints
+            .add_theme_constant_override("outline_size", outline);
         self.hints
             .set_visible(!matches!(view.screen, Screen::Riding | Screen::Settings));
         self.paint_profiles(view, profiles);
@@ -364,6 +381,13 @@ impl Screens {
     /// Twelve samples per workout row. Empty means no bars.
     pub fn set_workout_samples(&mut self, samples: Vec<Vec<f32>>) {
         self.workout_samples = samples;
+    }
+
+    /// Footer naming the buttons for the device used last.
+    pub fn set_footer(&mut self, text: &str) {
+        if self.hints.get_text() != text {
+            self.hints.set_text(text);
+        }
     }
 
     /// Totals and badges for the Progress screen.

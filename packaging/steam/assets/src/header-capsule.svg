@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 430" width="920" height="430" role="img" aria-labelledby="title desc">
+  <title id="title">Penguin Pass</title>
+  <desc id="desc">Steam header capsule. A cycling penguin in a red headband and mirrored sunglasses beside a sunny green alpine pass with snow-capped mountains, pines, a winding road, and the Penguin Pass title.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A7CE0"/>
+      <stop offset="56%" stop-color="#5EC0FA"/>
+      <stop offset="100%" stop-color="#CFF0FF"/>
+    </linearGradient>
+    <radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#FFF9C4" stop-opacity="0.95"/>
+      <stop offset="48%" stop-color="#FFE066" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#FFE066" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="meadowMid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#60BE56"/>
+      <stop offset="100%" stop-color="#358644"/>
+    </linearGradient>
+    <linearGradient id="meadowFore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3B8E47"/>
+      <stop offset="100%" stop-color="#1E522E"/>
+    </linearGradient>
+    <linearGradient id="profileFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="roadClip">
+      <path d="M-20 264 C160 226 350 250 494 238 C640 226 780 256 940 242 V440 H-20 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Sunny alpine sky -->
+  <rect width="920" height="430" fill="url(#sky)"/>
+
+  <!-- High warm summer sun in open sky -->
+  <circle cx="748" cy="84" r="118" fill="url(#sunGlow)"/>
+  <circle cx="748" cy="84" r="34" fill="#FFE169"/>
+
+  <!-- Soft sunlit clouds in open sky -->
+  <g fill="#FFFFFF" opacity="0.84">
+    <path d="M44 76 C44 63 55 54 68 56 C78 41 102 39 114 52 C128 49 142 60 140 76 Z"/>
+    <path d="M424 62 C424 52 433 45 444 47 C452 36 470 35 480 45 C490 43 500 52 498 62 Z" opacity="0.72"/>
+    <path d="M826 76 C826 66 835 59 845 61 C852 51 869 50 878 59 C888 57 897 65 896 76 Z" opacity="0.76"/>
+  </g>
+
+  <!-- Distant hazy alpine ridgeline -->
+  <path d="M-20 236 L92 174 L214 210 L358 156 L502 198 L652 152 L796 196 L940 164 L940 286 L-20 286 Z" fill="#6396C6" opacity="0.5"/>
+
+  <!-- Two sunlit alpine peaks framing the mountain pass saddle around x=494 -->
+  <path d="M136 296 L334 86 L504 296 Z" fill="#46729E"/>
+  <path d="M334 86 L504 296 L382 296 Z" fill="#355B82"/>
+  <path d="M334 86 L372 138 L356 130 L340 146 L322 132 L306 144 L292 134 Z" fill="#F4F9FF" opacity="0.93"/>
+
+  <path d="M462 296 L656 76 L856 296 Z" fill="#5282B0"/>
+  <path d="M656 76 L856 296 L706 296 Z" fill="#3C6791"/>
+  <path d="M656 76 L696 134 L678 144 L660 126 L642 146 L624 128 L608 138 Z" fill="#F4F9FF" opacity="0.91"/>
+
+  <!-- Mid sunlit alpine meadow -->
+  <path d="M-20 264 C160 226 350 250 494 238 C640 226 780 256 940 242 V430 H-20 Z" fill="url(#meadowMid)"/>
+
+  <!-- Natural clustered pines on mid hills -->
+  <g>
+    <path d="M16 266 L30 218 L44 266 Z" fill="#1F6338"/>
+    <path d="M20 244 L30 206 L40 244 Z" fill="#2D854C"/>
+    <path d="M42 272 L58 214 L74 272 Z" fill="#1A5430"/>
+    <path d="M47 244 L58 200 L69 244 Z" fill="#2B8049"/>
+
+    <path d="M342 254 L354 214 L366 254 Z" fill="#226B3D"/>
+    <path d="M345 236 L354 204 L363 236 Z" fill="#308C50"/>
+    <path d="M366 260 L382 204 L398 260 Z" fill="#1B5932"/>
+    <path d="M371 234 L382 192 L393 234 Z" fill="#2B8049"/>
+
+    <path d="M754 266 L770 212 L786 266 Z" fill="#226B3D"/>
+    <path d="M758 242 L770 200 L782 242 Z" fill="#308C50"/>
+    <path d="M786 274 L806 204 L826 274 Z" fill="#1B5932"/>
+    <path d="M792 242 L806 190 L820 242 Z" fill="#2B8049"/>
+    <path d="M828 272 L844 220 L860 272 Z" fill="#1F6338"/>
+    <path d="M832 248 L844 208 L856 248 Z" fill="#2D854C"/>
+    <path d="M862 276 L876 232 L890 276 Z" fill="#1A5430"/>
+  </g>
+
+  <!-- Foreground green meadow -->
+  <path d="M-20 318 C220 282 560 330 940 294 V430 H-20 Z" fill="url(#meadowFore)"/>
+
+  <!-- Clean alpine pass road rising from foreground and vanishing over the saddle at (488, 238) -->
+  <g clip-path="url(#roadClip)">
+    <path d="M276 436 C332 362 414 316 474 238 L496 238 C462 316 456 364 432 436 Z" fill="#364054"/>
+    <g fill="none" stroke="#F8FAFC" stroke-linecap="round">
+      <path d="M276 436 C332 362 414 316 474 238" stroke-width="5.5"/>
+      <path d="M432 436 C456 364 462 316 496 238" stroke-width="5.5"/>
+      <path d="M354 436 C394 363 438 316 485 238" stroke-width="3.6" stroke-dasharray="14 12"/>
+    </g>
+  </g>
+
+  <!-- Hardcore cycling penguin head mascot -->
+  <image href="mascot.svg" x="24" y="64" width="302" height="302"/>
+
+  <!-- Bold outlined PENGUIN PASS wordmark -->
+  <g font-family="Barlow Semi Condensed" font-weight="700" text-anchor="middle">
+    <text x="614" y="218" font-size="88" fill="#0B1220" opacity="0.36" letter-spacing="2.5" transform="translate(0 5)">PENGUIN PASS</text>
+    <text x="614" y="218" font-size="88" fill="#FFFFFF" stroke="#0B1220" stroke-width="10" paint-order="stroke" stroke-linejoin="round" letter-spacing="2.5">PENGUIN PASS</text>
+  </g>
+
+  <!-- Course elevation profile along the lower right -->
+  <path d="M510 404 L564 398 L618 388 L672 374 L726 362 L776 356 L826 366 L882 378 L882 430 L510 430 Z" fill="url(#profileFill)"/>
+  <g fill="none" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M510 404 L564 398" stroke="#CBD5E1"/>
+    <path d="M564 398 L618 388" stroke="#4ADE80"/>
+    <path d="M618 388 L672 374" stroke="#FFE066"/>
+    <path d="M672 374 L726 362" stroke="#FF9A3C"/>
+    <path d="M726 362 L776 356" stroke="#FF5A52"/>
+    <path d="M776 356 L826 366" stroke="#D277FF"/>
+    <path d="M826 366 L882 378" stroke="#5CE1FF"/>
+  </g>
+  <circle cx="776" cy="356" r="6.5" fill="#FFFFFF" stroke="#0B1220" stroke-width="2.8"/>
+</svg>

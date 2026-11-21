@@ -2,6 +2,7 @@
 name = "pp-segments"
 description = "Timed segments, personal records, and a best-lap ghost for Penguin Pass"
 version.workspace = true
+license.workspace = true
 edition.workspace = true
 publish.workspace = true
 

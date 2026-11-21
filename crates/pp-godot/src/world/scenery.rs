@@ -5,6 +5,7 @@
 //! [`ROAD_KEEP_OUT_M`] of the centreline.
 
 use godot::classes::base_material_3d::Flags;
+use godot::classes::geometry_instance_3d::{ShadowCastingSetting, VisibilityRangeFadeMode};
 use godot::classes::mesh::PrimitiveType;
 use godot::classes::multi_mesh::TransformFormat;
 use godot::classes::{
@@ -195,13 +196,29 @@ pub fn plan_chunk(
         slope: slope_at(field, x, z),
     })
     .into_iter()
-    .filter(|placed| keeps_scatter(&layer.kind, placed.x, placed.z, sites))
+    .filter(|placed| {
+        keeps_scatter(&layer.kind, placed.x, placed.z, sites)
+            && keep_outer_tree(layer, field, placed.x, placed.z)
+    })
     .map(|placed| Instance {
         position: Vector3::new(placed.x, placed.y, placed.z),
         yaw: placed.yaw,
         scale: placed.scale,
     })
     .collect()
+}
+
+/// Full density near the road. Past 120 m, keep about three fifths so the
+/// outer hillside stays a forest without a solid wall of trunks.
+fn keep_outer_tree(layer: &ScatterLayer, field: &Field, x: f32, z: f32) -> bool {
+    if layer.kind != "tree" {
+        return true;
+    }
+    if field.road(x, z).0 < 120.0 {
+        return true;
+    }
+    let bits = x.to_bits().wrapping_mul(0x9E37_79B1).rotate_left(11) ^ z.to_bits();
+    bits % 5 < 3
 }
 
 fn variant_index(instance: &Instance, count: usize) -> usize {
@@ -233,118 +250,17 @@ fn spawn_chunk(
     let mut node = MultiMeshInstance3D::new_alloc();
     node.set_name(&format!("{}{cx}_{cz}_{variant}", layer.kind));
     node.set_multimesh(&multi);
-    let far_tree = layer.kind == "tree" && layer.visibility_m > 120.0;
-    if far_tree {
-        node.set_visibility_range_end(110.0);
-        node.set_visibility_range_end_margin(24.0);
+    if layer.kind == "tree" {
+        // Real models out to the theme distance. They fade into the fog.
+        // Shadows on this ring tripled the start-straight frame, so they stay off.
+        node.set_visibility_range_end(layer.visibility_m);
+        node.set_visibility_range_end_margin(80.0);
+        node.set_visibility_range_fade_mode(VisibilityRangeFadeMode::SELF);
     } else {
         node.set_visibility_range_end(layer.visibility_m);
     }
-    node.set_cast_shadows_setting(godot::classes::geometry_instance_3d::ShadowCastingSetting::OFF);
+    node.set_cast_shadows_setting(ShadowCastingSetting::OFF);
     parent.add_child(&node);
-    if far_tree {
-        let stand = if layer.ids.iter().any(|id| id.contains("pine")) {
-            distant_pine_mesh()
-        } else {
-            distant_broad_mesh()
-        };
-        let prop = ScatterProp {
-            mesh: stand.upcast(),
-            lift: 0.0,
-        };
-        spawn_distant(parent, &prop, layer, cx, cz, variant, planned);
-    }
-}
-
-fn spawn_distant(
-    parent: &mut Gd<Node3D>,
-    prop: &ScatterProp,
-    layer: &ScatterLayer,
-    cx: i32,
-    cz: i32,
-    variant: i32,
-    planned: &[Instance],
-) {
-    let mut multi = MultiMesh::new_gd();
-    multi.set_transform_format(TransformFormat::TRANSFORM_3D);
-    multi.set_mesh(&prop.mesh);
-    multi.set_instance_count(planned.len() as i32);
-    for (index, instance) in planned.iter().enumerate() {
-        let basis = Basis::IDENTITY
-            .rotated(Vector3::UP, instance.yaw)
-            .scaled(Vector3::new(instance.scale, instance.scale, instance.scale));
-        let position = instance.position + Vector3::UP * prop.lift * instance.scale;
-        multi.set_instance_transform(index as i32, Transform3D::new(basis, position));
-    }
-    let mut node = MultiMeshInstance3D::new_alloc();
-    node.set_name(&format!("far{}{cx}_{cz}_{variant}", layer.kind));
-    node.set_multimesh(&multi);
-    node.set_visibility_range_begin(90.0);
-    node.set_visibility_range_begin_margin(24.0);
-    node.set_visibility_range_end(layer.visibility_m);
-    node.set_visibility_range_end_margin(40.0);
-    node.set_cast_shadows_setting(godot::classes::geometry_instance_3d::ShadowCastingSetting::OFF);
-    parent.add_child(&node);
-}
-
-fn distant_pine_mesh() -> Gd<ArrayMesh> {
-    let mut tool = SurfaceTool::new_gd();
-    tool.begin(PrimitiveType::TRIANGLES);
-    cylinder(
-        &mut tool,
-        0.0,
-        1.6,
-        0.16,
-        Color::from_rgb(0.34, 0.22, 0.12),
-        5,
-    );
-    cone(
-        &mut tool,
-        1.2,
-        3.4,
-        1.15,
-        Color::from_rgb(0.10, 0.34, 0.16),
-        6,
-    );
-    cone(
-        &mut tool,
-        2.4,
-        4.6,
-        0.85,
-        Color::from_rgb(0.14, 0.40, 0.18),
-        6,
-    );
-    cone(
-        &mut tool,
-        3.5,
-        5.6,
-        0.5,
-        Color::from_rgb(0.18, 0.46, 0.20),
-        5,
-    );
-    finish_mesh(tool)
-}
-
-fn distant_broad_mesh() -> Gd<ArrayMesh> {
-    let mut tool = SurfaceTool::new_gd();
-    tool.begin(PrimitiveType::TRIANGLES);
-    cylinder(
-        &mut tool,
-        0.0,
-        2.2,
-        0.18,
-        Color::from_rgb(0.36, 0.28, 0.18),
-        5,
-    );
-    cone(
-        &mut tool,
-        1.8,
-        4.4,
-        1.3,
-        Color::from_rgb(0.22, 0.40, 0.16),
-        6,
-    );
-    finish_mesh(tool)
 }
 
 fn add_furniture(parent: &mut Gd<Node3D>, course: &Course, field: &Field) {

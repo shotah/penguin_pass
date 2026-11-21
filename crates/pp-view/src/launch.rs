@@ -41,6 +41,8 @@ pub struct LaunchFlags {
     pub sound_capture: Option<PathBuf>,
     /// Hide the console, chips, and toasts. World screenshots use this.
     pub no_hud: bool,
+    /// Forced prompts. `None` follows the last real button.
+    pub input_mode: Option<crate::prompts::InputMode>,
 }
 
 /// Environment values the game already read. Empty strings count as unset.
@@ -83,6 +85,7 @@ pub fn parse_launch_in(args: &[String], env: &LaunchEnv, engine_args: &[String])
     let mut sound_explicit = false;
     let mut sound_capture = None;
     let mut no_hud = is_flag(env.no_hud.as_deref());
+    let mut input_mode = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -102,6 +105,12 @@ pub fn parse_launch_in(args: &[String], env: &LaunchEnv, engine_args: &[String])
                 sound_explicit = true;
             }
             "--no-hud" => no_hud = true,
+            "--input-mode" => {
+                if let Some(value) = args.get(index + 1) {
+                    input_mode = crate::prompts::parse_input_mode(value);
+                    index += 1;
+                }
+            }
             "--sound-capture" => {
                 if let Some(value) = args.get(index + 1) {
                     sound_capture = Some(PathBuf::from(value));
@@ -143,6 +152,7 @@ pub fn parse_launch_in(args: &[String], env: &LaunchEnv, engine_args: &[String])
         no_sound,
         sound_capture,
         no_hud,
+        input_mode,
     }
 }
 
@@ -219,6 +229,14 @@ mod tests {
         assert!(flags.play_through);
         assert!(flags.no_music);
         assert!(flags.no_hud);
+        assert_eq!(
+            parse_launch(
+                &["--input-mode".to_owned(), "gamepad".to_owned()],
+                &LaunchEnv::default()
+            )
+            .input_mode,
+            Some(crate::prompts::InputMode::Gamepad)
+        );
     }
 
     #[test]
@@ -232,6 +250,7 @@ mod tests {
         assert!(!flags.no_sound);
         assert!(flags.sound_capture.is_none());
         assert!(!flags.no_hud);
+        assert!(flags.input_mode.is_none());
         assert!(flags.settings_path.is_none());
         assert!(flags.dashboard_port.is_none());
         assert!(!flags.dashboard_loopback);

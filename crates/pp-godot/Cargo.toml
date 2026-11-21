@@ -2,6 +2,7 @@
 name = "pp-godot"
 description = "Penguin Pass GDExtension library"
 version.workspace = true
+license.workspace = true
 edition.workspace = true
 publish.workspace = true
 

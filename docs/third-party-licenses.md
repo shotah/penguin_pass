@@ -94,23 +94,23 @@ copies to `licenses/assets.md`.
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
 | pin-project-lite | 0.2.18 | Apache-2.0 OR MIT | https://github.com/taiki-e/pin-project-lite |
 | potential_utf | 0.1.6 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
-| pp-arcade | 0.1.0 | missing |  |
-| pp-bots | 0.1.0 | missing |  |
-| pp-cast | 0.1.0 | missing |  |
-| pp-controllers | 0.1.0 | missing |  |
-| pp-core | 0.1.0 | missing |  |
-| pp-course | 0.1.0 | missing |  |
-| pp-ftms | 0.1.0 | missing |  |
-| pp-record | 0.1.0 | missing |  |
-| pp-rider | 0.1.0 | missing |  |
-| pp-routegen | 0.1.0 | missing |  |
-| pp-segments | 0.1.0 | missing |  |
-| pp-session | 0.1.0 | missing |  |
-| pp-strava | 0.1.0 | missing |  |
-| pp-trainer | 0.1.0 | missing |  |
-| pp-view | 0.1.0 | missing |  |
-| pp-workout | 0.1.0 | missing |  |
-| pp-world | 0.1.0 | missing |  |
+| pp-arcade | 0.1.0 | MIT |  |
+| pp-bots | 0.1.0 | MIT |  |
+| pp-cast | 0.1.0 | MIT |  |
+| pp-controllers | 0.1.0 | MIT |  |
+| pp-core | 0.1.0 | MIT |  |
+| pp-course | 0.1.0 | MIT |  |
+| pp-ftms | 0.1.0 | MIT |  |
+| pp-record | 0.1.0 | MIT |  |
+| pp-rider | 0.1.0 | MIT |  |
+| pp-routegen | 0.1.0 | MIT |  |
+| pp-segments | 0.1.0 | MIT |  |
+| pp-session | 0.1.0 | MIT |  |
+| pp-strava | 0.1.0 | MIT |  |
+| pp-trainer | 0.1.0 | MIT |  |
+| pp-view | 0.1.0 | MIT |  |
+| pp-workout | 0.1.0 | MIT |  |
+| pp-world | 0.1.0 | MIT |  |
 | ppv-lite86 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/cryptocorrosion/cryptocorrosion |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
@@ -184,23 +184,4 @@ copies to `licenses/assets.md`.
 
 ## Needs a decision
 
-Missing a `license` field:
-
-- pp-arcade 0.1.0
-- pp-bots 0.1.0
-- pp-cast 0.1.0
-- pp-controllers 0.1.0
-- pp-core 0.1.0
-- pp-course 0.1.0
-- pp-ftms 0.1.0
-- pp-record 0.1.0
-- pp-rider 0.1.0
-- pp-routegen 0.1.0
-- pp-segments 0.1.0
-- pp-session 0.1.0
-- pp-strava 0.1.0
-- pp-trainer 0.1.0
-- pp-view 0.1.0
-- pp-workout 0.1.0
-- pp-world 0.1.0
-
+No crate in this list is missing a licence or outside the permissive set this file checks (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode-DFS, MPL-2.0, CC0-1.0, Unlicense, BSL-1.0, 0BSD, and `OR` / `WITH LLVM-exception` combinations of those).

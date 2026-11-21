@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-labelledby="title desc">
+  <title id="title">Penguin Pass</title>
+  <desc id="desc">Steam library logo on a transparent background. The cycling penguin head mascot beside the bold outlined Penguin Pass wordmark.</desc>
+  <!-- Transparent background: Steam composites this PNG over library-hero. -->
+  <image href="mascot.svg" x="34" y="182" width="356" height="356"/>
+  <g font-family="Barlow Semi Condensed" font-weight="700" text-anchor="start">
+    <text x="418" y="406" font-size="122" fill="#0B1220" opacity="0.48" letter-spacing="3.5" transform="translate(0 7)">PENGUIN PASS</text>
+    <text x="418" y="406" font-size="122" fill="#FFFFFF" stroke="#0B1220" stroke-width="14" paint-order="stroke" stroke-linejoin="round" letter-spacing="3.5">PENGUIN PASS</text>
+  </g>
+</svg>

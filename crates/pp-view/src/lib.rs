@@ -19,6 +19,7 @@ pub mod menu;
 pub mod music;
 pub mod power;
 pub mod profile;
+pub mod prompts;
 pub mod relief;
 pub mod rides;
 pub mod roadbed;

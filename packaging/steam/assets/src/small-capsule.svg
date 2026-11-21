@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 462 174" width="462" height="174" role="img" aria-labelledby="title desc">
+  <title id="title">Penguin Pass</title>
+  <desc id="desc">Steam small capsule. A cycling penguin in a red headband and mirrored sunglasses with a sunny alpine mountain pass and the Penguin Pass title.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A7CE0"/>
+      <stop offset="58%" stop-color="#5EC0FA"/>
+      <stop offset="100%" stop-color="#CFF0FF"/>
+    </linearGradient>
+    <radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#FFF9C4" stop-opacity="0.95"/>
+      <stop offset="48%" stop-color="#FFE066" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#FFE066" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="meadowMid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#60BE56"/>
+      <stop offset="100%" stop-color="#358644"/>
+    </linearGradient>
+    <linearGradient id="meadowFore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3B8E47"/>
+      <stop offset="100%" stop-color="#1E522E"/>
+    </linearGradient>
+    <clipPath id="roadClip">
+      <path d="M-10 112 C90 96 176 108 242 104 C318 98 394 110 472 104 V180 H-10 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Bright summer sky -->
+  <rect width="462" height="174" fill="url(#sky)"/>
+
+  <!-- Warm sun high top-right -->
+  <circle cx="394" cy="36" r="56" fill="url(#sunGlow)"/>
+  <circle cx="394" cy="36" r="17" fill="#FFE169"/>
+
+  <!-- Soft clouds -->
+  <g fill="#FFFFFF" opacity="0.82">
+    <path d="M24 38 C24 31 30 26 37 27 C42 20 54 19 60 26 C67 24 74 30 73 38 Z"/>
+    <path d="M242 32 C242 26 247 22 253 23 C258 17 268 16 274 22 C280 21 286 26 285 32 Z" opacity="0.72"/>
+  </g>
+
+  <!-- Distant ridgeline -->
+  <path d="M-10 106 L58 76 L132 94 L214 68 L296 90 L382 66 L472 86 L472 126 L-10 126 Z" fill="#6396C6" opacity="0.5"/>
+
+  <!-- Twin snow-capped peaks framing the pass -->
+  <path d="M120 126 L210 38 L294 126 Z" fill="#46729E"/>
+  <path d="M210 38 L294 126 L234 126 Z" fill="#355B82"/>
+  <path d="M210 38 L229 64 L220 60 L212 68 L204 60 L195 66 L188 61 Z" fill="#F4F9FF" opacity="0.93"/>
+
+  <path d="M256 126 L342 34 L436 126 Z" fill="#5282B0"/>
+  <path d="M342 34 L436 126 L366 126 Z" fill="#3C6791"/>
+  <path d="M342 34 L362 62 L352 68 L343 58 L334 68 L324 59 L316 64 Z" fill="#F4F9FF" opacity="0.91"/>
+
+  <!-- Mid alpine meadow -->
+  <path d="M-10 112 C90 96 176 108 242 104 C318 98 394 110 472 104 V174 H-10 Z" fill="url(#meadowMid)"/>
+
+  <!-- Compact evergreen pine cluster on the right -->
+  <g>
+    <path d="M352 132 L362 98 L372 132 Z" fill="#226B3D"/>
+    <path d="M355 116 L362 90 L369 116 Z" fill="#308C50"/>
+    <path d="M376 138 L389 92 L402 138 Z" fill="#1B5932"/>
+    <path d="M380 116 L389 82 L398 116 Z" fill="#2B8049"/>
+    <path d="M406 134 L417 100 L428 134 Z" fill="#1F6338"/>
+    <path d="M409 118 L417 92 L425 118 Z" fill="#2D854C"/>
+  </g>
+
+  <!-- Foreground meadow -->
+  <path d="M-10 134 C126 118 294 142 472 126 V174 H-10 Z" fill="url(#meadowFore)"/>
+
+  <!-- Clean pass road climbing smoothly to the saddle crest -->
+  <g clip-path="url(#roadClip)">
+    <path d="M138 178 C166 148 202 130 234 104 L248 104 C232 130 226 148 214 178 Z" fill="#364054"/>
+    <g fill="none" stroke="#F8FAFC" stroke-linecap="round">
+      <path d="M138 178 C166 148 202 130 234 104" stroke-width="3.2"/>
+      <path d="M214 178 C226 148 232 130 248 104" stroke-width="3.2"/>
+      <path d="M176 178 C196 148 217 130 241 104" stroke-width="2.2" stroke-dasharray="7 6"/>
+    </g>
+  </g>
+
+  <!-- Cycling penguin head mascot -->
+  <image href="mascot.svg" x="12" y="12" width="148" height="148"/>
+
+  <!-- Punchy bold wordmark readable even at half scale -->
+  <g font-family="Barlow Semi Condensed" font-weight="700" text-anchor="middle">
+    <text x="306" y="104" font-size="45" fill="#0B1220" opacity="0.38" letter-spacing="1.2" transform="translate(0 3)">PENGUIN PASS</text>
+    <text x="306" y="104" font-size="45" fill="#FFFFFF" stroke="#0B1220" stroke-width="6" paint-order="stroke" stroke-linejoin="round" letter-spacing="1.2">PENGUIN PASS</text>
+  </g>
+</svg>

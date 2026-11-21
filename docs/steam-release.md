@@ -50,8 +50,48 @@ steamcmd +login YOUR_BUILD_ACCOUNT +run_app_build /absolute/path/tools/steam/app
 Use a dedicated build account with "Edit App Metadata" and "Publish App
 Changes To Steam", as the uploading page describes. Set `Preview` to `1`
 in `app_build.vdf` the first time. Valve says a preview build writes a local
-manifest and does not upload. The content root is the folder from
-`./x export`. The executable in the depot is `penguin-pass.x86_64`.
+manifest and does not upload. The content root is `dist/`, and each
+depot takes one player folder. The executable in the Linux depot is
+`penguin-pass.x86_64`.
+
+Windows and macOS are two more depots. `tools/steam/app_build.vdf` lists
+`depot_build_linux.vdf`, `depot_build_windows.vdf`, and
+`depot_build_macos.vdf`. The content root is `dist/`. Replace
+`YOUR_WINDOWS_DEPOT_ID` and `YOUR_MACOS_DEPOT_ID` the same way as the
+Linux id. In Steamworks, set the Windows depot's OS to Windows and the
+macOS depot's OS to macOS.
+
+| Depot | Folder under `dist/` | Player file |
+| --- | --- | --- |
+| Linux | `penguin-pass-linux-x86_64` | `penguin-pass.x86_64` |
+| Windows | `penguin-pass-windows-x86_64` | `penguin-pass.exe` |
+| macOS | `penguin-pass-macos` | `penguin-pass.app` |
+
+The Windows and macOS folders are what `.github/workflows/cross-platform.yml`
+exports on a `v*` tag or a manual run. The macOS app is ad-hoc signed by
+Godot's Testing export and is not notarized. That export has not been run
+on a Mac yet. Launch options for those two depots are in `docs/cross-platform.md`.
+
+## Steam Cloud
+
+Auto-Cloud should sync the Godot user-data folder for the project name
+`Penguin Pass`, and only the files a new machine needs to resume:
+
+| Root | Path | Files |
+| --- | --- | --- |
+| LinuxXdgDataHome | `godot/app_userdata/Penguin Pass` | `settings.toml`, `records.toml`, `arcade.toml`, `rides/*.fit` |
+| WinAppData | `Godot/app_userdata/Penguin Pass` | the same names |
+| MacAppSupport | `Godot/app_userdata/Penguin Pass` | the same names |
+
+Do not sync `strava.toml`. It holds the Strava client secret and the
+OAuth access and refresh tokens. A cloud copy would put those secrets
+on every machine signed into the Steam account.
+
+These paths are the desktop layout described for Linux in `docs/play.md`
+and `docs/game.md`. The Windows and macOS roots are Valve's Auto-Cloud
+names for `%APPDATA%` and `~/Library/Application Support`. They were not
+checked on those systems. Godot's exported `user://` directory name was
+not confirmed on Windows or macOS.
 
 ## 3. Which Steam Linux Runtime
 
@@ -206,10 +246,8 @@ unverified.
 
 ## 8. Licences and credits
 
-The game's own licence is still "Not chosen yet" (`README.md`). Pick one
-before the store page goes up. Steam's subscriber rules were not re-read
-for this list; the store will not accept a build you cannot say you have
-the right to sell.
+The game's own code is licensed under the MIT License (`LICENSE` at the
+repo root). `./x export` copies `LICENSE` into `licenses/LICENSE`.
 
 **Art.** Every file under `godot/assets/` is CC0 1.0, as recorded in
 `docs/assets.md` and in each pack's `LICENSE.txt`. The Quaternius file
@@ -259,11 +297,22 @@ pasting a guessed table into the store page.
 - Game Mode, Steam Link, and Remote Play.
 - Steam Linux Runtime 4.0 actually launching this binary, and BlueZ from
   inside it (section 6).
-- The release export's shutdown. It prints `PENGUIN_PASS_READY_MS`, then
-  glibc reports `double free or corruption` and the process dies with
-  signal ABRT (exit 134). A debug export of the same project exited 0.
-  Details are in the report that added this file. A store build that
-  aborts on quit will fail review.
+- Release-export shutdown. An earlier export printed `PENGUIN_PASS_READY_MS`,
+  then glibc reported `double free or corruption` and died with signal ABRT
+  (exit 134). A debug export of that project exited 0.
+  `GLTFDocument::generate_scene` returns a node that is not in the tree.
+  Dropping the `Gd` does not free it, so the mesh, materials, and textures
+  stayed alive until shutdown. The renderer freed those leftover RIDs, and
+  ObjectDB then freed the nodes, which freed the same RIDs again. That
+  second free is the abort, and it showed up in the release template.
+  `load_gltf` (`crates/pp-godot/src/assets.rs`) and `load_model`
+  (`crates/pp-godot/src/world/landmarks.rs`) keep the mesh and call `free()`
+  on the generated scene while the engine is still up. Checked on this
+  tree's `./x export`: ten windowed `--quit-after 3` runs exited 0, menu
+  Quit exited 0, and three runs with the TV dashboard bound to an ephemeral
+  port exited 0. A `--verbose` quit printed no ObjectDB line and no glibc
+  double-free line. Those runs passed `--no-bluetooth --fake-trainer`,
+  `--audio-driver Dummy`, and a temp `--settings` file.
 - Deck text height, Deck frame rate, and any future text entry.
 - Trailer encoding rules.
 - The exact on-disk folder name of Steam Linux Runtime 4.0.
@@ -292,9 +341,10 @@ the counts instead of only the absence of errors:
 PENGUIN_PASS_ASSETS models=<n> textures=<n> sky=<0 or 1>
 ```
 
-And the release-only shutdown abort above. A debug export and `./x play`
-both exit 0, so the failure is specific to the release library or to
-godot-rust's release shutdown in the export template.
+The release-only shutdown abort in section 9 is the unfreed glTF scene
+described there. Freeing that scene while the engine is up stops the
+abort. This tree's release export exits 0 on quit. A debug export and
+`./x play` already exited 0.
 
 No CI change is required for a player to launch the game. A release job
 would download the 1.2 GB export-template archive and run `./x export`.

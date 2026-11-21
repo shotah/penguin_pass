@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900" width="600" height="900" role="img" aria-labelledby="title desc">
+  <title id="title">Penguin Pass</title>
+  <desc id="desc">Steam library capsule. A cycling penguin charging up a sunny alpine mountain pass beneath twin snow-capped peaks and the Penguin Pass title.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A7CE0"/>
+      <stop offset="56%" stop-color="#5EC0FA"/>
+      <stop offset="100%" stop-color="#CFF0FF"/>
+    </linearGradient>
+    <radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#FFF9C4" stop-opacity="0.96"/>
+      <stop offset="48%" stop-color="#FFE066" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#FFE066" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="meadowMid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#60BE56"/>
+      <stop offset="100%" stop-color="#358644"/>
+    </linearGradient>
+    <linearGradient id="meadowFore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3B8E47"/>
+      <stop offset="100%" stop-color="#1E522E"/>
+    </linearGradient>
+    <clipPath id="roadClip">
+      <path d="M-20 534 C140 496 260 520 356 510 C456 500 536 522 620 510 V916 H-20 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Bright sunny summer sky -->
+  <rect width="600" height="900" fill="url(#sky)"/>
+
+  <!-- Warm summer sun clearly framed in open upper-right sky -->
+  <circle cx="476" cy="244" r="126" fill="url(#sunGlow)"/>
+  <circle cx="476" cy="244" r="39" fill="#FFE169"/>
+
+  <!-- Fluffy sunlit clouds in open sky -->
+  <g fill="#FFFFFF" opacity="0.84">
+    <path d="M36 244 C36 230 48 220 62 222 C73 206 100 204 112 218 C128 215 142 227 140 244 Z"/>
+    <path d="M210 296 C210 285 219 277 230 279 C238 267 257 266 266 277 C276 275 286 284 285 296 Z" opacity="0.72"/>
+  </g>
+
+  <!-- Distant hazy ridgeline -->
+  <path d="M-20 502 L72 440 L166 476 L278 424 L392 470 L504 426 L620 462 L620 554 L-20 554 Z" fill="#6396C6" opacity="0.5"/>
+
+  <!-- Twin snow-capped alpine peaks framing the pass saddle around x=356 -->
+  <path d="M-26 558 L168 286 L348 558 Z" fill="#46729E"/>
+  <path d="M168 286 L348 558 L216 558 Z" fill="#355B82"/>
+  <path d="M168 286 L205 344 L188 336 L172 352 L156 336 L140 350 L126 338 Z" fill="#F4F9FF" opacity="0.93"/>
+
+  <path d="M306 558 L488 296 L628 558 Z" fill="#5282B0"/>
+  <path d="M488 296 L628 558 L528 558 Z" fill="#3C6791"/>
+  <path d="M488 296 L524 352 L508 362 L492 344 L476 362 L460 346 L446 356 Z" fill="#F4F9FF" opacity="0.91"/>
+
+  <!-- Mid sunlit green meadow -->
+  <path d="M-20 534 C140 496 260 520 356 510 C456 500 536 522 620 510 V900 H-20 Z" fill="url(#meadowMid)"/>
+
+  <!-- Natural clustered pines on both flanks -->
+  <g>
+    <path d="M16 560 L34 490 L52 560 Z" fill="#1F6338"/>
+    <path d="M21 528 L34 476 L47 528 Z" fill="#2D854C"/>
+    <path d="M56 574 L78 486 L100 574 Z" fill="#1A5430"/>
+    <path d="M62 534 L78 470 L94 534 Z" fill="#2B8049"/>
+
+    <path d="M468 564 L488 492 L508 564 Z" fill="#226B3D"/>
+    <path d="M474 530 L488 476 L502 530 Z" fill="#308C50"/>
+    <path d="M512 578 L538 480 L564 578 Z" fill="#1B5932"/>
+    <path d="M520 534 L538 462 L556 534 Z" fill="#2B8049"/>
+    <path d="M564 572 L582 504 L600 572 Z" fill="#1F6338"/>
+  </g>
+
+  <!-- Foreground sunlit meadow -->
+  <path d="M-20 650 C176 610 410 666 620 626 V900 H-20 Z" fill="url(#meadowFore)"/>
+
+  <!-- Clean alpine pass road curving gracefully around the right side up to the saddle at (356, 510) -->
+  <g clip-path="url(#roadClip)">
+    <path d="M324 908 C374 794 434 718 434 636 C434 582 396 546 346 510 L368 510 C428 546 486 584 494 640 C504 716 486 798 498 908 Z" fill="#364054"/>
+    <g fill="none" stroke="#F8FAFC" stroke-linecap="round">
+      <path d="M324 908 C374 794 434 718 434 636 C434 582 396 546 346 510" stroke-width="6.8"/>
+      <path d="M498 908 C486 798 504 716 494 640 C486 584 428 546 368 510" stroke-width="6.8"/>
+      <path d="M411 908 C430 796 469 717 464 638 C460 583 412 546 357 510" stroke-width="4.5" stroke-dasharray="18 15"/>
+    </g>
+  </g>
+
+  <!-- Heroic cycling penguin head mascot on lower-left, completely clear of the road -->
+  <image href="mascot.svg" x="18" y="482" width="346" height="346"/>
+
+  <!-- Bold centered PENGUIN PASS wordmark in clear sky -->
+  <g font-family="Barlow Semi Condensed" font-weight="700" text-anchor="middle">
+    <text x="300" y="132" font-size="88" fill="#0B1220" opacity="0.36" letter-spacing="2.5" transform="translate(0 5)">PENGUIN PASS</text>
+    <text x="300" y="132" font-size="88" fill="#FFFFFF" stroke="#0B1220" stroke-width="10.5" paint-order="stroke" stroke-linejoin="round" letter-spacing="2.5">PENGUIN PASS</text>
+  </g>
+</svg>

@@ -8,3 +8,7 @@ reloadable = true
 
 linux.debug.x86_64 = "res://bin/libpp_godot.debug.so"
 linux.release.x86_64 = "res://bin/libpp_godot.release.so"
+windows.debug.x86_64 = "res://bin/pp_godot.debug.dll"
+windows.release.x86_64 = "res://bin/pp_godot.release.dll"
+macos.debug = "res://bin/libpp_godot.debug.dylib"
+macos.release = "res://bin/libpp_godot.release.dylib"

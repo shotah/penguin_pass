@@ -2,6 +2,7 @@
 name = "pp-world"
 description = "Chunk grid and streaming planner for the Penguin Pass world"
 version.workspace = true
+license.workspace = true
 edition.workspace = true
 publish.workspace = true
 

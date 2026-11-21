@@ -6,6 +6,7 @@ members = ["crates/*"]
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
+license = "MIT"
 publish = false
 
 # The terrain maths lives in pp-view and runs a few hundred thousand times

@@ -27,6 +27,7 @@ var _fish := false
 var _arcade := false
 var _follow := false
 var _extras := false
+var _steam := false
 var _banked := false
 var _dir := ""
 var _view := 0
@@ -54,7 +55,10 @@ func _init() -> void:
 			var settings_path := settings_dir.path_join("settings.toml")
 			var settings_file := FileAccess.open(settings_path, FileAccess.WRITE)
 			if settings_file != null:
-				settings_file.store_string("fullscreen = false\ntv_dashboard_enabled = true\n")
+				var body := "fullscreen = false\ntv_dashboard_enabled = true\n"
+				if _steam:
+					body += "time_of_day = \"day\"\nweather = \"clear\"\nbots_count = 8\n"
+				settings_file.store_string(body)
 				settings_file.close()
 				OS.set_environment("PENGUIN_PASS_SETTINGS", settings_path)
 	_viewport = SubViewport.new()
@@ -108,6 +112,7 @@ func _read_args() -> void:
 	_arcade = args.has("--arcade")
 	_follow = args.has("--follow")
 	_extras = args.has("--extras")
+	_steam = args.has("--steam")
 	_dir = _arg(args, "--dir", "")
 	if _bench:
 		_frames = max(_frames, 240)
@@ -143,6 +148,14 @@ func _on_drawn() -> void:
 
 
 func _views() -> Array:
+	if _steam:
+		return [
+			["title-1080", 8.0, false, 1920, 1080, "title"],
+			["alpine-peloton-1080", 8.0, false, 1920, 1080, "peloton"],
+			["workout-1080", 8.0, false, 1920, 1080, "workout-green"],
+			["progress-1080", 8.0, false, 1920, 1080, "progress"],
+			["desert-volcano-1080", 8.0, false, 1920, 1080, "desert"],
+		]
 	if _extras:
 		return [
 			["bots-peloton", 180.0, false, 1280, 800, "bots"],
@@ -268,8 +281,12 @@ func _bank() -> void:
 
 func _pose(kind: String) -> void:
 	if kind == "title" or kind == "course":
-		_game.debug_show_title()
-		if kind == "course":
+		if kind == "title":
+			_game.debug_start_ride()
+			_game.debug_seek(28.0, 40.0, 0.0)
+			_game.debug_park_title()
+		else:
+			_game.debug_show_title()
 			_game.debug_menu_action("down")
 			_game.debug_menu_action("accept")
 		return
@@ -351,9 +368,32 @@ func _pose(kind: String) -> void:
 		_game.debug_show_title()
 		_game.debug_start_ride()
 		_game.debug_seek(float(_views()[_view][1]), 180.0, 0.0)
+	elif kind == "peloton":
+		_game.debug_show_title()
+		_game.debug_start_ride()
+		_game.debug_seek(22.0, 180.0, 0.0)
+		_game.debug_show_fish()
+	elif kind == "workout-green":
+		_game.debug_show_title()
+		_game.debug_select_workout(0)
+		_game.debug_start_ride()
+		_game.debug_seek(40.0, 82.0, 0.0)
+		_game.debug_advance(4.0)
+	elif kind == "desert":
+		_game.debug_show_title()
+		_game.debug_select_workout(-1)
+		_game.debug_load_course("desert", 10, 7)
+		_game.debug_start_ride()
+		var reveal := 200.0
+		for pattern in ["Landmark_temple_*", "Landmark_ruins_*", "Landmark_ruin_*"]:
+			var marks := _game.find_children(pattern, "Node3D", true, false)
+			if marks.size() > 0:
+				reveal = float(marks[0].get_meta("reveal_m", reveal))
+				break
+		_game.debug_seek(reveal, 180.0, 0.0)
 	elif kind == "progress":
 		_game.debug_show_title()
-		for _step in 6:
+		for _step in 7:
 			_game.debug_menu_action("down")
 		_game.debug_menu_action("accept")
 	elif kind == "saved" or kind == "unsaved":

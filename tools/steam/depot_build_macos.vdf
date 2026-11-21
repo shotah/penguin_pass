@@ -1,0 +1,10 @@
+"DepotBuild"
+{
+	"DepotID" "YOUR_MACOS_DEPOT_ID" // same number as in app_build.vdf
+	"FileMapping"
+	{
+		"LocalPath" "penguin-pass-macos/*"
+		"DepotPath" "."
+		"recursive" "1"
+	}
+}

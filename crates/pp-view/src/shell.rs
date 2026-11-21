@@ -604,6 +604,11 @@ impl Shell {
             Command::Up => move_focus(&mut self.summary_index, count, false, fresh),
             Command::Down => move_focus(&mut self.summary_index, count, true, fresh),
             Command::Left | Command::Right => {}
+            Command::Back => {
+                self.screen = Screen::Title;
+                self.title_index = 0;
+                return ShellEffect::BackToTitle;
+            }
             Command::Accept => match self.summary_index {
                 0 => {
                     self.screen = Screen::Riding;
@@ -625,7 +630,6 @@ impl Shell {
                     }
                 }
             },
-            Command::Back => {}
         }
         ShellEffect::None
     }
@@ -815,5 +819,148 @@ mod tests {
         let view = shell.view("Penguin Pass", "Searching", "5.0 km", &[], "", "");
         assert_eq!(view.rows[1].detail, "Penguin Pass");
         assert_eq!(view.rows[2].detail, "Searching");
+    }
+
+    #[test]
+    fn a_pad_reaches_workout_progress_pause_and_the_summary() {
+        let mut shell = Shell::new(false);
+        shell.set_workouts(
+            "Free ride",
+            vec![row("Free ride", ""), row("Easy spin", "30 min")],
+            vec![None, Some("easy".to_owned())],
+        );
+        for _ in 0..5 {
+            shell.handle(Command::Down, true, &snap(), 1);
+        }
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::None
+        ));
+        assert_eq!(shell.screen(), Screen::Workout);
+        shell.handle(Command::Down, true, &snap(), 1);
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::PickWorkout(Some(id)) if id == "easy"
+        ));
+        assert_eq!(shell.screen(), Screen::Title);
+        assert_eq!(shell.title_index, 0);
+        for _ in 0..5 {
+            shell.handle(Command::Down, true, &snap(), 1);
+        }
+        shell.handle(Command::Accept, true, &snap(), 1);
+        assert_eq!(shell.screen(), Screen::Workout);
+        assert!(matches!(
+            shell.handle(Command::Back, true, &snap(), 1),
+            ShellEffect::None
+        ));
+        assert_eq!(shell.screen(), Screen::Title);
+        shell.title_index = 7;
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::None
+        ));
+        assert_eq!(shell.screen(), Screen::Progress);
+        shell.set_progress(
+            vec![row("Rides", "1"), row("First splash", "Earned")],
+            vec![String::new(), "Finish a ride.".to_owned()],
+        );
+        shell.handle(Command::Down, true, &snap(), 1);
+        assert_eq!(shell.view("", "", "", &[], "", "").selected, 1);
+        shell.handle(Command::Up, true, &snap(), 1);
+        assert_eq!(shell.view("", "", "", &[], "", "").selected, 0);
+        shell.handle(Command::Back, true, &snap(), 1);
+        assert_eq!(shell.screen(), Screen::Title);
+        shell.title_index = 0;
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::BeginRide
+        ));
+        assert!(shell.shows_hud());
+        shell.handle(Command::Back, true, &snap(), 1);
+        assert_eq!(shell.screen(), Screen::Pause);
+        shell.pause_index = 5;
+        shell.handle(Command::Accept, true, &snap(), 1);
+        assert_eq!(shell.screen(), Screen::Progress);
+        shell.handle(Command::Back, true, &snap(), 1);
+        assert_eq!(shell.screen(), Screen::Pause);
+        shell.pause_index = 6;
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::WorkoutBias(-5)
+        ));
+        shell.pause_index = 7;
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::WorkoutBias(5)
+        ));
+        shell.pause_index = 8;
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::SkipWorkout
+        ));
+        assert!(matches!(
+            shell.handle(Command::Back, true, &snap(), 1),
+            ShellEffect::Resume
+        ));
+        assert_eq!(shell.screen(), Screen::Riding);
+        shell.screen = Screen::Summary;
+        assert!(matches!(
+            shell.handle(Command::Back, true, &snap(), 1),
+            ShellEffect::BackToTitle
+        ));
+        assert_eq!(shell.screen(), Screen::Title);
+        assert!(!shell.shows_hud());
+    }
+
+    #[test]
+    fn settings_from_the_title_cycles_the_new_rows_and_back_returns() {
+        let mut shell = Shell::new(false);
+        for _ in 0..4 {
+            shell.handle(Command::Down, true, &snap(), 1);
+        }
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::None
+        ));
+        assert_eq!(shell.screen(), Screen::Settings);
+        for _ in 0..21 {
+            shell.handle(Command::Down, true, &snap(), 1);
+        }
+        let ShellEffect::Menu(Action::Apply(settings)) =
+            shell.handle(Command::Right, true, &snap(), 1)
+        else {
+            panic!("time of day");
+        };
+        assert_eq!(settings.time_of_day, "auto");
+        shell.handle(Command::Down, true, &snap(), 1);
+        let ShellEffect::Menu(Action::Apply(settings)) =
+            shell.handle(Command::Right, true, &snap(), 1)
+        else {
+            panic!("weather");
+        };
+        assert_eq!(settings.weather, "auto");
+        shell.handle(Command::Down, true, &snap(), 1);
+        let ShellEffect::Menu(Action::Apply(settings)) =
+            shell.handle(Command::Left, true, &snap(), 1)
+        else {
+            panic!("riders");
+        };
+        assert_eq!(settings.bots_count, 4);
+        shell.handle(Command::Down, true, &snap(), 1);
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::Menu(Action::Strava)
+        ));
+        shell.handle(Command::Down, true, &snap(), 1);
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::Menu(Action::Apply(_))
+        ));
+        assert!(matches!(
+            shell.handle(Command::Back, true, &snap(), 1),
+            ShellEffect::Menu(Action::None)
+        ));
+        assert_eq!(shell.screen(), Screen::Title);
+        assert!(shell.holds_rider());
     }
 }

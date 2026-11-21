@@ -143,9 +143,9 @@ connect error, while the simulated rider still runs. Widen nothing
 until a log shows the proxy is what blocked it.
 
 Nothing in this bundle has been installed on a machine. The first
-green GitHub run is the first time the file exists. The release export
-also still aborts on quit (exit 134), which is the same player binary
-`./x export` produces. See `docs/steam-release.md`.
+green GitHub run is the first time the file exists. (The earlier
+release-export shutdown abort no longer reproduces; see Section 9 of
+`docs/steam-release.md`.)
 
 If the window never appears from Game Mode, the session may be X11
 while Wayland is also set. `fallback-x11` is the permission for a
@@ -193,9 +193,6 @@ The export log lists the versions it checked.
 
 ## Before the first public release
 
-- The game's licence is not chosen. The metainfo says
-  `LicenseRef-PenguinPass-TODO` on `project_license`. Replace that with
-  the real SPDX expression. `metadata_license` is already `CC0-1.0`.
 - Add a screenshots URL. The metainfo has a comment showing the
   `<screenshots>` block. The image has to be an https PNG or JPEG.
 - Tags are `v` plus the version, for example `v0.1.0`. The bundle

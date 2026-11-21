@@ -3,7 +3,7 @@
 	"DepotID" "YOUR_LINUX_DEPOT_ID" // same number as in app_build.vdf
 	"FileMapping"
 	{
-		"LocalPath" "*"
+		"LocalPath" "penguin-pass-linux-x86_64/*"
 		"DepotPath" "."
 		"recursive" "1"
 	}

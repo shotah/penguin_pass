@@ -15,6 +15,14 @@ The terrain shader hazes the outer fifth of that reach fully. Inside that,
 colour still comes from the theme: meadow, forest, rock, and snow in the
 alpine theme, sand and rock in the desert, chosen by height and slope.
 
+Trees are the real models all the way out to the theme's visibility distance,
+about 400 m, and they fade into the fog. There is no second low-poly
+stand-in. They do not cast shadows: shadowing the near trees tripled the
+frame time on the start straight. Past 120 m from the road, about two in
+five trees are left out so the outer hillside stays a forest without
+filling the view with trunks. Landmark footprints and the sight corridor
+still clear trees.
+
 Landmarks that pass a look at the rider's-eye frames are placed from CC0
 models. A vista sits ahead of a bend, on the outside, past the apex. A
 roadside site is 13 to 26 m from the centreline. A crest site is what the

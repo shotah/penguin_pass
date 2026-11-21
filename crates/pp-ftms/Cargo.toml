@@ -2,6 +2,7 @@
 name = "pp-ftms"
 description = "Bluetooth FTMS, cycling power, and heart-rate codecs for Penguin Pass"
 version.workspace = true
+license.workspace = true
 edition.workspace = true
 publish.workspace = true
 

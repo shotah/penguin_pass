@@ -2,6 +2,7 @@
 name = "pp-arcade"
 description = "Fish, powerups, and the rider profile for Penguin Pass"
 version.workspace = true
+license.workspace = true
 edition.workspace = true
 publish.workspace = true
 

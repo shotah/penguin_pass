@@ -10,8 +10,7 @@ use godot::prelude::*;
 use pp_core::Telemetry;
 use pp_session::{DEFAULT_FTP_W, Session};
 use pp_view::console::{
-    Chip, ChipKind, ConsoleInput, ConsoleModel, power_hint, refresh, write_connection,
-    write_status_line,
+    Chip, ChipKind, ConsoleInput, ConsoleModel, refresh, write_connection, write_status_line,
 };
 use pp_view::profile::{Chart, Column, Plot, fill_next_km, fill_skyline, fill_window};
 
@@ -66,6 +65,7 @@ pub struct Hud {
     hint_hidden: bool,
     show_lane: bool,
     fish_text: String,
+    prompts: pp_view::prompts::RidePrompts,
     chrome: RideChrome,
     card_s: f32,
     pad: PadBadge,
@@ -108,6 +108,11 @@ impl ICanvasLayer for Hud {
             hint_hidden: false,
             show_lane: true,
             fish_text: String::new(),
+            prompts: pp_view::prompts::ride_prompts(
+                pp_view::prompts::InputMode::Keyboard,
+                false,
+                false,
+            ),
             chrome: RideChrome::default(),
             card_s: 0.0,
             pad: PadBadge::Off,
@@ -396,6 +401,14 @@ impl Hud {
         self.sync_board();
     }
 
+    /// Ride chips for the device used last.
+    pub fn set_prompts(&mut self, prompts: pp_view::prompts::RidePrompts) {
+        if self.prompts != prompts {
+            self.prompts = prompts;
+            self.sync_board();
+        }
+    }
+
     /// Fish counter. Empty hides it. `arcade` off passes an empty string.
     pub fn set_fish_text(&mut self, text: &str) {
         if self.fish_text != text {
@@ -530,6 +543,10 @@ impl Hud {
             board.fish_text.clone_from(&self.fish_text);
             redraw = true;
         }
+        if board.prompts != self.prompts {
+            board.prompts = self.prompts.clone();
+            redraw = true;
+        }
         if board.chrome != self.chrome {
             board.chrome = self.chrome.clone();
             redraw = true;
@@ -640,11 +657,11 @@ struct ConsoleBoard {
     show_hint: bool,
     show_lane: bool,
     fish_text: String,
+    prompts: pp_view::prompts::RidePrompts,
     chrome: RideChrome,
     pad: PadBadge,
     tv_address: String,
     spin: f32,
-    hint: String,
     panel: Gd<StyleBoxFlat>,
     chip_style: Gd<StyleBoxFlat>,
     seg_style: Gd<StyleBoxFlat>,
@@ -672,11 +689,15 @@ impl IControl for ConsoleBoard {
             show_hint: true,
             show_lane: true,
             fish_text: String::new(),
+            prompts: pp_view::prompts::ride_prompts(
+                pp_view::prompts::InputMode::Keyboard,
+                false,
+                false,
+            ),
             chrome: RideChrome::default(),
             pad: PadBadge::Off,
             tv_address: String::new(),
             spin: 0.0,
-            hint: power_hint(),
             panel: surface(Surface::Console),
             chip_style: surface(Surface::Chip),
             seg_style: surface(Surface::Well),
@@ -1202,6 +1223,14 @@ fn paint_chips(board: &mut ConsoleBoard, frame: DesignFrame) {
         let lane_w = paint_lane_hint(board, frame, hint_x);
         hint_x += lane_w + gap;
     }
+    if !board.prompts.powerup.is_empty() {
+        let text = board.prompts.powerup.clone();
+        hint_x += paint_prompt(board, frame, hint_x, frame.y(562.0), &text) + gap;
+    }
+    if !board.prompts.workout.is_empty() {
+        let text = board.prompts.workout.clone();
+        hint_x += paint_prompt(board, frame, hint_x, frame.y(562.0), &text) + gap;
+    }
     if !board.fish_text.is_empty() {
         paint_fish_chip(board, frame, hint_x, &board.fish_text.clone());
     }
@@ -1263,39 +1292,14 @@ fn paint_menu(
     frame: DesignFrame,
     right: f32,
     y: f32,
-    keyboard: bool,
+    _keyboard: bool,
 ) -> f32 {
-    let font = ui_style::font_text(Weight::Medium);
-    let size = frame.px(18.0);
-    let icon = if keyboard {
-        frame.len(36.0)
+    let text = if board.prompts.menu.is_empty() {
+        "[Esc] Menu".to_owned()
     } else {
-        frame.len(22.0)
+        board.prompts.menu.clone()
     };
-    let width =
-        frame.len(14.0) + icon + frame.len(8.0) + measure(&font, "Menu", size) + frame.len(14.0);
-    let x = right - width;
-    paint_pill(board, frame, x, y, width, frame.len(36.0));
-    let mid = y + frame.len(18.0);
-    if keyboard {
-        paint_keycap(board, frame, Vector2::new(x + frame.len(14.0), mid), "Esc");
-    } else {
-        paint_menu_glyph(
-            board,
-            frame,
-            Vector2::new(x + frame.len(14.0) + frame.len(11.0), mid),
-        );
-    }
-    let baseline = mid + frame.len(18.0) * 0.35;
-    draw_text(
-        board,
-        &font,
-        Vector2::new(x + frame.len(14.0) + icon + frame.len(8.0), baseline),
-        "Menu",
-        size,
-        MIST,
-    );
-    width
+    paint_prompt(board, frame, right - prompt_width(frame, &text), y, &text)
 }
 
 fn paint_tv(board: &mut ConsoleBoard, frame: DesignFrame, right: f32, y: f32, address: &str) {
@@ -1322,65 +1326,42 @@ fn paint_tv(board: &mut ConsoleBoard, frame: DesignFrame, right: f32, y: f32, ad
 }
 
 fn paint_hint(board: &mut ConsoleBoard, frame: DesignFrame, x: f32) -> f32 {
+    let text = if board.prompts.power.is_empty() {
+        "Power".to_owned()
+    } else {
+        board.prompts.power.clone()
+    };
+    paint_prompt(board, frame, x, frame.y(562.0), &text)
+}
+
+fn paint_lane_hint(board: &mut ConsoleBoard, frame: DesignFrame, x: f32) -> f32 {
+    let text = if board.prompts.lane.is_empty() {
+        "Lane".to_owned()
+    } else {
+        board.prompts.lane.clone()
+    };
+    paint_prompt(board, frame, x, frame.y(562.0), &text)
+}
+
+fn paint_prompt(board: &mut ConsoleBoard, frame: DesignFrame, x: f32, y: f32, text: &str) -> f32 {
     let font = ui_style::font_text(Weight::SemiBold);
-    let minor = ui_style::font_text(Weight::Medium);
-    let hint = board.hint.clone();
-    let power_w = measure(&font, "Power", frame.px(20.0));
-    let step_w = measure(&minor, &hint, frame.px(18.0));
-    let width = frame.len(14.0)
-        + frame.len(56.0)
-        + frame.len(8.0)
-        + power_w
-        + frame.len(8.0)
-        + step_w
-        + frame.len(14.0);
-    let y = frame.y(562.0);
-    paint_pill(board, frame, x, y, width, frame.len(40.0));
-    let mid = y + frame.len(20.0);
-    paint_arrow(board, frame, Vector2::new(x + frame.len(22.0), mid), true);
-    paint_arrow(board, frame, Vector2::new(x + frame.len(48.0), mid), false);
-    let baseline = mid + frame.len(20.0) * 0.35;
-    let text_x = x + frame.len(14.0) + frame.len(56.0) + frame.len(8.0);
+    let size = frame.px(16.0);
+    let width = prompt_width(frame, text);
+    paint_pill(board, frame, x, y, width, frame.len(36.0));
     draw_text(
         board,
         &font,
-        Vector2::new(text_x, baseline),
-        "Power",
-        frame.px(20.0),
+        Vector2::new(x + frame.len(14.0), y + frame.len(24.0)),
+        text,
+        size,
         SNOW,
-    );
-    draw_text(
-        board,
-        &minor,
-        Vector2::new(text_x + power_w + frame.len(8.0), baseline),
-        &hint,
-        frame.px(18.0),
-        MIST,
     );
     width
 }
 
-fn paint_lane_hint(board: &mut ConsoleBoard, frame: DesignFrame, x: f32) -> f32 {
+fn prompt_width(frame: DesignFrame, text: &str) -> f32 {
     let font = ui_style::font_text(Weight::SemiBold);
-    let word = measure(&font, "Lane", frame.px(20.0));
-    let width = frame.len(14.0) + frame.len(56.0) + frame.len(8.0) + word + frame.len(14.0);
-    let y = frame.y(562.0);
-    paint_pill(board, frame, x, y, width, frame.len(40.0));
-    let mid = y + frame.len(20.0);
-    paint_side_arrow(board, frame, Vector2::new(x + frame.len(22.0), mid), false);
-    paint_side_arrow(board, frame, Vector2::new(x + frame.len(48.0), mid), true);
-    draw_text(
-        board,
-        &font,
-        Vector2::new(
-            x + frame.len(14.0) + frame.len(56.0) + frame.len(8.0),
-            mid + frame.len(20.0) * 0.35,
-        ),
-        "Lane",
-        frame.px(20.0),
-        SNOW,
-    );
-    width
+    frame.len(28.0) + measure(&font, text, frame.px(16.0))
 }
 
 fn paint_fish_chip(board: &mut ConsoleBoard, frame: DesignFrame, x: f32, text: &str) {
@@ -1502,34 +1483,6 @@ fn paint_gamepad(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2, 
     );
 }
 
-fn paint_side_arrow(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2, right: bool) {
-    let rect = Rect2::new(
-        center - Vector2::new(frame.len(9.0), frame.len(9.0)),
-        Vector2::new(frame.len(18.0), frame.len(18.0)),
-    );
-    board
-        .base_mut()
-        .draw_rect_ex(rect, SNOW)
-        .filled(false)
-        .width(frame.len(1.5).max(1.0))
-        .done();
-    let mut poly = PackedVector2Array::new();
-    let tip = if right {
-        frame.len(4.0)
-    } else {
-        -frame.len(4.0)
-    };
-    let base = if right {
-        -frame.len(3.0)
-    } else {
-        frame.len(3.0)
-    };
-    poly.push(center + Vector2::new(tip, 0.0));
-    poly.push(center + Vector2::new(base, -frame.len(4.0)));
-    poly.push(center + Vector2::new(base, frame.len(4.0)));
-    board.base_mut().draw_colored_polygon(&poly, SNOW);
-}
-
 fn paint_pill(
     board: &mut ConsoleBoard,
     frame: DesignFrame,
@@ -1615,53 +1568,6 @@ fn paint_keyboard(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2)
     }
 }
 
-fn paint_keycap(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2, text: &str) {
-    let width = frame.len(36.0);
-    let height = frame.len(26.0);
-    let rect = Rect2::new(
-        center - Vector2::new(0.0, height * 0.5),
-        Vector2::new(width, height),
-    );
-    board
-        .base_mut()
-        .draw_rect_ex(rect, MIST)
-        .filled(false)
-        .width(frame.len(1.5).max(1.0))
-        .done();
-    let font = ui_style::font_text(Weight::Medium);
-    let size = frame.px(14.0);
-    let advance = measure(&font, text, size);
-    draw_text(
-        board,
-        &font,
-        Vector2::new(
-            rect.position.x + (width - advance) * 0.5,
-            center.y + frame.len(14.0) * 0.35,
-        ),
-        text,
-        size,
-        MIST,
-    );
-}
-
-fn paint_menu_glyph(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2) {
-    let color = MIST;
-    let width = frame.len(1.6).max(1.0);
-    for step in [-4.0_f32, 0.0, 4.0] {
-        let y = center.y + frame.len(step);
-        board
-            .base_mut()
-            .draw_line_ex(
-                Vector2::new(center.x - frame.len(7.0), y),
-                Vector2::new(center.x + frame.len(7.0), y),
-                color,
-            )
-            .width(width)
-            .antialiased(true)
-            .done();
-    }
-}
-
 fn paint_tv_icon(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2) {
     let rect = Rect2::new(
         center - Vector2::new(frame.len(9.0), frame.len(6.0)),
@@ -1682,26 +1588,6 @@ fn paint_tv_icon(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2) 
         )
         .width(frame.len(1.5).max(1.0))
         .done();
-}
-
-fn paint_arrow(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2, up: bool) {
-    let rect = Rect2::new(
-        center - Vector2::new(frame.len(9.0), frame.len(9.0)),
-        Vector2::new(frame.len(18.0), frame.len(18.0)),
-    );
-    board
-        .base_mut()
-        .draw_rect_ex(rect, SNOW)
-        .filled(false)
-        .width(frame.len(1.5).max(1.0))
-        .done();
-    let mut poly = PackedVector2Array::new();
-    let tip = if up { -frame.len(4.0) } else { frame.len(4.0) };
-    let base = if up { frame.len(3.0) } else { -frame.len(3.0) };
-    poly.push(center + Vector2::new(0.0, tip));
-    poly.push(center + Vector2::new(-frame.len(4.0), base));
-    poly.push(center + Vector2::new(frame.len(4.0), base));
-    board.base_mut().draw_colored_polygon(&poly, SNOW);
 }
 
 fn draw_value_right(
@@ -2216,7 +2102,7 @@ fn paint_workout(board: &mut ConsoleBoard, frame: DesignFrame) {
             &font,
             Vector2::new(x + frame.len(14.0), y + frame.len(72.0)),
             &chrome.workout_next,
-            frame.px(14.0),
+            frame.px(16.0),
             ui_style::MIST,
         );
     }

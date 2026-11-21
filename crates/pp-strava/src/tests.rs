@@ -318,6 +318,7 @@ fn redirect_port(authorize_url: &str) -> u16 {
     port_of_url(query_get(&pairs, "redirect_uri"))
 }
 
+#[cfg(unix)]
 fn mode_of(path: &Path) -> u32 {
     use std::os::unix::fs::PermissionsExt;
     fs::metadata(path).unwrap().permissions().mode() & 0o777
@@ -420,6 +421,7 @@ fn callback_accepts_the_matching_state_and_stores_tokens() {
     assert!(text.contains("access-one"));
     assert!(text.contains("refresh-one"));
     assert!(text.contains(SECRET));
+    #[cfg(unix)]
     assert_eq!(mode_of(&dir.path()), 0o600);
     assert!(calls.lock().unwrap().len() == 1);
 }
@@ -504,6 +506,7 @@ fn key_form_round_trip() {
     let text = fs::read_to_string(dir.path()).unwrap();
     assert!(text.contains("s3cret&more=1"));
     assert!(text.contains("424242"));
+    #[cfg(unix)]
     assert_eq!(mode_of(&dir.path()), 0o600);
 }
 
@@ -831,6 +834,7 @@ fn request_timeout_is_reported() {
     let _ = thread.join();
 }
 
+#[cfg(unix)]
 #[test]
 fn store_file_is_owner_only() {
     let dir = TempDir::new();

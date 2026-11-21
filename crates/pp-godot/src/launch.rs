@@ -51,6 +51,8 @@ pub struct Launch {
     pub sound_capture: Option<std::path::PathBuf>,
     /// Hide the console, chips, and toasts.
     pub no_hud: bool,
+    /// Forced prompts. `None` follows the last real button.
+    pub input_mode: Option<pp_view::prompts::InputMode>,
 }
 
 impl Launch {
@@ -83,6 +85,7 @@ impl Launch {
             no_sound: flags.no_sound,
             sound_capture: flags.sound_capture,
             no_hud: flags.no_hud,
+            input_mode: flags.input_mode,
         }
     }
 }

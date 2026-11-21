@@ -48,6 +48,7 @@ pub struct RideMenu {
     bars: Vec<[Gd<ColorRect>; 4]>,
     scroll: Gd<ScrollContainer>,
     detail: Gd<Label>,
+    footer: Gd<Label>,
     selected: usize,
     state: MenuState,
     music_report: String,
@@ -136,7 +137,11 @@ impl RideMenu {
         detail.add_theme_color_override("font_color", ui_style::MIST);
         box_.add_child(&detail);
 
-        let footer = ui_style::label("Move    Select    Back", Role::Unit);
+        let mut footer = ui_style::label(
+            &pp_view::prompts::menu_footer(pp_view::prompts::InputMode::Keyboard),
+            Role::Unit,
+        );
+        footer.set_name("Footer");
         box_.add_child(&footer);
 
         panel.add_child(&box_);
@@ -151,10 +156,18 @@ impl RideMenu {
             bars,
             scroll,
             detail,
+            footer,
             selected: 0,
             state: MenuState::default(),
             music_report: String::new(),
             controller_status: String::new(),
+        }
+    }
+
+    /// Footer naming the buttons for the device used last.
+    pub fn set_footer(&mut self, text: &str) {
+        if self.footer.get_text() != text {
+            self.footer.set_text(text);
         }
     }
 

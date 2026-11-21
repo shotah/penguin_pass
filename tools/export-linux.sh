@@ -146,6 +146,7 @@ fi
 python3 "$ROOT/tools/pck_list.py" "$pck" --check "$STAGE"
 
 mkdir -p "$OUT/licenses"
+cp -a "$ROOT/LICENSE" "$OUT/licenses/LICENSE"
 cp -a "$ROOT/docs/assets.md" "$OUT/licenses/assets.md"
 if [[ -f "$ROOT/tools/godot/4.7.2/LICENSE.txt" ]]; then
     cp -a "$ROOT/tools/godot/4.7.2/LICENSE.txt" "$OUT/licenses/GODOT-LICENSE.txt"

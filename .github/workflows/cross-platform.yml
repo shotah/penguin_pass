@@ -1,0 +1,345 @@
+# Windows and macOS build, test, and (on a tag or a manual run) player export.
+# Linux CI stays in ci.yml. This workflow does not touch the Flatpak "latest" prerelease.
+
+name: Cross-platform
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.webp"
+      - "**/*.svg"
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.webp"
+      - "**/*.svg"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  rust:
+    name: rust (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x86_64
+            lib: pp_godot.release.dll
+          - os: macos-latest
+            label: macos-universal
+            lib: libpp_godot.release.dylib
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          build-warnings: ""
+          cache: true
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build the release library
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p godot/bin
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            rustup target add aarch64-apple-darwin x86_64-apple-darwin
+            cargo build -p pp-godot --release --target aarch64-apple-darwin
+            cargo build -p pp-godot --release --target x86_64-apple-darwin
+            lipo -create \
+              target/aarch64-apple-darwin/release/libpp_godot.dylib \
+              target/x86_64-apple-darwin/release/libpp_godot.dylib \
+              -output "godot/bin/${{ matrix.lib }}"
+          else
+            cargo build -p pp-godot --release
+            cp -f target/release/pp_godot.dll "godot/bin/${{ matrix.lib }}"
+          fi
+
+      - name: Upload the library
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-lib-${{ matrix.label }}
+          path: godot/bin/${{ matrix.lib }}
+          if-no-files-found: error
+          retention-days: 5
+
+  export:
+    name: export (${{ matrix.label }})
+    needs: rust
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x86_64
+            lib: pp_godot.release.dll
+            editor_zip: Godot_v4.7.2-stable_win64.exe.zip
+            preset: Windows Desktop x86_64
+            out_rel: dist/penguin-pass-windows-x86_64/penguin-pass.exe
+            zip_name: penguin-pass-windows-x86_64.zip
+          - os: macos-latest
+            label: macos-universal
+            lib: libpp_godot.release.dylib
+            editor_zip: Godot_v4.7.2-stable_macos.universal.zip
+            preset: macOS
+            out_rel: dist/penguin-pass-macos/penguin-pass.app
+            zip_name: penguin-pass-macos-universal.zip
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the library
+        uses: actions/download-artifact@v8
+        with:
+          name: native-lib-${{ matrix.label }}
+          path: godot/bin
+
+      - name: Restore Godot 4.7.2
+        uses: actions/cache@v6
+        with:
+          path: tools/godot/4.7.2
+          key: godot-4.7.2-${{ runner.os }}-editor-and-templates
+
+      - name: Download and verify Godot
+        shell: bash
+        run: |
+          set -euo pipefail
+          dest="tools/godot/4.7.2"
+          mkdir -p "$dest/templates"
+          base="https://github.com/godotengine/godot/releases/download/4.7.2-stable"
+          curl -fsSL -o "$dest/SHA512-SUMS.txt" "$base/SHA512-SUMS.txt"
+          fetch() {
+            local name="$1"
+            if [[ ! -f "$dest/$name" ]]; then
+              curl -fL --retry 3 --retry-delay 2 -o "$dest/$name" "$base/$name"
+            fi
+            python3 - "$dest/SHA512-SUMS.txt" "$name" "$dest/$name" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+          sums, name, path = sys.argv[1:]
+          want = ""
+          for line in pathlib.Path(sums).read_text(encoding="utf-8").splitlines():
+              parts = line.split()
+              if len(parts) >= 2 and parts[-1] == name:
+                  want = parts[0]
+                  break
+          if not want:
+              raise SystemExit("no sha512 for " + name)
+          got = hashlib.sha512(pathlib.Path(path).read_bytes()).hexdigest()
+          if got != want:
+              raise SystemExit("checksum mismatch for " + name)
+          print("verified " + name)
+          PY
+          }
+          fetch "${{ matrix.editor_zip }}"
+          fetch "Godot_v4.7.2-stable_export_templates.tpz"
+          unzip -qo "$dest/${{ matrix.editor_zip }}" -d "$dest/editor"
+          unzip -qo "$dest/Godot_v4.7.2-stable_export_templates.tpz" \
+            "templates/windows_debug_x86_64.exe" \
+            "templates/windows_release_x86_64.exe" \
+            "templates/macos.zip" \
+            -d "$dest"
+
+      - name: Export the player
+        shell: bash
+        env:
+          PRESET: ${{ matrix.preset }}
+          OUT_REL: ${{ matrix.out_rel }}
+          LIB: ${{ matrix.lib }}
+        run: |
+          set -euo pipefail
+          root="$PWD"
+          tools="$root/tools"
+          if command -v cygpath >/dev/null 2>&1; then
+            tools=$(cygpath -m "$root/tools")
+            root=$(cygpath -m "$root")
+          fi
+          stage="${RUNNER_TEMP}/export-stage"
+          rm -rf "$stage"
+          mkdir -p "$stage/bin"
+          for f in project.godot icon.svg main.tscn penguin_pass.gdextension export_presets.cfg; do
+            cp -a "godot/$f" "$stage/$f"
+            if [[ -f "godot/$f.uid" ]]; then
+              cp -a "godot/$f.uid" "$stage/$f.uid"
+            fi
+          done
+          cp -a "godot/bin/$LIB" "$stage/bin/$LIB"
+          cp -a godot/assets godot/themes "$stage/"
+          rm -rf "$stage/assets/third_party/_incoming"
+          python3 - "$stage" <<'PY'
+          import secrets, sys
+          from pathlib import Path
+          stage = Path(sys.argv[1])
+          exts = {
+              ".gltf", ".glb", ".png", ".jpg", ".jpeg", ".hdr", ".exr",
+              ".svg", ".webp", ".bmp", ".tga", ".json",
+              ".mp3", ".ogg", ".wav",
+          }
+          count = 0
+          for folder in ("assets", "themes"):
+              for path in (stage / folder).rglob("*"):
+                  if not path.is_file() or path.suffix.lower() not in exts:
+                      continue
+                  if "_incoming" in path.parts:
+                      continue
+                  rel = path.relative_to(stage).as_posix()
+                  uid = "uid://" + secrets.token_hex(8)
+                  path.with_name(path.name + ".import").write_text(
+                      "[remap]\n\n"
+                      'importer="keep"\n'
+                      f'uid="{uid}"\n\n'
+                      "[deps]\n\n"
+                      f'source_file="res://{rel}"\n'
+                      "dest_files=[]\n",
+                      encoding="utf-8",
+                  )
+                  count += 1
+          print(f"export: wrote {count} keep-import sidecars")
+          PY
+          python3 - "$stage/export_presets.cfg" "$tools" <<'PY'
+          import sys
+          from pathlib import Path
+          path, tools = sys.argv[1:]
+          text = Path(path).read_text(encoding="utf-8")
+          text = text.replace("../tools/", tools.rstrip("/") + "/")
+          Path(path).write_text(text, encoding="utf-8")
+          PY
+          godot=""
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            name_flag=(-name Godot -path '*/MacOS/Godot')
+          else
+            name_flag=(-name 'Godot_v4.7.2-stable_win64.exe')
+          fi
+          while IFS= read -r candidate; do
+            godot=$candidate
+            break
+          done < <(find tools/godot/4.7.2/editor -type f "${name_flag[@]}")
+          [[ -n "$godot" && -f "$godot" ]]
+          chmod +x "$godot" || true
+          mkdir -p "$(dirname "$OUT_REL")"
+          log="dist/logs/export-${RUNNER_OS}.log"
+          mkdir -p dist/logs
+          set +e
+          "$godot" --headless --path "$stage" --import >"$log" 2>&1
+          import_code=$?
+          set -e
+          echo "export: import exited $import_code"
+          if [[ "$import_code" -ne 0 ]]; then
+            tail -n 80 "$log" >&2 || true
+            exit "$import_code"
+          fi
+          "$godot" --headless --path "$stage" --export-release "$PRESET" "$root/$OUT_REL" >>"$log" 2>&1
+
+      - name: Zip the export
+        shell: bash
+        env:
+          ZIP_NAME: ${{ matrix.zip_name }}
+          LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          python3 - "$ZIP_NAME" "$LABEL" <<'PY'
+          import pathlib, sys, zipfile
+          name, label = sys.argv[1:]
+          dist = pathlib.Path("dist")
+          if label.startswith("windows"):
+              folder = dist / "penguin-pass-windows-x86_64"
+              if not (folder / "penguin-pass.exe").is_file():
+                  raise SystemExit(f"missing {folder / 'penguin-pass.exe'}")
+              root = folder
+          else:
+              app = dist / "penguin-pass-macos" / "penguin-pass.app"
+              if not app.is_dir():
+                  raise SystemExit(f"missing {app}")
+              root = app
+          dest = dist / name
+          with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+              for path in root.rglob("*"):
+                  if path.is_file():
+                      archive.write(path, path.relative_to(root.parent).as_posix())
+          print(dest, dest.stat().st_size)
+          PY
+
+      - name: Upload the player zip
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.zip_name }}
+          path: dist/${{ matrix.zip_name }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: release
+    needs: export
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download the Windows zip
+        uses: actions/download-artifact@v8
+        with:
+          name: penguin-pass-windows-x86_64.zip
+          path: dist/release
+
+      - name: Download the macOS zip
+        uses: actions/download-artifact@v8
+        with:
+          name: penguin-pass-macos-universal.zip
+          path: dist/release
+
+      - name: Attach the zips to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in
+            v*) ;;
+            *) echo "release: ref $tag is not a v* tag" >&2; exit 1 ;;
+          esac
+          shopt -s nullglob
+          files=(dist/release/*.zip)
+          if [[ ${#files[@]} -ne 2 ]]; then
+            echo "release: expected two zips, found ${#files[@]}" >&2
+            ls -la dist/release >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            gh release create "$tag" "${files[@]}" \
+              --title "Penguin Pass ${tag}" \
+              --notes "Windows and macOS player zips for ${tag}. The macOS zip is ad-hoc signed at export time and is not notarized."
+          fi

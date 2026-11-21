@@ -2,9 +2,7 @@
 <component type="desktop-application">
   <id>io.github.shotah.PenguinPass</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <!-- project_license is a placeholder. The game's licence is not chosen.
-       Replace LicenseRef-PenguinPass-TODO before the first public release. -->
-  <project_license>LicenseRef-PenguinPass-TODO</project_license>
+  <project_license>MIT</project_license>
   <name>Penguin Pass</name>
   <summary>Indoor cycling on a smart trainer</summary>
   <description>

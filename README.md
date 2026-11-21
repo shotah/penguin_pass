@@ -233,23 +233,25 @@ Three tiers, in the order they arrive:
 - [x] M0: workspace, build container, Godot loads the Rust extension
 - [x] M1: FTMS codec, course data, bike physics, all with tests
 - [x] M2: simulated trainer
-- [x] M2: BLE trainer connection, over FTMS or Tacx FE-C. A real Neo 2T
-  connects over FE-C, sends power, and accepts resistance control
-- [ ] M2: resistance and standing-start acceleration checked against a
-  traced ride on the real trainer (`./x play --trace`)
+- [x] M2: BLE trainer connection, over FTMS or Tacx FE-C. Confirmed on a
+  real Tacx Neo 2T: reads power and controls hill resistance
+- [ ] M2: standing-start acceleration tuned from a traced ride on the
+  real trainer (see `docs/trainer-trace-plan.md`)
 - [x] M3: 5 km mountain loop, HUD, ride session
 - [x] M4: TV dashboard (checked in a desktop browser, not yet on a TV)
 - [x] M4: settings menu (rider and bike weight, FTP, trainer difficulty,
   trainer pairing, TV dashboard on or off), saved between sessions
 - [x] M5: Steam export presets and release checklist
 - [ ] M5: Flatpak bundle built by GitHub Actions and attached to GitHub
-  Releases. The workflow is written (`docs/flatpak.md`) but has never
-  run. A Flathub listing is a separate, later step with its own rules
+  Releases. The workflow is written (`docs/flatpak.md`, `docs/release.md`)
+  and publishes a `latest` prerelease on pushes to `main` plus numbered
+  releases on `v*` tags, but has not run on GitHub yet. A Flathub listing
+  is a separate, later step with its own rules
 - [x] M6: free CC0 art assets, textured terrain and road, a real rider
 - [x] M7: themes as data (alpine, desert) and a course picker
 - [x] M7: natural hillsides beside the road, with the road cut into them
-- [ ] M7: far mountains that look like mountains (they are still low
-  and soft)
+- [x] M7: horizon mountains (alpine snow horn, desert sandstone mesa and
+  volcano)
 - [x] M8: generated routes from a seed, in six fixed choices up to 10 km
 - [ ] M8: any chosen distance, with the world streamed in chunks; then
   an endless mode
@@ -263,25 +265,36 @@ Three tiers, in the order they arrive:
   from inside the Steam runtime
 - [x] M11: a second rider (Sigrid) and a rider choice in settings
 - [ ] M11: heart-rate straps over Bluetooth (Garmin HRM and others).
-  Built; not yet tried with a real strap
-- [ ] M11: Zwift controllers for lanes, power, and menus. Built; not yet
-  tried with real controllers
-- [x] M11: ride in the right-hand lane, and move left and right within
-  it (five positions)
+  Built; not yet tried with a real strap (see `docs/trainer-trace-plan.md`)
+- [x] M11: Zwift controllers for lanes, power, and menus (confirmed on
+  real controllers)
+- [x] M11: lateral lane movement (currently 5 positions in the right
+  lane; expanding to full road width + right shoulder next)
 - [x] M12: save each ride as a FIT activity file for Strava and other
-  sites (upload by hand; no upload has been tried yet)
-- [ ] M12: push rides to Strava with the rider's own API keys (no server)
-- [x] M13: fish to collect in the five lane positions, with a combo count
+  sites
+- [ ] M12: push rides to Strava with the rider's own API keys (built and
+  tested against a local mock; first real Strava upload not tried yet —
+  see `docs/strava.md` and `docs/trainer-trace-plan.md`)
+- [x] M13: fish to collect in the lanes, with a combo count
 - [x] M13: timed climb, sprint, and lap segments with a ghost of the
   best first lap
 - [x] M13: powerups (Feather, Aero, Burst) earned from fish and segments
 - [x] M13: badges, a Progress screen, and three unlockable kits
-- [ ] M13: roadside landmarks. A village, a windmill, and one horizon
-  peak per theme are in; waterfalls, statues, and ruins are not yet
-  good enough to show
-- [ ] M13: all of the above ridden on the real trainer (so far only
-  with the simulated rider)
-- [ ] Later: Chromecast video, ANT+, riding a course in reverse
+- [x] M13: roadside landmarks (alpine village, windmill, pastures, camp,
+  gate, castle keep; desert temple ruins, cacti, wagon wreck; waterfalls
+  and statues still open for better CC0 models)
+- [x] M13: ridden on a real trainer (Tacx Neo 2T)
+- [x] M14: computer pace riders and drafting (`pp-bots`)
+- [x] M14: time of day (dawn, day, sunset, night with headlight, auto)
+  and weather (clear, cloudy, rain, snow/dust, fog, auto)
+- [ ] M14: structured workouts with Zwift `.zwo` import and ERG mode
+  (built and tested; first real ERG ride on the Neo 2T pending — see
+  `docs/trainer-trace-plan.md`)
+- [ ] M14: ambient nature, bike coasting, breathing, and UI sound effects
+  (26 CC0 sounds wired with volume sliders; first real listen pending —
+  see `docs/trainer-trace-plan.md`)
+- [ ] Later: Chromecast video, ANT+, riding a course in reverse,
+  Windows/macOS hardware testing
 
 ## Contributors wanted
 
@@ -313,4 +326,4 @@ owner tasks. See `docs/steam-release.md`.
 
 ## License
 
-Not chosen yet.
+Penguin Pass code is licensed under the MIT License (see `LICENSE`). Bundled art, audio, and fonts keep their respective licenses (CC0 1.0 and SIL OFL 1.1; see `docs/assets.md` and `docs/third-party-licenses.md`).

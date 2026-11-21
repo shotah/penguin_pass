@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3840 1240" width="3840" height="1240" role="img" aria-labelledby="title desc">
+  <title id="title">Penguin Pass alpine mountain pass</title>
+  <desc id="desc">Panoramic sunny summer alpine landscape for Steam Library hero. Snow-capped peaks, rolling green meadows, natural evergreen pine groves, and a sweeping mountain pass road climbing to the saddle. No text or logo.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1A7CE0"/>
+      <stop offset="56%" stop-color="#5EC0FA"/>
+      <stop offset="100%" stop-color="#CFF0FF"/>
+    </linearGradient>
+    <radialGradient id="sunGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#FFF9C4" stop-opacity="0.96"/>
+      <stop offset="46%" stop-color="#FFE066" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#FFE066" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="meadowMid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#60BE56"/>
+      <stop offset="100%" stop-color="#358644"/>
+    </linearGradient>
+    <linearGradient id="meadowFore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3B8E47"/>
+      <stop offset="100%" stop-color="#1E522E"/>
+    </linearGradient>
+    <clipPath id="roadClip">
+      <path d="M-40 818 C460 742 1040 778 1640 756 C1920 746 2100 740 2320 756 C2840 792 3320 732 3880 788 V1260 H-40 Z"/>
+    </clipPath>
+    <g id="pineA">
+      <path d="M0 100 L30 16 L60 100 Z" fill="#1F6338"/>
+      <path d="M8 62 L30 0 L52 62 Z" fill="#2D854C"/>
+    </g>
+    <g id="pineB">
+      <path d="M0 100 L30 14 L60 100 Z" fill="#1A5430"/>
+      <path d="M7 58 L30 0 L53 58 Z" fill="#277A44"/>
+    </g>
+    <g id="pineDark">
+      <path d="M0 100 L30 14 L60 100 Z" fill="#154728"/>
+      <path d="M8 58 L30 0 L52 58 Z" fill="#206338"/>
+    </g>
+  </defs>
+
+  <!-- Bright sunny alpine sky -->
+  <rect width="3840" height="1240" fill="url(#sky)"/>
+
+  <!-- High warm summer sun cleanly centered in open sky above the pass -->
+  <circle cx="1720" cy="236" r="340" fill="url(#sunGlow)"/>
+  <circle cx="1720" cy="236" r="102" fill="#FFE169"/>
+
+  <!-- Airy sunlit clouds floating in open sky, well clear of every peak -->
+  <g fill="#FFFFFF" opacity="0.84">
+    <path d="M180 236 C180 198 214 170 254 176 C282 132 354 128 388 166 C432 158 474 190 468 236 Z"/>
+    <path d="M760 176 C760 148 784 128 814 132 C834 100 886 98 912 126 C944 120 976 144 972 176 Z" opacity="0.76"/>
+    <path d="M1260 270 C1260 248 1280 232 1304 236 C1320 210 1362 208 1382 232 C1408 226 1434 246 1430 270 Z" opacity="0.72"/>
+    <path d="M2760 200 C2760 170 2788 148 2820 152 C2842 118 2900 116 2928 146 C2964 140 2998 166 2994 200 Z" opacity="0.78"/>
+    <path d="M3320 244 C3320 212 3350 188 3384 192 C3408 156 3470 154 3500 186 C3538 180 3574 208 3570 244 Z" opacity="0.82"/>
+  </g>
+
+  <!-- Distant hazy alpine ridgeline spanning the full panorama -->
+  <path d="M-40 760 L240 580 L540 676 L880 540 L1240 660 L1580 510 L1940 652 L2280 524 L2640 650 L3020 520 L3380 632 L3680 536 L3880 610 L3880 860 L-40 860 Z" fill="#6396C6" opacity="0.48"/>
+
+  <!-- Five varied sunlit snow-capped alpine peaks framing the pass saddle around x=2040 -->
+  <!-- Far left peak -->
+  <path d="M-60 850 L360 398 L780 850 Z" fill="#5D8AB5"/>
+  <path d="M360 398 L780 850 L470 850 Z" fill="#467099"/>
+  <path d="M360 398 L428 492 L398 480 L368 504 L338 480 L308 498 L286 482 Z" fill="#F4F9FF" opacity="0.9"/>
+
+  <!-- Major left-center peak -->
+  <path d="M440 860 L1080 226 L1760 860 Z" fill="#46729E"/>
+  <path d="M1080 226 L1760 860 L1240 860 Z" fill="#355B82"/>
+  <path d="M1080 226 L1196 368 L1150 350 L1100 394 L1048 352 L1000 388 L958 362 Z" fill="#F4F9FF" opacity="0.94"/>
+
+  <!-- Major right-center peak -->
+  <path d="M1880 860 L2460 198 L3080 860 Z" fill="#5282B0"/>
+  <path d="M2460 198 L3080 860 L2620 860 Z" fill="#3C6791"/>
+  <path d="M2460 198 L2578 346 L2530 368 L2482 324 L2430 374 L2380 328 L2336 354 Z" fill="#F4F9FF" opacity="0.93"/>
+
+  <!-- Secondary right peak -->
+  <path d="M2760 850 L3180 416 L3560 850 Z" fill="#4B78A6"/>
+  <path d="M3180 416 L3560 850 L3280 850 Z" fill="#375E87"/>
+  <path d="M3180 416 L3242 504 L3214 492 L3184 514 L3154 492 L3126 508 L3104 494 Z" fill="#F4F9FF" opacity="0.9"/>
+
+  <!-- Far right peak -->
+  <path d="M3260 850 L3640 342 L3960 850 Z" fill="#5D8AB5"/>
+  <path d="M3640 342 L3960 850 L3740 850 Z" fill="#467099"/>
+  <path d="M3640 342 L3706 436 L3674 422 L3644 446 L3612 422 L3582 440 L3558 426 Z" fill="#F4F9FF" opacity="0.9"/>
+
+  <!-- Lush rolling mid-ground alpine meadows -->
+  <path d="M-40 818 C460 742 1040 778 1640 756 C1920 746 2100 740 2320 756 C2840 792 3320 732 3880 788 V1240 H-40 Z" fill="url(#meadowMid)"/>
+
+  <!-- Natural organic pine groves on the mid slopes (varied clusters with open sunlit meadows between) -->
+  <g>
+    <!-- Far left copse -->
+    <use href="#pineA" transform="translate(80 706) scale(1.45)"/>
+    <use href="#pineB" transform="translate(154 674) scale(1.9)"/>
+    <use href="#pineA" transform="translate(248 720) scale(1.35)"/>
+    <use href="#pineB" transform="translate(316 732) scale(1.15)"/>
+
+    <!-- Left-mid grove -->
+    <use href="#pineB" transform="translate(760 700) scale(1.3)"/>
+    <use href="#pineA" transform="translate(822 660) scale(1.75)"/>
+    <use href="#pineB" transform="translate(916 688) scale(1.45)"/>
+    <use href="#pineA" transform="translate(996 718) scale(1.1)"/>
+
+    <!-- Near saddle left pines -->
+    <use href="#pineA" transform="translate(1480 682) scale(1.25)"/>
+    <use href="#pineB" transform="translate(1542 652) scale(1.6)"/>
+    <use href="#pineA" transform="translate(1624 686) scale(1.2)"/>
+
+    <!-- Near saddle right pines -->
+    <use href="#pineB" transform="translate(2290 676) scale(1.3)"/>
+    <use href="#pineA" transform="translate(2358 648) scale(1.65)"/>
+    <use href="#pineB" transform="translate(2446 684) scale(1.2)"/>
+
+    <!-- Right-mid alpine forest -->
+    <use href="#pineA" transform="translate(2840 688) scale(1.45)"/>
+    <use href="#pineB" transform="translate(2918 646) scale(1.9)"/>
+    <use href="#pineA" transform="translate(3018 674) scale(1.55)"/>
+    <use href="#pineB" transform="translate(3104 704) scale(1.25)"/>
+
+    <!-- Far right copse -->
+    <use href="#pineB" transform="translate(3440 676) scale(1.55)"/>
+    <use href="#pineA" transform="translate(3520 634) scale(2.05)"/>
+    <use href="#pineB" transform="translate(3628 666) scale(1.65)"/>
+    <use href="#pineA" transform="translate(3718 698) scale(1.3)"/>
+  </g>
+
+  <!-- Foreground sunlit alpine meadow -->
+  <path d="M-40 1002 C680 924 1460 1044 2380 966 C3020 912 3460 982 3880 946 V1240 H-40 Z" fill="url(#meadowFore)"/>
+
+  <!-- Sweeping alpine switchback road climbing cleanly from foreground into the saddle at (2010, 744) -->
+  <g clip-path="url(#roadClip)">
+    <path d="M1680 1254
+             C1600 1138 1528 1068 1648 986
+             C1764 906 2050 874 2096 814
+             C2120 782 2064 762 1986 742
+             L2034 742
+             C2134 762 2224 786 2206 828
+             C2176 898 1924 934 1852 1002
+             C1784 1068 1966 1136 2180 1254 Z"
+          fill="#364054"/>
+    <g fill="none" stroke="#F8FAFC" stroke-linecap="round">
+      <path d="M1680 1254 C1600 1138 1528 1068 1648 986 C1764 906 2050 874 2096 814 C2120 782 2064 762 1986 742" stroke-width="14"/>
+      <path d="M2180 1254 C1966 1136 1784 1068 1852 1002 C1924 934 2176 898 2206 828 C2224 786 2134 762 2034 742" stroke-width="14"/>
+      <path d="M1930 1254 C1783 1137 1656 1068 1750 994 C1844 920 2113 886 2151 821 C2172 784 2099 762 2010 742" stroke-width="9" stroke-dasharray="38 30"/>
+    </g>
+  </g>
+
+  <!-- Subtle foreground framing pine clusters on far edges (keeps lower-left calm for Steam library logo) -->
+  <g>
+    <use href="#pineDark" transform="translate(26 986) scale(2.45)"/>
+    <use href="#pineB" transform="translate(166 1030) scale(1.95)"/>
+
+    <use href="#pineDark" transform="translate(2560 990) scale(2.3)"/>
+    <use href="#pineB" transform="translate(2694 1036) scale(1.85)"/>
+    <use href="#pineDark" transform="translate(3210 1010) scale(2.15)"/>
+    <use href="#pineB" transform="translate(3340 966) scale(2.65)"/>
+    <use href="#pineDark" transform="translate(3506 1024) scale(2.0)"/>
+    <use href="#pineB" transform="translate(3660 982) scale(2.45)"/>
+  </g>
+</svg>
