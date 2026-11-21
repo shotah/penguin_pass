@@ -24,6 +24,7 @@ pub struct Screens {
     title: Gd<Label>,
     rows: Vec<Gd<Label>>,
     row_panels: Vec<Gd<PanelContainer>>,
+    row_scroll: Gd<ScrollContainer>,
     detail: Gd<Label>,
     hints: Gd<Label>,
     figures: Vec<Gd<Label>>,
@@ -112,6 +113,15 @@ impl Screens {
         title.set_name("ScreenTitle");
         box_.add_child(&title);
 
+        let mut row_scroll = ScrollContainer::new_alloc();
+        row_scroll.set_name("RowScroll");
+        row_scroll
+            .set_horizontal_scroll_mode(godot::classes::scroll_container::ScrollMode::SHOW_NEVER);
+        row_scroll
+            .set_vertical_scroll_mode(godot::classes::scroll_container::ScrollMode::SHOW_NEVER);
+        let mut row_list = VBoxContainer::new_alloc();
+        row_list.set_name("RowList");
+        row_list.add_theme_constant_override("separation", 4);
         let mut rows = Vec::new();
         let mut row_panels = Vec::new();
         let mut sparks = Vec::new();
@@ -136,11 +146,18 @@ impl Screens {
                 row_box.add_child(mark);
             }
             row_panel.add_child(&row_box);
-            box_.add_child(&row_panel);
+            row_list.add_child(&row_panel);
             sparks.push(spark);
             rows.push(label);
             row_panels.push(row_panel);
         }
+        let mut row_tail = godot::classes::Control::new_alloc();
+        row_tail.set_name("RowTail");
+        row_tail.set_custom_minimum_size(Vector2::new(0.0, 16.0));
+        row_tail.set_mouse_filter(MouseFilter::IGNORE);
+        row_list.add_child(&row_tail);
+        row_scroll.add_child(&row_list);
+        box_.add_child(&row_scroll);
 
         let mut figures = Vec::new();
         let mut progress_scroll = ScrollContainer::new_alloc();
@@ -149,6 +166,8 @@ impl Screens {
         progress_scroll.set_visible(false);
         progress_scroll
             .set_horizontal_scroll_mode(godot::classes::scroll_container::ScrollMode::SHOW_NEVER);
+        progress_scroll
+            .set_vertical_scroll_mode(godot::classes::scroll_container::ScrollMode::SHOW_NEVER);
         let mut progress_list = VBoxContainer::new_alloc();
         progress_list.set_name("ProgressList");
         progress_list.add_theme_constant_override("separation", 10);
@@ -160,6 +179,11 @@ impl Screens {
         for index in 0..24 {
             progress_badges.push(BadgeBlock::new(&mut progress_list, index));
         }
+        let mut progress_tail = godot::classes::Control::new_alloc();
+        progress_tail.set_name("ProgressTail");
+        progress_tail.set_custom_minimum_size(Vector2::new(0.0, 24.0));
+        progress_tail.set_mouse_filter(MouseFilter::IGNORE);
+        progress_list.add_child(&progress_tail);
         progress_scroll.add_child(&progress_list);
         box_.add_child(&progress_scroll);
 
@@ -231,6 +255,7 @@ impl Screens {
             title,
             rows,
             row_panels,
+            row_scroll,
             detail,
             hints,
             figures,
@@ -347,14 +372,13 @@ impl Screens {
             }
         }
         let progress = view.screen == Screen::Progress;
+        self.row_scroll.set_visible(!progress);
         self.progress_scroll.set_visible(progress);
         if progress {
             for panel in &mut self.row_panels {
                 panel.set_visible(false);
             }
             self.paint_progress(view.selected);
-            let offset = (view.selected as i32).saturating_sub(2) * 72;
-            self.progress_scroll.set_v_scroll(offset.max(0));
         }
         self.detail.set_text(&view.detail);
         let outline = if on_title { 6 } else { 0 };
@@ -375,7 +399,96 @@ impl Screens {
             self.saved.set_visible(false);
             self.saved_folder.set_visible(false);
         }
+        self.fit_scrolls(view);
         self.fit_card();
+    }
+
+    /// Keep the focused row on screen, and stop the progress list in the gap
+    /// under a full row so the bottom line is not sliced.
+    fn fit_scrolls(&mut self, view: &ShellView) {
+        if view.screen == Screen::Progress {
+            self.fit_progress(view.selected);
+            return;
+        }
+        let content = self.row_list_size();
+        let budget = self.list_budget(view.screen);
+        let viewport = self.viewport_size();
+        let max_width = (viewport.x - 96.0).max(440.0);
+        let width = content.x.max(440.0).min(max_width);
+        let height = content.y.min(budget).max(0.0);
+        self.row_scroll
+            .set_custom_minimum_size(Vector2::new(width, height));
+        if let Some(panel) = self
+            .row_panels
+            .get(view.selected)
+            .filter(|panel| panel.is_visible())
+        {
+            scroll_clearance(&mut self.row_scroll, panel, 8.0);
+        }
+    }
+
+    fn fit_progress(&mut self, selected: usize) {
+        const SEP: f32 = 10.0;
+        // Shorter than the row gap, so the clip lands in the gap, not the text.
+        const CLEARANCE: f32 = 8.0;
+        let available = self.list_budget(Screen::Progress);
+        let mut bottom = self.progress_totals.get_combined_minimum_size().y;
+        for block in &self.progress_badges {
+            if !block.box_.is_visible() {
+                break;
+            }
+            let next = bottom + SEP + block.box_.get_combined_minimum_size().y;
+            if next + CLEARANCE > available && bottom > 1.0 {
+                break;
+            }
+            bottom = next;
+        }
+        let height = (bottom + CLEARANCE).min(available).max(160.0);
+        self.progress_scroll
+            .set_custom_minimum_size(Vector2::new(480.0, height));
+        if let Some(block) = self
+            .progress_badges
+            .get(selected)
+            .filter(|block| block.box_.is_visible())
+        {
+            scroll_clearance(&mut self.progress_scroll, &block.box_, CLEARANCE);
+        }
+    }
+
+    fn row_list_size(&self) -> Vector2 {
+        self.row_scroll
+            .get_child(0)
+            .and_then(|child| child.try_cast::<VBoxContainer>().ok())
+            .map(|list| list.get_combined_minimum_size())
+            .unwrap_or(Vector2::new(440.0, 0.0))
+    }
+
+    fn list_budget(&self, screen: Screen) -> f32 {
+        let mut chrome = 24.0 + 20.0 + (ui_style::space::PANEL as f32) * 2.0;
+        if screen == Screen::Title && self.logo.is_visible() {
+            chrome += 84.0;
+        }
+        if self.title.is_visible() {
+            chrome += 44.0;
+        }
+        chrome += 32.0 + 28.0 + 24.0;
+        if screen == Screen::Summary
+            && self
+                .figures
+                .first()
+                .is_some_and(|figure| figure.is_visible())
+        {
+            chrome += 36.0 * 6.0;
+        }
+        (self.viewport_size().y - chrome).max(180.0)
+    }
+
+    fn viewport_size(&self) -> Vector2 {
+        self.layer
+            .get_viewport()
+            .map(|viewport| viewport.get_visible_rect().size)
+            .filter(|size| size.x > 1.0 && size.y > 1.0)
+            .unwrap_or(Vector2::new(1280.0, 800.0))
     }
 
     /// Twelve samples per workout row. Empty means no bars.
@@ -548,6 +661,30 @@ impl Screens {
         if self.toast_s <= 0.0 {
             self.toast_panel.set_visible(false);
         }
+    }
+}
+
+fn scroll_clearance<T>(scroll: &mut Gd<ScrollContainer>, control: &Gd<T>, clearance: f32)
+where
+    T: godot::obj::Inherits<godot::classes::Control>,
+{
+    scroll.ensure_control_visible(control);
+    let node = control.clone().upcast::<godot::classes::Control>();
+    let height = node.get_size().y.max(node.get_combined_minimum_size().y);
+    if height < 1.0 {
+        return;
+    }
+    let bottom = node.get_position().y + height;
+    let view = scroll.get_size().y.max(scroll.get_custom_minimum_size().y);
+    if view < 1.0 {
+        return;
+    }
+    let shown_bottom = scroll.get_v_scroll() as f32 + view;
+    let overlap = bottom - (shown_bottom - clearance);
+    if overlap > 0.5 {
+        let extra = overlap.ceil() as i32;
+        let next = scroll.get_v_scroll().saturating_add(extra);
+        scroll.set_v_scroll(next);
     }
 }
 

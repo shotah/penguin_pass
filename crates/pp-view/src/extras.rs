@@ -160,6 +160,21 @@ pub fn workout_length(seconds: f32) -> String {
     format!("{minutes} min")
 }
 
+/// Picker subtitle: `45 min · 58 TSS · IF 0.88 · 540 kJ`.
+///
+/// `tss`, `intensity_factor`, and `kj` come from the workout plan. `kj` is
+/// the estimate at the rider's FTP.
+#[must_use]
+pub fn workout_metrics(duration_s: f32, tss: u16, intensity_factor: f32, kj: u16) -> String {
+    let length = workout_length(duration_s);
+    let factor = if intensity_factor.is_finite() {
+        intensity_factor.max(0.0)
+    } else {
+        0.0
+    };
+    format!("{length} · {tss} TSS · IF {factor:.2} · {kj} kJ")
+}
+
 /// `72% in range  ·  186 W avg`.
 #[must_use]
 pub fn workout_result_line(in_range: f32, average_w: f32) -> String {
@@ -254,6 +269,14 @@ mod tests {
             "Next  Spin-up  120 W"
         );
         assert_eq!(workout_length(45.0 * 60.0), "45 min");
+        assert_eq!(
+            workout_metrics(45.0 * 60.0, 58, 0.88, 540),
+            "45 min · 58 TSS · IF 0.88 · 540 kJ"
+        );
+        assert_eq!(
+            workout_metrics(0.0, 0, f32::NAN, 0),
+            "— · 0 TSS · IF 0.00 · 0 kJ"
+        );
         assert_eq!(
             workout_result_line(0.72, 186.2),
             "72% in range    186 W avg"

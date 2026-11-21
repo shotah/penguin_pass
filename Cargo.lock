@@ -1303,6 +1303,7 @@ dependencies = [
  "pp-session",
  "pp-trainer",
  "pp-view",
+ "pp-workout",
  "pp-world",
  "serde",
  "serde_json",

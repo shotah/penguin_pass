@@ -398,6 +398,34 @@ mod tests {
     }
 
     #[test]
+    fn reversed_penguin_pass_finishes_a_lap() {
+        let course = Course::penguin_pass().reversed();
+        assert!(course.is_reversed());
+        assert_eq!(course.name(), "Penguin Pass");
+        let length = course.length_m();
+        let mut ride = Ride::new(course, RiderProfile::default());
+        let sample = sample(250);
+        let mut previous = 0.0;
+        let mut guard = 0;
+        while ride.telemetry().distance_m < length {
+            let frame = ride.step(0.25, &sample);
+            assert!(frame.speed_mps.is_finite(), "speed {}", frame.speed_mps);
+            assert!(frame.power_w.is_finite() && frame.power_w > 0.0);
+            assert!(frame.distance_m.is_finite() && frame.distance_m > 0.0);
+            assert!(frame.distance_m + 1e-6 >= previous);
+            assert!(frame.grade_pct.is_finite());
+            assert!(frame.elevation_m.is_finite());
+            assert!(frame.speed_mps >= 0.0 && frame.speed_mps <= MAX_SPEED_MPS + 1e-4);
+            previous = frame.distance_m;
+            guard += 1;
+            assert!(guard < 40_000, "reversed ride did not finish a lap");
+        }
+        let frame = ride.telemetry();
+        assert!(frame.lap >= 1);
+        assert!(frame.distance_m >= length);
+    }
+
+    #[test]
     fn same_inputs_produce_identical_telemetry() {
         let seq = [
             (0.0_f64, 0_u16),

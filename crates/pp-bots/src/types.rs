@@ -4,8 +4,9 @@
 ///
 /// Distance uses the same odometer as the bots: metres from the start line,
 /// still increasing after each lap. `slot` is the eased lane fraction, `0.0`
-/// nearest the centre line and `4.0` at the edge. `mass_kg` is body mass,
-/// not including the bicycle.
+/// at the left asphalt edge, `7.0` at the right edge of the pavement, and
+/// `8.0` on the gravel right shoulder. `mass_kg` is body mass, not including
+/// the bicycle.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlayerInput {
     /// Odometer, in metres. Laps are included.
@@ -14,7 +15,8 @@ pub struct PlayerInput {
     pub speed_mps: f32,
     /// Trainer power, in watts. Negative is treated as coasting.
     pub power_w: f32,
-    /// Eased lane fraction, `0.0` at the centre side and `4.0` at the edge.
+    /// Eased lane fraction. `0.0` is the left asphalt edge, `7.0` the right
+    /// edge of the pavement, and `8.0` the gravel right shoulder.
     pub slot: f32,
     /// Rider body mass, in kilograms. The bicycle is not included.
     pub mass_kg: f32,
@@ -43,7 +45,8 @@ pub struct BotState {
     pub power_w: f32,
     /// Cadence, in revolutions per minute.
     pub cadence_rpm: f32,
-    /// Eased lane fraction, `0.0` at the centre side and `4.0` at the edge.
+    /// Eased lane fraction. `0.0` is the left asphalt edge and `7.0` the right
+    /// edge of the pavement. Bots leave `8.0`, the gravel shoulder, clear.
     pub slot: f32,
     /// Short out-of-the-saddle flag. True for a few seconds, then false.
     pub standing: bool,

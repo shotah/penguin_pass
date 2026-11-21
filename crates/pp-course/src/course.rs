@@ -50,13 +50,23 @@ impl std::error::Error for CourseError {}
 /// distances past the lap length are valid.
 ///
 /// The datum is the start line: elevation is 0 m at distance 0. Grade is
-/// rise over horizontal run, in percent, positive uphill.
+/// rise over horizontal run, in percent, positive uphill in the direction
+/// of travel.
+///
+/// [`Course::reversed`] walks the same loop backwards. Distance 0 is still
+/// the start line, because the lap closes. Position and elevation come from
+/// the stored centerline at the mirrored arc length. Tangent and grade
+/// change sign, so the direction of travel points the other way and uphill
+/// becomes downhill. Calling it again restores the forward course, including
+/// the name and the lap length.
 ///
 /// Parse a description with [`str::parse`] or [`std::str::FromStr::from_str`].
 /// [`CourseError`] is the error type. See `docs/course.md` for the JSON shape.
 #[derive(Clone)]
 pub struct Course {
     name: String,
+    /// Travel runs against the stored centerline when this is set.
+    reversed: bool,
     length_m: f64,
     horizontal_m: f64,
     total_ascent_m: f32,
@@ -73,6 +83,7 @@ impl fmt::Debug for Course {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Course")
             .field("name", &self.name)
+            .field("reversed", &self.reversed)
             .field("length_m", &self.length_m)
             .field("total_ascent_m", &self.total_ascent_m)
             .finish()
@@ -97,12 +108,35 @@ impl Course {
     }
 
     /// Course name, as given in the description.
+    ///
+    /// Reversing the course does not change the name. Direction is
+    /// [`Course::is_reversed`].
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// A copy that travels the loop in the opposite direction.
+    ///
+    /// The stored centerline is unchanged. Queries honor the flipped
+    /// direction, and calling this again returns a course that samples like
+    /// `self`.
+    #[must_use]
+    pub fn reversed(&self) -> Self {
+        let mut course = self.clone();
+        course.reversed = !course.reversed;
+        course
+    }
+
+    /// Whether [`Course::reversed`] has been applied an odd number of times.
+    #[must_use]
+    pub fn is_reversed(&self) -> bool {
+        self.reversed
+    }
+
     /// Lap length along the 3D centerline, in meters.
+    ///
+    /// The same lap, forward or reversed.
     #[must_use]
     pub fn length_m(&self) -> f64 {
         self.length_m
@@ -110,10 +144,11 @@ impl Course {
 
     /// Centerline position at `distance_m`, in meters, as `[x, y, z]`.
     ///
-    /// `y` is elevation. Non-finite distances sample the start line.
+    /// `y` is elevation. Non-finite distances sample the start line. On a
+    /// reversed course this is the stored position at the mirrored distance.
     #[must_use]
     pub fn position_at(&self, distance_m: f64) -> [f32; 3] {
-        let s_h = self.s_h_at(distance_m);
+        let s_h = self.s_h_at(self.forward_distance(distance_m));
         let (x, z, _) = self.pose_at(s_h);
         let y = self.elevation_at_h(s_h);
         [x as f32, y as f32, z as f32]
@@ -122,41 +157,59 @@ impl Course {
     /// Unit tangent at `distance_m`, pointing in the direction of travel.
     ///
     /// Components are dimensionless. The vector is normalized in `f32`.
+    /// A reversed course reports the negation of the stored tangent, which
+    /// stays unit length and points backward along the loop.
     #[must_use]
     pub fn tangent_at(&self, distance_m: f64) -> [f32; 3] {
-        let s_h = self.s_h_at(distance_m);
+        let s_h = self.s_h_at(self.forward_distance(distance_m));
         let (_, _, heading) = self.pose_at(s_h);
         let grade = self.grade_at_h(s_h) / 100.0;
         let cos_theta = 1.0 / (1.0 + grade * grade).sqrt();
-        let tangent = DVec3::new(
+        let tangent = unit_f32(DVec3::new(
             heading.cos() * cos_theta,
             grade * cos_theta,
             heading.sin() * cos_theta,
-        );
-        unit_f32(tangent)
+        ));
+        if self.reversed {
+            [-tangent[0], -tangent[1], -tangent[2]]
+        } else {
+            tangent
+        }
     }
 
     /// Elevation above the course datum at `distance_m`, in meters.
+    ///
+    /// On a reversed course this is the stored elevation at the mirrored
+    /// distance. The start line is still the datum, so distance 0 and the
+    /// lap length are both 0 m.
     #[must_use]
     pub fn elevation_at(&self, distance_m: f64) -> f32 {
-        self.elevation_at_h(self.s_h_at(distance_m)) as f32
+        self.elevation_at_h(self.s_h_at(self.forward_distance(distance_m))) as f32
     }
 
     /// Grade at `distance_m`, in percent.
     ///
-    /// Positive is uphill. The value is rise over horizontal run, not rise
-    /// over 3D distance: `100 * tan(theta)`.
+    /// Positive is uphill in the direction of travel. The value is rise over
+    /// horizontal run, not rise over 3D distance: `100 * tan(theta)`.
+    /// A reversed course reports the negation of the stored grade at the
+    /// mirrored distance. Grade is continuous across span boundaries, so
+    /// that negation is the slope of [`Course::elevation_at`] along
+    /// increasing distance, including when a sample lands on a boundary.
     #[must_use]
     pub fn grade_pct_at(&self, distance_m: f64) -> f32 {
-        self.grade_at_h(self.s_h_at(distance_m)) as f32
+        let grade = self.grade_at_h(self.s_h_at(self.forward_distance(distance_m))) as f32;
+        if self.reversed { -grade } else { grade }
     }
 
     /// Elevation chart from the start line to the lap length.
     ///
-    /// `step_m` is the 3D spacing in meters. The result always includes
-    /// distance 0 and the lap length when `step_m` is finite and at least
-    /// one micrometer, and the chart would contain at most 100_000 points.
-    /// Otherwise the result is empty.
+    /// `step_m` is the 3D spacing in meters, walked in the direction of
+    /// travel. The result always includes distance 0 and the lap length when
+    /// `step_m` is finite and at least one micrometer, and the chart would
+    /// contain at most 100_000 points. Otherwise the result is empty.
+    ///
+    /// A reversed course uses the same distances and the mirrored elevations,
+    /// so the chart is the forward profile flipped along distance.
     #[must_use]
     pub fn profile(&self, step_m: f64) -> Vec<ProfilePoint> {
         if !step_m.is_finite() || step_m < 1.0e-6 || self.length_m <= 0.0 {
@@ -193,10 +246,26 @@ impl Course {
     /// Total ascent over one lap, in meters.
     ///
     /// This is the sum of the upward vertical travel. On a closed loop it
-    /// equals the total descent.
+    /// equals the total descent, so reversing the course does not change it:
+    /// climbing backward is the forward descent.
     #[must_use]
     pub fn total_ascent_m(&self) -> f32 {
         self.total_ascent_m
+    }
+
+    // 3D distance on the stored centerline for a travel distance.
+    //
+    // Forward courses return `distance_m` unchanged, including non-finite
+    // values, so `s_h_at` keeps its wrap and start-line rules. A reversed
+    // course maps `d` through `wrap(d) = d.rem_euclid(length)` to
+    // `(length - wrap(d)).rem_euclid(length)`. Distance 0 stays on the start
+    // line, and increasing distance walks backward along the loop.
+    fn forward_distance(&self, distance_m: f64) -> f64 {
+        if !self.reversed || !distance_m.is_finite() || self.length_m <= 0.0 {
+            return distance_m;
+        }
+        let wrapped = distance_m.rem_euclid(self.length_m);
+        (self.length_m - wrapped).rem_euclid(self.length_m)
     }
 
     fn s_h_at(&self, distance_m: f64) -> f64 {
@@ -636,6 +705,7 @@ fn parse_course(data: &str) -> Result<Course, CourseError> {
 
     let draft = Course {
         name: file.name,
+        reversed: false,
         length_m: 0.0,
         horizontal_m,
         total_ascent_m: ascent as f32,
@@ -1503,6 +1573,147 @@ mod tests {
         assert!(
             ridge_max > 4.0 && ridge_min < -4.0,
             "ridge between {climb_end:.0} and {descent_start:.0} spans {ridge_min:.1}..{ridge_max:.1}, climb started at {climb_start:.0}"
+        );
+    }
+
+    #[test]
+    fn reversed_toggles_and_round_trips() {
+        let course = Course::penguin_pass();
+        assert!(!course.is_reversed());
+        assert_eq!(course.name(), "Penguin Pass");
+        let backward = course.reversed();
+        assert!(backward.is_reversed());
+        assert_eq!(backward.name(), course.name());
+        assert_eq!(backward.length_m(), course.length_m());
+        assert_eq!(backward.total_ascent_m(), course.total_ascent_m());
+        let restored = backward.reversed();
+        assert!(!restored.is_reversed());
+        let length = course.length_m();
+        for i in 0..500 {
+            let d = length * i as f64 / 500.0;
+            assert_eq!(
+                course.position_at(d),
+                restored.position_at(d),
+                "position at {d}"
+            );
+            assert_eq!(course.elevation_at(d), restored.elevation_at(d));
+            assert_eq!(course.tangent_at(d), restored.tangent_at(d));
+            assert_eq!(course.grade_pct_at(d), restored.grade_pct_at(d));
+        }
+    }
+
+    #[test]
+    fn reversed_start_line_is_the_datum() {
+        let course = Course::penguin_pass().reversed();
+        let length = course.length_m();
+        assert_eq!(course.position_at(0.0), course.position_at(length));
+        assert_eq!(course.elevation_at(0.0), 0.0);
+        assert_eq!(course.elevation_at(length), 0.0);
+    }
+
+    #[test]
+    fn reversed_tangent_matches_the_chord() {
+        let course = Course::penguin_pass().reversed();
+        let length = course.length_m();
+        let n = 200;
+        for i in 0..n {
+            let d = length * i as f64 / n as f64;
+            let t = course.tangent_at(d);
+            let mag = (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt();
+            assert!((mag - 1.0).abs() < 1e-5, "tangent mag {mag} at {d}");
+            let behind = course.position_at(d - 0.5);
+            let ahead = course.position_at(d + 0.5);
+            let dx = ahead[0] - behind[0];
+            let dy = ahead[1] - behind[1];
+            let dz = ahead[2] - behind[2];
+            let chord = (dx * dx + dy * dy + dz * dz).sqrt();
+            assert!(chord > 0.5, "chord {chord} at {d}");
+            let dot = (t[0] * dx + t[1] * dy + t[2] * dz) / chord;
+            assert!(dot > 0.999, "tangent dot {dot} at {d} m, tangent {t:?}");
+        }
+    }
+
+    #[test]
+    fn reversed_grade_matches_elevation_slope() {
+        let forward = Course::penguin_pass();
+        let course = forward.reversed();
+        let length = course.length_m();
+        let steps = length.floor() as usize;
+        for i in 0..steps {
+            let d = i as f64;
+            let wrapped = d.rem_euclid(length);
+            let d_fwd = (length - wrapped).rem_euclid(length);
+            let stored = -forward.grade_pct_at(d_fwd);
+            assert_eq!(course.grade_pct_at(d), stored, "grade sign at {d}");
+
+            let y0 = course.elevation_at(d - 1.0);
+            let y1 = course.elevation_at(d + 1.0);
+            let p0 = course.position_at(d - 1.0);
+            let p1 = course.position_at(d + 1.0);
+            let horiz = f64::hypot(f64::from(p1[0] - p0[0]), f64::from(p1[2] - p0[2]));
+            assert!(horiz > 0.4, "horizontal step collapsed at {d}");
+            // Half the horizontal chord, so `2 * horizontal_step` is the run.
+            let horizontal_step = horiz / 2.0;
+            let slope = f64::from(y1 - y0) / (2.0 * horizontal_step);
+            let grade = f64::from(course.grade_pct_at(d)) / 100.0;
+            assert!(
+                (grade - slope).abs() < 5.0e-4,
+                "grade {grade} vs slope {slope} at {d} m"
+            );
+        }
+    }
+
+    #[test]
+    fn reversed_profile_mirrors_forward() {
+        let course = Course::penguin_pass();
+        let forward = course.profile(64.0);
+        let backward = course.reversed().profile(64.0);
+        assert_eq!(forward.len(), backward.len());
+        assert!(forward.len() > 2);
+        let length = course.length_m();
+        for (fwd, rev) in forward.iter().zip(&backward) {
+            assert!((fwd.distance_m - rev.distance_m).abs() < 1e-9);
+            let wrapped = fwd.distance_m.rem_euclid(length);
+            let d_fwd = (length - wrapped).rem_euclid(length);
+            assert_eq!(
+                rev.elevation_m,
+                course.elevation_at(d_fwd),
+                "profile at {} m",
+                fwd.distance_m
+            );
+        }
+    }
+
+    #[test]
+    fn reversed_ascent_matches_integrated_climbs() {
+        let forward = Course::penguin_pass();
+        let course = forward.reversed();
+        let length = course.length_m();
+        let mut up = 0.0_f64;
+        let mut down = 0.0_f64;
+        let mut d = 0.0;
+        while d < length {
+            let d2 = (d + 1.0).min(length);
+            let dy = f64::from(course.elevation_at(d2) - course.elevation_at(d));
+            if dy >= 0.0 {
+                up += dy;
+            } else {
+                down -= dy;
+            }
+            if d2 <= d {
+                break;
+            }
+            d = d2;
+        }
+        assert!(
+            (up - down).abs() < 0.05,
+            "ascent {up} m vs descent {down} m"
+        );
+        let ascent = f64::from(course.total_ascent_m());
+        assert_eq!(course.total_ascent_m(), forward.total_ascent_m());
+        assert!(
+            (ascent - up).abs() < 0.5,
+            "analytic ascent {ascent} vs sampled {up}"
         );
     }
 }

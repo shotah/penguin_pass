@@ -18,9 +18,11 @@ use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures_util::StreamExt;
 use pp_core::{TrainerCommand, TrainerSample};
 use pp_ftms::{
-    CYCLING_POWER_MEASUREMENT_UUID, CYCLING_POWER_SERVICE_UUID, FEC_NOTIFY_UUID, FEC_SERVICE_UUID,
-    FEC_WRITE_UUID, FITNESS_MACHINE_CONTROL_POINT_UUID, FTMS_SERVICE_UUID,
-    HEART_RATE_MEASUREMENT_UUID, INDOOR_BIKE_DATA_UUID,
+    CSC_MEASUREMENT_UUID, CYCLING_POWER_MEASUREMENT_UUID, CYCLING_POWER_SERVICE_UUID,
+    FEC_NOTIFY_UUID, FEC_SERVICE_UUID, FEC_WRITE_UUID, FITNESS_MACHINE_CONTROL_POINT_UUID,
+    FTMS_SERVICE_UUID, HEART_RATE_MEASUREMENT_UUID, INDOOR_BIKE_DATA_UUID,
+    WAHOO_TRAINER_CONTROL_UUID, ZWIFT_TRAINER_NOTIFY_UUID, ZWIFT_TRAINER_RESPONSE_UUID,
+    ZWIFT_TRAINER_WRITE_UUID,
 };
 use tokio::sync::{Notify, mpsc::UnboundedReceiver};
 use uuid::Uuid;
@@ -754,6 +756,35 @@ async fn perform(peripheral: &Peripheral, actions: &[OutAction]) -> Result<(), S
                     .await
                     .map_err(|err| err.to_string())?;
             }
+            OutAction::WriteWahoo(bytes) => {
+                let characteristic = find_char(peripheral, WAHOO_TRAINER_CONTROL_UUID)
+                    .ok_or_else(|| "missing wahoo trainer control".to_string())?;
+                let write_type = if characteristic.properties.contains(CharPropFlags::WRITE) {
+                    WriteType::WithResponse
+                } else {
+                    WriteType::WithoutResponse
+                };
+                peripheral
+                    .write(&characteristic, bytes, write_type)
+                    .await
+                    .map_err(|err| err.to_string())?;
+            }
+            OutAction::WriteZwift(bytes) => {
+                let characteristic = find_char(peripheral, ZWIFT_TRAINER_WRITE_UUID)
+                    .ok_or_else(|| "missing zwift trainer write".to_string())?;
+                let write_type = if characteristic
+                    .properties
+                    .contains(CharPropFlags::WRITE_WITHOUT_RESPONSE)
+                {
+                    WriteType::WithoutResponse
+                } else {
+                    WriteType::WithResponse
+                };
+                peripheral
+                    .write(&characteristic, bytes, write_type)
+                    .await
+                    .map_err(|err| err.to_string())?;
+            }
             OutAction::Disconnect | OutAction::Reconnect => {}
         }
     }
@@ -780,6 +811,11 @@ fn profile_from(chars: &BTreeSet<btleplug::api::Characteristic>) -> DeviceProfil
         control_point: has(FITNESS_MACHINE_CONTROL_POINT_UUID),
         fec_notify: has(FEC_NOTIFY_UUID),
         fec_write: has(FEC_WRITE_UUID),
+        csc: has(CSC_MEASUREMENT_UUID),
+        wahoo_control: has(WAHOO_TRAINER_CONTROL_UUID),
+        zwift_notify: has(ZWIFT_TRAINER_NOTIFY_UUID),
+        zwift_write: has(ZWIFT_TRAINER_WRITE_UUID),
+        zwift_response: has(ZWIFT_TRAINER_RESPONSE_UUID),
     }
 }
 
@@ -918,6 +954,10 @@ fn advertised_ids(services: &[Uuid], service_data: &[Uuid]) -> Advertised {
     }
 }
 
+/// A trainer advertises FTMS, Cycling Power, or Tacx FE-C.
+///
+/// Zwift Play, Click, and Ride controllers advertise `0xFC82` and none of
+/// those. They stay off the trainer list.
 fn is_trainer(flags: &Advertised) -> bool {
     flags.ftms || flags.cycling_power || flags.fec
 }
@@ -1043,6 +1083,58 @@ mod tests {
         assert!(!is_trainer(&dishwasher));
         let headphones = advertised_ids(&[pp_ftms::uuid16(0x180F), pp_ftms::uuid16(0x1812)], &[]);
         assert!(!is_trainer(&headphones));
+    }
+
+    #[test]
+    fn zwift_controller_service_alone_is_not_a_trainer() {
+        let play = advertised_ids(&[pp_ftms::ZWIFT_TRAINER_SERVICE_UUID], &[]);
+        assert!(!is_trainer(&play));
+        assert!(!play.ftms);
+        assert!(!play.cycling_power);
+        assert!(!play.fec);
+
+        let click = advertised_ids(&[], &[pp_ftms::ZWIFT_TRAINER_SERVICE_UUID]);
+        assert!(!is_trainer(&click));
+
+        let ride = advertised_ids(
+            &[pp_ftms::ZWIFT_TRAINER_SERVICE_UUID, FTMS_SERVICE_UUID],
+            &[],
+        );
+        assert!(is_trainer(&ride));
+        assert!(ride.ftms);
+    }
+
+    #[test]
+    fn profile_from_marks_csc_wahoo_and_zwift() {
+        let chars = BTreeSet::from([
+            characteristic(CYCLING_POWER_MEASUREMENT_UUID),
+            characteristic(WAHOO_TRAINER_CONTROL_UUID),
+            characteristic(CSC_MEASUREMENT_UUID),
+            characteristic(ZWIFT_TRAINER_NOTIFY_UUID),
+            characteristic(ZWIFT_TRAINER_WRITE_UUID),
+            characteristic(ZWIFT_TRAINER_RESPONSE_UUID),
+        ]);
+        let profile = profile_from(&chars);
+        assert!(profile.cycling_power);
+        assert!(profile.wahoo_control);
+        assert!(profile.csc);
+        assert!(profile.zwift_notify);
+        assert!(profile.zwift_write);
+        assert!(profile.zwift_response);
+        assert!(!profile.indoor_bike);
+        assert!(!profile.control_point);
+        assert!(!profile.fec_notify);
+        assert!(!profile.fec_write);
+        assert!(!profile.heart_rate);
+    }
+
+    fn characteristic(uuid: Uuid) -> btleplug::api::Characteristic {
+        btleplug::api::Characteristic {
+            uuid,
+            service_uuid: uuid,
+            properties: CharPropFlags::empty(),
+            descriptors: BTreeSet::new(),
+        }
     }
 
     #[test]

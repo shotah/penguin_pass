@@ -1,44 +1,51 @@
-//! Right-hand lane. The bike sits beside the centre line, never on it.
+//! Full road plus the gravel right shoulder.
 //!
-//! [`SLOTS`] slots, evenly spaced from just clear of the centre line to just
-//! clear of the edge line. A tap moves one slot. The offset eases over
+//! [`SLOTS`] positions run from the left asphalt edge to the right shoulder.
+//! Slots `0..=PAVED_SLOTS - 1` stay on the paved asphalt. The last slot is
+//! the gravel right shoulder. A ride starts at [`START_SLOT`], the middle of
+//! the right-hand lane. A tap moves one slot. The offset eases over
 //! [`MOVE_S`].
 
 /// How long a slot change takes, in seconds.
 pub const MOVE_S: f32 = 0.3;
 
-/// A bike's half-width, in metres, kept clear of the painted lines.
-const BODY_M: f32 = 0.4;
+/// How many positions the rider can hold, from the left edge to the shoulder.
+pub const SLOTS: u8 = 9;
 
-/// How many positions the rider can hold across the lane.
-pub const SLOTS: u8 = 5;
+/// Paved positions. Slots `0..=7` stay on the asphalt. Slot `8` is gravel.
+pub const PAVED_SLOTS: u8 = 8;
 
-/// The slot a ride starts in: the middle of the lane.
-pub const START_SLOT: u8 = SLOTS / 2;
+/// The slot a ride starts in: the middle of the right-hand lane.
+pub const START_SLOT: u8 = 6;
 
-/// Where the lane sits, in metres to the rider's right of the centre.
+/// Where the rideable ribbon sits, in metres to the rider's right of centre.
+///
+/// Negative is the rider's left. The ribbon covers the full asphalt and the
+/// gravel right shoulder.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LaneSpec {
-    /// Just clear of the centre line.
+    /// Left edge of the rideable ribbon, just inside the left white line.
     pub inner_m: f32,
-    /// Middle of the right lane.
+    /// Offset of [`START_SLOT`], the middle of the right-hand lane.
     pub middle_m: f32,
-    /// Just clear of the edge line.
+    /// Gravel right shoulder, past the right edge of the asphalt.
     pub outer_m: f32,
 }
 
 impl LaneSpec {
-    /// Right lane of a road.
+    /// Full road plus the gravel right shoulder.
     ///
     /// `asphalt_half_m` is half the paved width. `center_half_m` is half the
-    /// centre line. `edge_m` is the edge line, measured from the centre.
-    /// The slots stay on the asphalt and never cross the centre line.
+    /// centre line and `edge_m` is the edge line, both measured from the
+    /// centre. The slots span the asphalt and the right shoulder; the painted
+    /// lines are not a hard stop.
     #[must_use]
     pub fn right_lane(asphalt_half_m: f32, center_half_m: f32, edge_m: f32) -> Self {
-        let inner = (center_half_m + BODY_M).max(0.2);
-        let paved = asphalt_half_m.max(inner + 0.4);
-        let outer = (edge_m - BODY_M).clamp(inner + 0.4, paved - 0.05);
-        let middle = (inner + outer) * 0.5;
+        let _ = (center_half_m, edge_m);
+        let inner = -(asphalt_half_m - 0.35).max(0.4);
+        let outer = (asphalt_half_m + 0.35).max(inner + 0.4);
+        let last = f32::from(SLOTS - 1).max(1.0);
+        let middle = inner + (outer - inner) * (f32::from(START_SLOT.min(SLOTS - 1)) / last);
         Self {
             inner_m: inner,
             middle_m: middle,
@@ -46,13 +53,31 @@ impl LaneSpec {
         }
     }
 
-    /// Metres right of centre for a slot. 0 is the centre side.
+    /// Metres right of centre for a slot. 0 is the left edge.
     #[must_use]
     pub fn offset_for_slot(self, slot: u8) -> f32 {
         self.offset(slot)
     }
 
-    /// Arcade slot fraction, 0 at the centre side and 4 at the edge.
+    /// Metres right of centre for a fractional slot.
+    ///
+    /// `0.0` is the left asphalt edge and [`SLOTS`]`- 1` is the gravel right
+    /// shoulder. Values outside that range clamp.
+    #[must_use]
+    pub fn offset_for_slot_fraction(self, slot: f32) -> f32 {
+        let last = f32::from(SLOTS - 1);
+        let t = if last > 0.0 {
+            slot.clamp(0.0, last) / last
+        } else {
+            0.0
+        };
+        self.inner_m + (self.outer_m - self.inner_m) * t
+    }
+
+    /// Lane fraction for an offset in metres.
+    ///
+    /// `inner_m` maps to `0.0` and `outer_m` maps to [`SLOTS`]`- 1` (`8.0`
+    /// on the full road). Offsets outside the ribbon clamp.
     #[must_use]
     pub fn slot_fraction(self, offset_m: f32) -> f32 {
         let span = (self.outer_m - self.inner_m).max(0.001);
@@ -60,9 +85,7 @@ impl LaneSpec {
     }
 
     fn offset(self, slot: u8) -> f32 {
-        let last = SLOTS - 1;
-        let t = f32::from(slot.min(last)) / f32::from(last);
-        self.inner_m + (self.outer_m - self.inner_m) * t
+        self.offset_for_slot_fraction(f32::from(slot))
     }
 }
 
@@ -73,7 +96,7 @@ pub struct LanePose {
     pub offset_m: f32,
     /// Lean into the scoot, radians. Positive rolls to the rider's right.
     pub lean_rad: f32,
-    /// Slot index. 0 is nearest the centre line, `SLOTS - 1` the edge.
+    /// Slot index. 0 is the left asphalt edge, `SLOTS - 1` the right shoulder.
     pub slot: u8,
 }
 
@@ -103,9 +126,9 @@ impl Lane {
         }
     }
 
-    /// One slot toward the centre line (`false`) or the edge (`true`).
+    /// One slot to the left (`false`) or the right (`true`).
     ///
-    /// A tap at the end of the lane does nothing.
+    /// Right walks toward the gravel shoulder. A tap at either end does nothing.
     pub fn nudge(&mut self, toward_edge: bool) {
         let next = if toward_edge {
             self.slot.saturating_add(1).min(SLOTS - 1)
@@ -168,49 +191,92 @@ mod tests {
     }
 
     #[test]
-    fn the_middle_slot_starts_between_the_lines() {
-        let lane = Lane::new(spec());
-        let pose = lane_at_rest();
+    fn the_ride_starts_in_the_right_lane() {
+        let mut lane = Lane::new(spec());
+        let pose = lane.step(0.0);
         assert_eq!(pose.slot, START_SLOT);
-        assert!(pose.offset_m > spec().inner_m);
-        assert!(pose.offset_m < spec().outer_m);
+        assert_eq!(START_SLOT, 6);
+        assert!(pose.offset_m > 1.0 && pose.offset_m < 2.7);
         assert!((pose.offset_m - spec().middle_m).abs() < 0.001);
+        assert!((spec().middle_m - spec().offset_for_slot(START_SLOT)).abs() < 0.001);
+        assert!((spec().inner_m - -2.65).abs() < 0.001);
+        assert!((spec().outer_m - 3.35).abs() < 0.001);
+        assert!((pose.offset_m - 1.85).abs() < 0.001);
         assert!(pose.lean_rad.abs() < 0.001);
         let _ = lane;
     }
 
-    fn lane_at_rest() -> LanePose {
+    #[test]
+    fn nudging_right_reaches_the_edge_then_the_shoulder() {
         let mut lane = Lane::new(spec());
-        lane.step(0.0)
+        lane.nudge(true);
+        let edge = settle(&mut lane);
+        assert_eq!(edge.slot, 7);
+        assert!(
+            edge.offset_m > 2.4 && edge.offset_m < 3.0,
+            "slot 7 should sit near the right asphalt edge, got {}",
+            edge.offset_m
+        );
+        lane.nudge(true);
+        let shoulder = settle(&mut lane);
+        assert_eq!(shoulder.slot, 8);
+        assert!(
+            shoulder.offset_m > 3.0,
+            "slot 8 is the gravel shoulder, got {}",
+            shoulder.offset_m
+        );
+        assert!((shoulder.offset_m - spec().outer_m).abs() < 0.001);
+        lane.nudge(true);
+        let still = settle(&mut lane);
+        assert_eq!(still.slot, 8);
+        assert!((still.offset_m - shoulder.offset_m).abs() < 0.001);
     }
 
     #[test]
-    fn taps_visit_every_slot_and_stop_at_the_lines() {
+    fn nudging_left_visits_every_slot_and_stops_at_the_left_edge() {
         let mut lane = Lane::new(spec());
-        let mut last_m = settle(&mut lane).offset_m;
-        for slot in START_SLOT + 1..SLOTS {
-            lane.nudge(true);
-            let pose = settle(&mut lane);
-            assert_eq!(pose.slot, slot);
-            assert!(pose.offset_m > last_m + 0.3, "slots too close");
-            last_m = pose.offset_m;
-        }
-        let edge = settle(&mut lane);
-        assert_eq!(edge.slot, SLOTS - 1);
-        assert!((edge.offset_m - spec().outer_m).abs() < 0.001);
         lane.nudge(true);
-        let still = settle(&mut lane);
-        assert_eq!(still.slot, SLOTS - 1);
-        assert!((still.offset_m - edge.offset_m).abs() < 0.001);
-        for _ in 0..SLOTS - 1 {
+        lane.nudge(true);
+        let mut pose = settle(&mut lane);
+        assert_eq!(pose.slot, 8);
+        for slot in (0..8).rev() {
             lane.nudge(false);
+            pose = settle(&mut lane);
+            assert_eq!(pose.slot, slot, "expected slot {slot}");
         }
-        let inner = settle(&mut lane);
-        assert_eq!(inner.slot, 0);
-        assert!((inner.offset_m - spec().inner_m).abs() < 0.001);
-        assert!(inner.offset_m > 0.072);
+        assert!(
+            pose.offset_m < -2.0,
+            "slot 0 should be near the left edge, got {}",
+            pose.offset_m
+        );
+        assert!((pose.offset_m - spec().inner_m).abs() < 0.001);
         lane.nudge(false);
         assert_eq!(settle(&mut lane).slot, 0);
+    }
+
+    #[test]
+    fn fractional_slots_round_trip_across_the_road() {
+        let spec = spec();
+        assert_eq!(PAVED_SLOTS, 8);
+        for slot in 0..=8 {
+            let offset = spec.offset_for_slot_fraction(f32::from(slot));
+            let back = spec.slot_fraction(offset);
+            assert!(
+                (back - f32::from(slot)).abs() < 1.0e-4,
+                "slot {slot} -> {offset} -> {back}"
+            );
+            assert!((offset - spec.offset_for_slot(slot)).abs() < 1.0e-5);
+        }
+        assert!(spec.offset_for_slot(7) < 3.0, "slot 7 stays on the asphalt");
+        assert!(spec.offset_for_slot(8) > 3.0, "slot 8 is gravel");
+        let mid = spec.offset_for_slot_fraction(6.5);
+        let fraction = spec.slot_fraction(mid);
+        assert!((fraction - 6.5).abs() < 1.0e-4);
+        assert!((spec.offset_for_slot_fraction(fraction) - mid).abs() < 1.0e-4);
+        assert!((spec.offset_for_slot_fraction(-2.0) - spec.inner_m).abs() < 1.0e-5);
+        assert!((spec.offset_for_slot_fraction(20.0) - spec.outer_m).abs() < 1.0e-5);
+        assert!(spec.slot_fraction(spec.inner_m - 5.0).abs() < 1.0e-5);
+        assert!((spec.slot_fraction(spec.outer_m + 5.0) - 8.0).abs() < 1.0e-5);
     }
 
     #[test]

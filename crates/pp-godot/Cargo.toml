@@ -23,6 +23,7 @@ pp-view = { path = "../pp-view" }
 pp-course = { path = "../pp-course" }
 pp-rider = { path = "../pp-rider" }
 pp-session = { path = "../pp-session" }
+pp-workout = { path = "../pp-workout" }
 pp-controllers = { path = "../pp-controllers" }
 pp-trainer = { path = "../pp-trainer" }
 pp-world = { path = "../pp-world" }

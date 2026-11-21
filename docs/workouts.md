@@ -29,6 +29,12 @@ Each step has a duration, an optional cadence, and cues (`offset_s` from the sta
 
 `intensity` is the time-weighted mean fraction, leaving out free-ride and max-effort seconds, and a stress score when one can be computed. The score is Coggan's: one sample per second, a 30-second rolling average, the fourth power of those averages, the mean of the powers, then the fourth root. That root is the normalised fraction of FTP. The score is `seconds * NP² * 100 / 3600`. An hour at FTP scores 100. The score is `None` when the targeted work is under 30 seconds, or when the plan contains a free ride or a max effort, because those seconds have no power to put in the window.
 
+`intensity_factor` is the Intensity Factor. Each targeted second is one sample of the planned fraction of FTP. A ramp is sampled at the middle of each second, so the slope is weighted by time. The factor is the fourth root of the mean of those fourth powers. Free-ride and max-effort seconds are left out. An empty plan, or a plan with no targeted second, is `0.0`. The stress score above rolls a 30-second window before the fourth power. Intensity factor uses the one-second samples themselves, so a short ramp still has a factor.
+
+`tss` is the Training Stress Score, `duration_s * IF² / 36`, rounded to the nearest integer and clamped to a `u16`. That is `hours * IF² * 100`. The duration is the whole plan. An hour at FTP scores 100. An hour at 70% of FTP scores 49.
+
+`estimated_kj(ftp_w)` is the mechanical work, in kilojoules, if every target is held. Each targeted second adds `fraction * ftp_w` joules. The sum is divided by 1000, rounded, and clamped to a `u16`. Open seconds add nothing. An hour at 250 W is 900 kJ. `ftp_w` is the rider's FTP in watts.
+
 `profile` is one bar per expanded piece, for a bar graph. `start_power` and `end_power` are the two ends, as fractions of FTP. They are equal on a steady block. `open` is set on free ride and max effort.
 
 ## Built-in workouts
@@ -47,6 +53,11 @@ Each step has a duration, an optional cadence, and cues (`offset_s` from the sta
 | `thirties` | 30/30s | 30:00 | 10 min warm-up, 15× (30 s at 150%, 30 s at 45%), 5 min cool-down |
 | `sprints` | Sprints | 36:00 | 10 min warm-up, 8× (15 s at 200%, 2:15 at 50%), 6 min cool-down |
 | `ramp-test` | Ramp test | 29:00 | 5 min from 40% to 55%, then 1 min steps from 60% to 180% adding 6% each minute (21 steps), 3 min cool-down |
+| `over-unders-3x9` | Over-unders 3x9 | 45:00 | 6 min from 45% to 75%, three sets of 3× (2 min at 95%, 1 min at 105%) with 3 min at 55% between sets, 6 min from 55% to 40% |
+| `vo2max-4x4` | VO2max 4x4 | 40:00 | 5 min from 40% to 70%, 4× (4 min at 112%, 4 min at 55%), 3 min from 55% to 40% |
+| `micro-bursts-30-30` | Micro-bursts | 35:00 | 9 min from 40% to 70%, 8× (30 s at 125%, 30 s at 55%), 5 min at 55%, the same eight again, 5 min from 55% to 40% |
+| `climb-pyramid` | Climb pyramid | 45:00 | 9 min from 40% to 70%, 1-2-3-4-3-2-1 min from 95% up to 115% and back down, with an equal minute at 50% after each climb but the last, 5 min from 50% to 40% |
+| `endurance-base-90` | Endurance base | 90:00 | 10 min from 45% to 68%, 18 min at 68%, 1 min at 85%, 18 min at 70%, 1 min at 85%, 18 min at 72%, 1 min at 85%, 18 min at 70%, 5 min from 68% to 45% |
 
 The ramp test is the only plan with `ramp_test` set. The estimate is 75% of the target of the last steady step whose full minute elapsed, rounded to the nearest watt. The warm-up and the cool-down are not scored. A step that is skipped, or left in the middle, is not scored. The 75% is the usual ramp-test rule: a one-minute step is above threshold, and three quarters of the last minute a rider can finish is the threshold estimate. The nudge is ignored on this plan, so the estimate stays on the protocol powers.
 
@@ -126,7 +137,7 @@ For an FTMS trainer the control-point opcode was already there: `0x05`, then `si
 
 ## What the screen draws
 
-The picker lists `Library::builtin().workouts` and the imported list. Show `name`, `description`, `duration_s`, and `intensity`.
+The picker lists `Library::builtin().workouts` and the imported list. Show `name`, `description`, `duration_s`, `intensity`, `intensity_factor`, and `tss`. `estimated_kj` needs the rider's FTP.
 
 During the ride, `view` is one frame:
 

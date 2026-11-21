@@ -73,6 +73,20 @@ impl CourseChoice {
         }
     }
 
+    /// [`Self::label`], with ` (Reverse)` appended when `reversed` is true.
+    ///
+    /// The menu row stays [`Self::label`]. The toast and the HUD use this so
+    /// the active direction is visible.
+    #[must_use]
+    pub fn label_with_direction(&self, reversed: bool) -> String {
+        let name = self.label();
+        if reversed {
+            format!("{name} (Reverse)")
+        } else {
+            name
+        }
+    }
+
     pub(crate) fn from_toml(value: &toml::Value) -> Option<Self> {
         if let Some(text) = value.as_str() {
             return match text {
@@ -170,6 +184,11 @@ fn positive_int(value: &toml::Value) -> Option<u64> {
     u64::try_from(number).ok()
 }
 
+pub(crate) fn build_course_dir(choice: &CourseChoice, reversed: bool) -> Result<Course, String> {
+    let course = build_course(choice)?;
+    Ok(if reversed { course.reversed() } else { course })
+}
+
 pub(crate) fn build_course(choice: &CourseChoice) -> Result<Course, String> {
     match choice {
         CourseChoice::PenguinPass => Ok(Course::penguin_pass()),
@@ -187,14 +206,17 @@ pub(crate) fn build_course(choice: &CourseChoice) -> Result<Course, String> {
     }
 }
 
-pub(crate) fn open_course(choice: &CourseChoice) -> (Course, CourseChoice, Option<String>) {
-    match build_course(choice) {
+pub(crate) fn open_course(
+    choice: &CourseChoice,
+    reversed: bool,
+) -> (Course, CourseChoice, Option<String>) {
+    match build_course_dir(choice, reversed) {
         Ok(course) => (course, choice.clone(), None),
-        Err(detail) => (
-            Course::penguin_pass(),
-            CourseChoice::PenguinPass,
-            Some(detail),
-        ),
+        Err(detail) => {
+            let course = Course::penguin_pass();
+            let course = if reversed { course.reversed() } else { course };
+            (course, CourseChoice::PenguinPass, Some(detail))
+        }
     }
 }
 
@@ -213,7 +235,7 @@ pub(crate) fn course_option(choice: &CourseChoice) -> Result<CourseOption, Strin
     })
 }
 
-fn default_choices() -> [CourseChoice; 6] {
+fn default_choices() -> [CourseChoice; 8] {
     [
         CourseChoice::PenguinPass,
         CourseChoice::Generated {
@@ -240,6 +262,16 @@ fn default_choices() -> [CourseChoice; 6] {
             terrain: TerrainPreset::Flat,
             distance_km: 10,
             seed: FLAT_SEED,
+        },
+        CourseChoice::Generated {
+            terrain: TerrainPreset::Rolling,
+            distance_km: 20,
+            seed: ROLLING_SEED,
+        },
+        CourseChoice::Generated {
+            terrain: TerrainPreset::Desert,
+            distance_km: 20,
+            seed: DESERT_SEED,
         },
     ]
 }
@@ -339,12 +371,32 @@ mod tests {
     use std::time::Instant;
 
     #[test]
+    fn reverse_label_and_build_flip_penguin_pass() {
+        let choice = CourseChoice::PenguinPass;
+        assert_eq!(choice.label(), "Penguin Pass");
+        assert_eq!(choice.label_with_direction(false), "Penguin Pass");
+        assert_eq!(choice.label_with_direction(true), "Penguin Pass (Reverse)");
+        let forward = build_course_dir(&choice, false).expect("forward");
+        let backward = build_course_dir(&choice, true).expect("reverse");
+        assert!(!forward.is_reversed());
+        assert!(backward.is_reversed());
+        let length = forward.length_m();
+        let sample = length * 0.37;
+        let mirrored = (length - sample).rem_euclid(length);
+        let gap = (backward.elevation_at(sample) - forward.elevation_at(mirrored)).abs();
+        assert!(gap < 1.0e-3_f32, "{gap}");
+    }
+
+    #[test]
     fn fresh_catalog_cost() {
         let started = Instant::now();
         let catalog = build_default_catalog();
         let elapsed = started.elapsed();
         eprintln!("CATALOG_BUILD {elapsed:?}");
-        assert_eq!(catalog.len(), 6);
+        assert_eq!(catalog.len(), 8);
+        assert_eq!(catalog[6].name, "Rolling 20 km");
+        assert_eq!(catalog[7].name, "Desert 20 km");
+        assert_eq!(catalog[7].theme, "desert");
         for option in &catalog {
             eprintln!(
                 "CATALOG_ROW {} len {:.1} ascent {:.1} grade {:.2}..{:.2} theme {} points {}",

@@ -14,45 +14,46 @@ too.
 Course, Trainer, Settings, and Quit. With no trainer, Up and Down change
 power in 25 W steps.
 
-The game speaks Bluetooth FTMS and Tacx FE-C. It connects to a real
-Tacx Neo 2T over FE-C, reads power, and takes control of resistance.
-Whether the resistance tracks the hills correctly has not been measured
-yet.
+The game speaks Bluetooth FTMS, Tacx FE-C, Wahoo's legacy trainer
+control, and the Zwift trainer service. Confirmed on a real Tacx Neo 2T
+(power and hill resistance) and real Zwift controllers. Which trainers
+that covers is in [`docs/trainers.md`](docs/trainers.md).
 
 ## Status
 
-Playable on the desktop. Automated tests pass, and the owner has ridden
-it on a real trainer. Each ride is saved as a FIT file. It is not on
-Steam, and no release has been published yet. The far mountains are
-still being reworked. See [Roadmap](#roadmap).
+Playable on the desktop and ridden on a real Tacx Neo 2T with Zwift
+controllers. Automated tests pass, each ride saves as a FIT file, and
+the Steam store art kit + cross-platform workflows are in place. It is
+not on Steam yet and no public release has been tagged. See
+[Roadmap](#roadmap) and `docs/trainer-trace-plan.md`.
 
 ## Screenshots
 
 <table>
 <tr>
 <td width="400" valign="top">
-<img src="docs/img/shots/arcade/segment-start.png" alt="Chase view approaching the Penguin Pass climb arch in the right-hand lane, rider in white KOM kit, console showing 180 watts in zone 3, 31.1 km/h, and course elevation profile." width="400"><br>
-Approaching the Penguin Pass climb arch in the right-hand lane, with the console HUD and course profile.
+<img src="docs/img/shots/steam/title-1080.png" alt="Penguin Pass title screen on a sunny alpine road with the cycling penguin logo, rider on the road, and gamepad menu prompts." width="400"><br>
+Title screen on a sunny alpine pass, with gamepad-ready menus and live 3D backdrop.
 </td>
 <td width="400" valign="top">
-<img src="docs/img/shots/arcade/fish-chase.png" alt="Chase view with yellow fish hovering in the right-hand lane, pale blue ghost rider ahead, Ghost -19 m chip at the top, and fish counter beside the lane hint." width="400"><br>
-Fish pickups in the five lane positions and your ghost rider from a previous lap.
+<img src="docs/img/shots/steam/alpine-peloton-1080.png" alt="Chase view on Penguin Pass with yellow fish pickups, a pace rider ahead, roadside cows, gamepad prompts, and the console HUD showing 180 watts in zone 3." width="400"><br>
+Riding Penguin Pass with fish pickups, pace riders, roadside pastures, and the console HUD.
 </td>
 </tr>
 <tr>
 <td width="400" valign="top">
-<img src="docs/img/world/landmarks/alpine-meadow_0-reveal.png" alt="Alpine road passing a fenced pasture of cows with pine trees and a snow-capped mountain horn on the horizon." width="400"><br>
-Alpine landmarks: roadside pasture and the snow horn on the horizon.
+<img src="docs/img/shots/steam/workout-1080.png" alt="Structured ERG workout HUD in the upper left reading Warm up 1 of 3, 83 W, 2:42 remaining, colored interval bar, and live power readout below." width="400"><br>
+Structured workouts with ERG mode, interval countdown, and TSS/IF/kJ training load.
 </td>
+<td width="400" valign="top">
+<img src="docs/img/shots/lane-shoulder.png" alt="Rider pulled out onto the gravel right shoulder beside the white edge line on Penguin Pass with real pine forests on the hillside." width="400"><br>
+Full-width road movement across 9 positions — from the left edge out onto the gravel right shoulder.
+</td>
+</tr>
+<tr>
 <td width="400" valign="top">
 <img src="docs/img/world/landmarks/desert-ruins_0-reveal.png" alt="Desert road curving toward stone temple columns with a banded sandstone mesa and volcano cone on the horizon." width="400"><br>
-Desert theme with temple ruins, sandstone mesa, and volcano.
-</td>
-</tr>
-<tr>
-<td width="400" valign="top">
-<img src="docs/img/shots/arcade/power-active.png" alt="Active Aero powerup with edge speed lines and slot ring on the right, plus a segment finish card reading Penguin Pass climb 11:10." width="400"><br>
-Timed segment finish card and an active Aero powerup.
+Desert theme with temple ruins, sandstone mesa, and volcano on the horizon.
 </td>
 <td width="400" valign="top">
 <img src="docs/img/world/atmosphere/alpine-night.png" alt="Night ride on the alpine pass with a bike headlight illuminating the road, stars and moon above, and the snow peak in the distance." width="400"><br>
@@ -61,12 +62,12 @@ Night riding with the bike headlight (part of the time-of-day and weather system
 </tr>
 <tr>
 <td width="400" valign="top">
-<img src="docs/img/shots/arcade/progress.png" alt="Progress screen listing lifetime totals, earned badges with green checkmarks, gold progress bars, and kit unlocks." width="400"><br>
-Progress screen with lifetime totals, badges, and unlockable kits.
+<img src="docs/img/shots/arcade/power-active.png" alt="Active Aero powerup with edge speed lines and slot ring on the right, plus a segment finish card reading Penguin Pass climb 11:10." width="400"><br>
+Timed segment finish card and an active Aero powerup.
 </td>
 <td width="400" valign="top">
 <img src="docs/img/tv/round3-1080.png" alt="TV dashboard web page for Penguin Pass, a 5 km loop: 345 watts in zone 6 anaerobic, 11.8 km/h, 10 percent grade, 68 rpm, 176 bpm, and the course profile." width="400"><br>
-TV dashboard, a web page on the LAN. Checked in a desktop browser.
+TV dashboard, a web page on the LAN (now with live workout, segment, draft, fish, and powerup widgets).
 </td>
 </tr>
 </table>
@@ -92,8 +93,10 @@ Trainer  <-- BLE / FTMS or FE-C -->  pp-trainer  -->  pp-course (physics)
 - A trainer reports power, cadence, and speed. The game owns the
   physics: it turns that power into speed on the current slope, and
   can send the grade back so climbs add resistance.
-- That send path is implemented for FTMS and Tacx FE-C. Connecting and
-  resistance control have not yet been confirmed on a real trainer.
+- That send path is implemented for FTMS, Tacx FE-C, Wahoo WCPS, and the
+  Zwift trainer service. The Neo 2T is the trainer ridden so far. The
+  model list and what is still waiting on a real ride are in
+  [`docs/trainers.md`](docs/trainers.md).
 - With no trainer, a simulated rider drives the game from the keyboard.
   Up and Down step power by 25 W. Hold either key and the step repeats.
   Power stays between 0 and 1500 W.
@@ -115,7 +118,7 @@ Not built yet: world streaming for long routes, and an endless mode.
 | Path | What it holds |
 | --- | --- |
 | `crates/pp-core` | Shared types: telemetry snapshot, units, rider profile |
-| `crates/pp-ftms` | Bluetooth GATT codec for FTMS, Cycling Power, Heart Rate. No I/O |
+| `crates/pp-ftms` | Bluetooth GATT codec for FTMS, Cycling Power, FE-C, Wahoo, Zwift, CSC, and Heart Rate. No I/O |
 | `crates/pp-course` | Course data, grade lookup, bike physics |
 | `crates/pp-trainer` | `Trainer` trait, BLE trainer (BlueZ), simulated trainer |
 | `crates/pp-cast` | LAN TV dashboard: HTTP page plus live telemetry stream |
@@ -241,7 +244,10 @@ Three tiers, in the order they arrive:
 - [x] M4: TV dashboard (checked in a desktop browser, not yet on a TV)
 - [x] M4: settings menu (rider and bike weight, FTP, trainer difficulty,
   trainer pairing, TV dashboard on or off), saved between sessions
-- [x] M5: Steam export presets and release checklist
+- [x] M5: Steam export presets, release checklist, Steam store & library
+  art kit (`packaging/steam/assets/`, `docs/steam-assets.md`), and
+  Windows/macOS cross-platform CI + SteamPipe depots (`docs/cross-platform.md`,
+  untested on Windows/macOS hardware yet)
 - [ ] M5: Flatpak bundle built by GitHub Actions and attached to GitHub
   Releases. The workflow is written (`docs/flatpak.md`, `docs/release.md`)
   and publishes a `latest` prerelease on pushes to `main` plus numbered
@@ -249,16 +255,18 @@ Three tiers, in the order they arrive:
   is a separate, later step with its own rules
 - [x] M6: free CC0 art assets, textured terrain and road, a real rider
 - [x] M7: themes as data (alpine, desert) and a course picker
-- [x] M7: natural hillsides beside the road, with the road cut into them
+- [x] M7: natural hillsides beside the road, with the road cut into them,
+  and real pine/broadleaf forests out to 400 m
 - [x] M7: horizon mountains (alpine snow horn, desert sandstone mesa and
   volcano)
-- [x] M8: generated routes from a seed, in six fixed choices up to 10 km
+- [x] M8: generated routes from a seed, in eight fixed presets up to 20 km
 - [ ] M8: any chosen distance, with the world streamed in chunks; then
   an endless mode
 - [x] M9: title screen, pause menu, ride summary, and a console HUD with
   power zones
 - [x] M9: menus restyled with the shared style: title, pause, settings,
-  pairing, course picker, and summary
+  pairing, course picker, and summary (with dynamic keyboard/gamepad/Zwift
+  prompts)
 - [x] M9: music. Seven bundled CC0 tracks, or the player's own folder
   of mp3, ogg, or wav, and a volume setting
 - [ ] M10: first ride through Steam: Game Mode, Steam Link, and Bluetooth
@@ -268,8 +276,9 @@ Three tiers, in the order they arrive:
   Built; not yet tried with a real strap (see `docs/trainer-trace-plan.md`)
 - [x] M11: Zwift controllers for lanes, power, and menus (confirmed on
   real controllers)
-- [x] M11: lateral lane movement (currently 5 positions in the right
-  lane; expanding to full road width + right shoulder next)
+- [x] M11: full road-width lateral lane movement — 9 positions from the
+  left asphalt edge out onto the gravel right shoulder (fish and pace
+  riders stay on the paved road)
 - [x] M12: save each ride as a FIT activity file for Strava and other
   sites
 - [ ] M12: push rides to Strava with the rider's own API keys (built and
@@ -287,14 +296,17 @@ Three tiers, in the order they arrive:
 - [x] M14: computer pace riders and drafting (`pp-bots`)
 - [x] M14: time of day (dawn, day, sunset, night with headlight, auto)
   and weather (clear, cloudy, rain, snow/dust, fog, auto)
-- [ ] M14: structured workouts with Zwift `.zwo` import and ERG mode
-  (built and tested; first real ERG ride on the Neo 2T pending — see
-  `docs/trainer-trace-plan.md`)
+- [x] M14: ride any course in reverse (Forward / Reverse toggle in the
+  Course picker, with separate `:rev` personal bests and ghost)
+- [x] M14: TV dashboard upgraded with live workout, timed segment,
+  drafting, fish/combo, powerup, and reverse status widgets
+- [ ] M14: 15 built-in structured workouts (with TSS, IF, and kJ),
+  Zwift `.zwo` import, and ERG mode (built and tested; first real ERG
+  ride on the Neo 2T pending — see `docs/trainer-trace-plan.md`)
 - [ ] M14: ambient nature, bike coasting, breathing, and UI sound effects
   (26 CC0 sounds wired with volume sliders; first real listen pending —
   see `docs/trainer-trace-plan.md`)
-- [ ] Later: Chromecast video, ANT+, riding a course in reverse,
-  Windows/macOS hardware testing
+- [ ] Later: Chromecast video, ANT+, Windows/macOS hardware testing
 
 ## Contributors wanted
 
@@ -310,9 +322,11 @@ benefit from a human eye, ear, or bike:
   nature ambience (streams, hawks), and cycling-friendly music tracks.
 - **Courses and themes:** new route profiles, elevation curves, and
   visual themes beyond alpine and desert.
-- **Hardware testing:** trying Bluetooth FTMS / Tacx FE-C trainers
-  beyond the Tacx Neo 2T, heart-rate straps, and Zwift controllers, and
-  reporting what works or breaks.
+- **Hardware testing:** trying Bluetooth trainers beyond the Tacx Neo 2T
+  (Wahoo, Zwift Hub, JetBlack, Elite, and the others in
+  [`docs/trainers.md`](docs/trainers.md)), heart-rate straps, and Zwift
+  controllers, and reporting what works or breaks. `./x scan` and
+  `./x play --trace` are the reports that help.
 - **Windows and macOS support:** packaging, Bluetooth backend testing,
   and CI builds so Penguin Pass isn't Linux-only.
 

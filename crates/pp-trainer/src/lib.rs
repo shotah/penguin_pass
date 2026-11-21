@@ -3,7 +3,8 @@
 //! The game calls [`Trainer::latest_sample`] and [`Trainer::send`] from its
 //! frame loop. Neither call waits on Bluetooth. [`SimTrainer`] is the keyboard
 //! rider. [`BleTrainer`] talks to a trainer on BlueZ from a background thread,
-//! using FTMS when the trainer has it and Tacx FE-C otherwise.
+//! using FTMS when the trainer has it, then Tacx FE-C, Wahoo's legacy
+//! trainer control, or the Zwift trainer service.
 //!
 //! A sample is fresh while its age is less than or equal to [`SAMPLE_STALENESS`]
 //! (3 seconds). Older readings are `None` so a dropped link does not leave the
@@ -48,7 +49,8 @@ pub enum ConnectionState {
     /// elapses and the state moves back to [`Self::Connecting`].
     Disconnected,
     /// Looking for trainers. A device is listed when it advertises FTMS,
-    /// Cycling Power, or the Tacx FE-C service.
+    /// Cycling Power, or the Tacx FE-C service. A Zwift Play, Click, or Ride
+    /// controller advertises `0xFC82` without those and is not listed.
     Scanning,
     /// A connection attempt is in progress, including the FTMS control handshake.
     Connecting,

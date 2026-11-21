@@ -1,11 +1,11 @@
-//! Ten built-in workouts, from 20 to 60 minutes.
+//! Fifteen built-in workouts, from 20 to 90 minutes.
 //!
 //! The shapes are ordinary (sweet spot, threshold, a ramp test). The names
 //! and the files are this game's. Nothing here is copied from another app.
 
 use crate::model::{Cue, IntervalStep, RampStep, SteadyStep, Step, Workout};
 
-/// The ten workouts shipped with the game, in list order.
+/// The fifteen workouts shipped with the game, in list order.
 #[must_use]
 pub fn workouts() -> Vec<Workout> {
     vec![
@@ -19,6 +19,11 @@ pub fn workouts() -> Vec<Workout> {
         thirties(),
         sprints(),
         ramp_test(),
+        over_under_sets(),
+        vo2max_4x4(),
+        micro_bursts(),
+        climb_pyramid(),
+        endurance_base(),
     ]
 }
 
@@ -316,6 +321,156 @@ fn sprints() -> Workout {
     )
 }
 
+fn over_under_sets() -> Workout {
+    let mut steps = vec![warmup(360.0, 0.45, 0.75)];
+    for index in 0..3 {
+        steps.push(repeats(
+            3,
+            120.0,
+            60.0,
+            0.95,
+            1.05,
+            "Under",
+            "Over",
+            Some(90),
+            Some(95),
+            (index == 0).then_some("Under, then over"),
+        ));
+        if index < 2 {
+            steps.push(hold(180.0, 0.55, "Recover", Some(85), None));
+        }
+    }
+    steps.push(cooldown(360.0, 0.55, 0.40));
+    plan(
+        "over-unders-3x9",
+        "Over-unders 3x9",
+        "Three nine-minute sets alternating two minutes at 95% of FTP and one minute at 105%, \
+         with three minutes easy between them.",
+        steps,
+        false,
+    )
+}
+
+fn vo2max_4x4() -> Workout {
+    plan(
+        "vo2max-4x4",
+        "VO2max 4x4",
+        "Four four-minute efforts at 112% of FTP, with four minutes easy between them.",
+        vec![
+            warmup(300.0, 0.40, 0.70),
+            repeats(
+                4,
+                240.0,
+                240.0,
+                1.12,
+                0.55,
+                "VO2",
+                "Recover",
+                Some(95),
+                Some(85),
+                Some("Hard, then easy"),
+            ),
+            cooldown(180.0, 0.55, 0.40),
+        ],
+        false,
+    )
+}
+
+fn micro_bursts() -> Workout {
+    plan(
+        "micro-bursts-30-30",
+        "Micro-bursts",
+        "Two sets of eight: thirty seconds at 125% of FTP and thirty seconds easy, \
+         with five minutes between the sets.",
+        vec![
+            warmup(540.0, 0.40, 0.70),
+            repeats(
+                8,
+                30.0,
+                30.0,
+                1.25,
+                0.55,
+                "Burst",
+                "Recover",
+                Some(100),
+                Some(90),
+                Some("Thirty seconds on"),
+            ),
+            hold(300.0, 0.55, "Recover", Some(85), None),
+            repeats(
+                8,
+                30.0,
+                30.0,
+                1.25,
+                0.55,
+                "Burst",
+                "Recover",
+                Some(100),
+                Some(90),
+                None,
+            ),
+            cooldown(300.0, 0.55, 0.40),
+        ],
+        false,
+    )
+}
+
+fn climb_pyramid() -> Workout {
+    let climbs = [
+        (60.0_f32, 0.95_f32),
+        (120.0, 1.00),
+        (180.0, 1.05),
+        (240.0, 1.15),
+        (180.0, 1.05),
+        (120.0, 1.00),
+        (60.0, 0.95),
+    ];
+    let mut steps = vec![warmup(540.0, 0.40, 0.70)];
+    for (index, (seconds, power)) in climbs.iter().enumerate() {
+        let minutes = (*seconds / 60.0).round();
+        steps.push(hold(
+            *seconds,
+            *power,
+            &format!("{minutes:.0} min"),
+            Some(90),
+            (index == 0).then_some("Climb, then ease"),
+        ));
+        if index + 1 < climbs.len() {
+            steps.push(hold(*seconds, 0.50, "Recover", Some(85), None));
+        }
+    }
+    steps.push(cooldown(300.0, 0.50, 0.40));
+    plan(
+        "climb-pyramid",
+        "Climb pyramid",
+        "One to four minutes climbing from 95% to 115% of FTP and back down, \
+         with an equal easy spell after each climb but the last.",
+        steps,
+        false,
+    )
+}
+
+fn endurance_base() -> Workout {
+    plan(
+        "endurance-base-90",
+        "Endurance base",
+        "Ninety minutes of aerobic riding, holding 68% to 72% of FTP, \
+         with three one-minute surges at 85%.",
+        vec![
+            warmup(600.0, 0.45, 0.68),
+            hold(1080.0, 0.68, "Endurance", Some(85), Some("Stay aerobic")),
+            hold(60.0, 0.85, "Surge", Some(95), Some("Spin a little faster")),
+            hold(1080.0, 0.70, "Endurance", Some(85), None),
+            hold(60.0, 0.85, "Surge", Some(95), None),
+            hold(1080.0, 0.72, "Endurance", Some(85), None),
+            hold(60.0, 0.85, "Surge", Some(95), None),
+            hold(1080.0, 0.70, "Endurance", Some(85), None),
+            cooldown(300.0, 0.68, 0.45),
+        ],
+        false,
+    )
+}
+
 fn ramp_test() -> Workout {
     // One-minute steps from 60% to 180% of the current FTP, adding 6% each minute.
     // 75% of the last minute the rider finishes is the estimate. See docs/workouts.md.
@@ -362,6 +517,11 @@ mod tests {
             ("thirties", 1800.0, false),
             ("sprints", 2160.0, false),
             ("ramp-test", 1740.0, true),
+            ("over-unders-3x9", 2700.0, false),
+            ("vo2max-4x4", 2400.0, false),
+            ("micro-bursts-30-30", 2100.0, false),
+            ("climb-pyramid", 2700.0, false),
+            ("endurance-base-90", 5400.0, false),
         ];
         let all = workouts();
         assert_eq!(all.len(), expected.len());

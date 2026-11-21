@@ -1024,11 +1024,14 @@ impl Game {
         self.trainer_preview = Some((name.to_string(), detail.to_string()));
     }
 
-    /// Put the rider in a lane slot and finish the ease. 0 is the centre side, 2 the edge.
+    /// Put the rider in a lane slot and finish the ease.
+    ///
+    /// `0` is the left asphalt edge and `8` is the gravel right shoulder.
     #[func]
     pub fn debug_set_lane(&mut self, slot: i64) {
-        let target = slot.clamp(0, 2) as u8;
-        for _ in 0..3 {
+        let last = i64::from(pp_view::lane::SLOTS - 1);
+        let target = slot.clamp(0, last) as u8;
+        for _ in 0..pp_view::lane::SLOTS {
             self.lane.nudge(false);
         }
         for _ in 0..target {
@@ -1507,6 +1510,7 @@ impl Game {
                 self.keys.set_target_power(0.0);
             }
             ShellEffect::PickCourse(index) => self.pick_course(index),
+            ShellEffect::ToggleCourseDirection => self.toggle_course_direction(),
             ShellEffect::Reroll(index) => {
                 self.session_mut().reroll(index);
             }
@@ -1574,6 +1578,8 @@ impl Game {
             }
         }
         let workouts = self.session().workouts();
+        let plans = workout_plans(self.settings_path());
+        let ftp_w = self.session().settings().ftp_w;
         let chosen = self.session().selected_workout_id().map(str::to_owned);
         let workout_name = chosen
             .as_ref()
@@ -1589,7 +1595,7 @@ impl Game {
         for plan in &workouts {
             workout_rows.push(pp_view::shell::ShellRow {
                 label: plan.name.clone(),
-                detail: pp_view::extras::workout_length(plan.duration_s),
+                detail: workout_detail(plan, &plans, ftp_w),
             });
             workout_ids.push(Some(plan.id.clone()));
             samples.push(sample_bars(&plan.profile));
@@ -1620,8 +1626,14 @@ impl Game {
             totals.ascent_m,
             totals.average_power_w
         );
+        let reversed = self.session().course_reversed();
+        let course_label = self
+            .session()
+            .course_choice()
+            .label_with_direction(reversed);
+        self.shell.show_course_reversed(reversed);
         let view = self.shell.view(
-            &facts.name,
+            &course_label,
             &trainer,
             &detail,
             &cards,
@@ -1650,17 +1662,40 @@ impl Game {
         if self.shell.screen() != Screen::Course {
             return Vec::new();
         }
+        let reversed = self.session().course_reversed();
         self.session_mut()
             .course_catalog()
             .iter()
-            .map(|option| CourseCard {
-                name: option.name.clone(),
-                length_m: option.length_m,
-                ascent_m: option.ascent_m as f32,
-                max_grade_pct: option.max_grade_pct,
-                profile: option.profile.clone(),
+            .map(|option| {
+                let profile = if reversed {
+                    mirrored_profile(&option.profile)
+                } else {
+                    option.profile.clone()
+                };
+                let max_grade_pct = if reversed {
+                    (-option.min_grade_pct).max(0.0)
+                } else {
+                    option.max_grade_pct
+                };
+                CourseCard {
+                    name: option.name.clone(),
+                    length_m: option.length_m,
+                    ascent_m: option.ascent_m as f32,
+                    max_grade_pct,
+                    profile,
+                }
             })
             .collect()
+    }
+
+    fn toggle_course_direction(&mut self) {
+        let reversed = !self.session().course_reversed();
+        let theme = self.session().course_choice().theme_name().to_owned();
+        if let Err(err) = self.session_mut().set_course_reversed(reversed) {
+            godot_error!("Penguin Pass: {err}");
+            return;
+        }
+        self.rebuild_world(&theme);
     }
 
     fn pick_course(&mut self, index: usize) {
@@ -2557,6 +2592,63 @@ fn summary_figures(totals: &pp_session::RideSummary) -> Vec<(String, String)> {
     figures
 }
 
+fn workout_plans(settings: &std::path::Path) -> Vec<pp_workout::Workout> {
+    let mut workouts = pp_workout::Library::builtin().workouts;
+    if let Some(dir) = settings.parent()
+        && let Ok(extra) = pp_workout::Library::load_dir(dir.join("workouts"))
+    {
+        workouts.extend(extra.workouts);
+    }
+    workouts
+}
+
+fn workout_detail(
+    plan: &pp_session::WorkoutSummary,
+    plans: &[pp_workout::Workout],
+    ftp_w: u16,
+) -> String {
+    let Some(workout) = plans.iter().find(|workout| workout.id == plan.id) else {
+        return pp_view::extras::workout_length(plan.duration_s);
+    };
+    pp_view::extras::workout_metrics(
+        workout.duration_s(),
+        workout.tss(),
+        workout.intensity_factor(),
+        workout.estimated_kj(ftp_w),
+    )
+}
+
+/// Forward thumbnail, flipped along the lap, matching a reversed course profile.
+fn mirrored_profile(profile: &[(f32, f32)]) -> Vec<(f32, f32)> {
+    let Some(length) = profile.last().map(|point| point.0) else {
+        return Vec::new();
+    };
+    if profile.len() < 2 || length <= f32::EPSILON {
+        return profile.to_vec();
+    }
+    profile
+        .iter()
+        .map(|(distance, _)| {
+            let wrapped = distance.rem_euclid(length);
+            let source = (length - wrapped).rem_euclid(length);
+            (*distance, profile_elevation(profile, source))
+        })
+        .collect()
+}
+
+fn profile_elevation(profile: &[(f32, f32)], distance: f32) -> f32 {
+    let mut elevation = profile[0].1;
+    for window in profile.windows(2) {
+        if distance <= window[1].0 {
+            let width = (window[1].0 - window[0].0).max(0.001);
+            let t = ((distance - window[0].0) / width).clamp(0.0, 1.0);
+            return window[0].1 + (window[1].1 - window[0].1) * t;
+        }
+        elevation = window[1].1;
+    }
+    elevation
+}
+
 fn sample_bars(profile: &[pp_session::WorkoutBar]) -> Vec<f32> {
     if profile.is_empty() {
         return Vec::new();
@@ -2721,7 +2813,15 @@ fn place_ghost(
         6.0
     };
     *ghost_distance_m = view.total_distance_m;
-    let ghost_slot = if slot == 0 { 1 } else { slot.saturating_sub(1) };
+    // One slot to the rider's left, and always on the pavement. Slot 0 is
+    // the left edge, so the ghost steps inboard. Slot 8 is the gravel
+    // shoulder and stays clear for the player.
+    let paved_last = pp_view::lane::PAVED_SLOTS.saturating_sub(1);
+    let ghost_slot = if slot == 0 {
+        1.min(paved_last)
+    } else {
+        slot.saturating_sub(1).min(paved_last)
+    };
     let offset = spec.offset_for_slot(ghost_slot);
     let (position, tangent) = pose(course, view.total_distance_m);
     let origin = position + crate::road::flat_right(tangent) * offset;

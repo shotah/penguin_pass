@@ -340,7 +340,7 @@ impl Peloton {
     }
 
     fn free_slot(&self, distance_m: f64) -> f32 {
-        for slot in [1.0_f32, 3.0, 4.0, 0.0, 2.0] {
+        for slot in [5.0_f32, 6.0, 7.0, 4.0, 3.0, 2.0, 1.0, 0.0] {
             let blocked = self.riders.iter().any(|rider| {
                 (rider.distance_m - distance_m).abs() < 10.0 && (rider.slot - slot).abs() < 0.6
             });
@@ -348,7 +348,7 @@ impl Peloton {
                 return slot;
             }
         }
-        4.0
+        6.0
     }
 
     fn publish(&mut self) {
@@ -471,9 +471,9 @@ fn sanitize_player(player: &PlayerInput) -> PlayerInput {
             0.0
         },
         slot: if player.slot.is_finite() {
-            player.slot.clamp(0.0, 4.0)
+            player.slot.clamp(0.0, 8.0)
         } else {
-            2.0
+            6.0
         },
         mass_kg: sanitize_mass(player.mass_kg),
     }

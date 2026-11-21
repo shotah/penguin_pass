@@ -1,15 +1,19 @@
-//! Lane choice. Slot 0 is the centre side, slot 4 is the edge.
+//! Lane choice. Slot 0 is the left asphalt edge, slot 7 is the right edge.
 //!
-//! A pass moves toward the centre line. The rider eases back toward a home
-//! slot once the wheel ahead is clear. Nobody is left in the same slot
-//! within two bike lengths of another rider or the player.
+//! Bots stay on the paved slots. Slot 8 is the gravel right shoulder, and
+//! it is left clear for the player. A pass moves left, toward lower slot
+//! numbers, which from the right lane crosses toward the centre line. The
+//! rider eases back toward a home slot once the wheel ahead is clear.
+//! Nobody is left in the same slot within two bike lengths of another
+//! rider or the player.
 
 use crate::rider::Rider;
 use crate::types::PlayerInput;
 
-/// Lane fractions the road can hold. Matches the view: 0 at the centre side,
-/// 4 at the edge.
-pub const SLOT_COUNT: u8 = 5;
+/// Paved lane fractions the bots can hold. Slot 0 is the left asphalt edge
+/// and slot 7 is the right edge. The player's gravel shoulder is slot 8,
+/// and bots do not use it.
+pub const SLOT_COUNT: u8 = 8;
 
 /// Length of a bike, in metres, used as the spacing unit.
 pub const BIKE_LENGTH_M: f64 = 1.8;
@@ -34,7 +38,7 @@ const CLEAR_M: f64 = 8.0;
 const CLOSING_MPS: f32 = 0.3;
 
 const SLOT_MIN: f32 = 0.0;
-const SLOT_MAX: f32 = 4.0;
+const SLOT_MAX: f32 = 7.0;
 
 /// Pick a target slot for every rider, then ease toward it.
 pub(crate) fn advance_lanes(riders: &mut [Rider], player: &PlayerInput, dt: f32) {

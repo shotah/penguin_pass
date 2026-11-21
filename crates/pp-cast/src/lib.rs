@@ -3,7 +3,8 @@
 //! The game calls [`CastServer::publish`] once per frame with the latest
 //! [`pp_core::Telemetry`]. A browser on the same network opens one of the
 //! URLs from [`CastServer::urls`] and renders power, speed, and the lap
-//! profile in couch-readable type.
+//! profile in couch-readable type. Optional status can also show a workout,
+//! a timed segment, draft, fish, a powerup, and a reversed course.
 //!
 //! [`CastServer::start`] binds the socket and serves it on a background
 //! thread. [`CastServer::publish`] only stores the newest snapshot, so a
@@ -33,7 +34,9 @@ mod status;
 mod zones;
 
 pub use server::{CastError, CastServer, DEFAULT_PORT};
-pub use status::{LinkPhase, ResistanceMode, RideSource, RideStatus};
+pub use status::{
+    LinkPhase, PowerupStatus, ResistanceMode, RideSource, RideStatus, SegmentStatus, WorkoutStatus,
+};
 pub use zones::{GradeBand, ZoneStep, grade_bands, grade_color, power_zones, zone_for_power};
 
 use serde::{Deserialize, Serialize};

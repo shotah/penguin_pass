@@ -2,8 +2,8 @@
 
 use futures_util::StreamExt;
 use pp_cast::{
-    CastConfig, CastError, CastServer, CourseProfile, LinkPhase, ProfilePoint, ResistanceMode,
-    RideSource, RideStatus,
+    CastConfig, CastError, CastServer, CourseProfile, LinkPhase, PowerupStatus, ProfilePoint,
+    ResistanceMode, RideSource, RideStatus, SegmentStatus, WorkoutStatus,
 };
 use pp_core::Telemetry;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -396,7 +396,51 @@ fn sample_status() -> RideStatus {
         link: LinkPhase::Connected,
         resistance: Some(ResistanceMode::Controlled),
         power_3s_w: Some(345.0),
+        ..RideStatus::default()
     }
+}
+
+fn feature_status() -> RideStatus {
+    RideStatus {
+        workout: Some(WorkoutStatus {
+            name: "Sweet spot".to_owned(),
+            block_label: "Interval 2 of 4".to_owned(),
+            target_w: 245,
+            remaining_s: 134,
+            progress: 0.5,
+            erg_active: true,
+        }),
+        segment: Some(SegmentStatus {
+            name: "Summit climb".to_owned(),
+            elapsed_s: 84.0,
+            progress: 0.25,
+            delta_s: Some(-1.5),
+        }),
+        draft_saving_pct: Some(27),
+        fish_collected: Some(12),
+        fish_combo: Some(4),
+        active_powerup: Some(PowerupStatus {
+            name: "Feather".to_owned(),
+            remaining_s: 14.0,
+        }),
+        course_reversed: true,
+        ..sample_status()
+    }
+}
+
+fn status_events(buf: &[u8]) -> Vec<RideStatus> {
+    let body = String::from_utf8_lossy(buf);
+    let mut out = Vec::new();
+    for rest in body.split("event: status").skip(1) {
+        let Some(data) = rest.split("data:").nth(1) else {
+            continue;
+        };
+        let json = data.split("\n\n").next().unwrap_or("").trim();
+        if let Ok(status) = serde_json::from_str::<RideStatus>(json) {
+            out.push(status);
+        }
+    }
+    out
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -616,4 +660,244 @@ async fn served_zones_match_the_design_table() {
         let got = band["from_pct"].as_f64().expect("from");
         assert!((got - from).abs() < 1e-6);
     }
+}
+
+#[test]
+fn legacy_status_json_defaults_the_new_fields() {
+    let old = r#"{
+        "ftp_w": 250,
+        "source": "trainer",
+        "trainer_name": "Kickr",
+        "link": "connected",
+        "resistance": "controlled",
+        "power_3s_w": 200.0
+    }"#;
+    let status: RideStatus = serde_json::from_str(old).expect("old payload");
+    assert_eq!(
+        status,
+        RideStatus {
+            ftp_w: Some(250),
+            source: RideSource::Trainer,
+            trainer_name: Some("Kickr".to_owned()),
+            link: LinkPhase::Connected,
+            resistance: Some(ResistanceMode::Controlled),
+            power_3s_w: Some(200.0),
+            ..RideStatus::default()
+        }
+    );
+    assert!(status.workout.is_none());
+    assert!(status.segment.is_none());
+    assert!(status.draft_saving_pct.is_none());
+    assert!(status.fish_collected.is_none());
+    assert!(status.fish_combo.is_none());
+    assert!(status.active_powerup.is_none());
+    assert!(!status.course_reversed);
+
+    let explicit_nulls = r#"{
+        "ftp_w": null,
+        "source": "unknown",
+        "trainer_name": null,
+        "link": "unknown",
+        "resistance": null,
+        "power_3s_w": null,
+        "workout": null,
+        "segment": null,
+        "draft_saving_pct": null,
+        "fish_collected": null,
+        "fish_combo": null,
+        "active_powerup": null
+    }"#;
+    let nulled: RideStatus = serde_json::from_str(explicit_nulls).expect("nulls");
+    assert_eq!(nulled, RideStatus::default());
+}
+
+#[test]
+fn populated_status_json_round_trips() {
+    let status = feature_status();
+    let json = serde_json::to_string(&status).expect("encode");
+    let back: RideStatus = serde_json::from_str(&json).expect("decode");
+    assert_eq!(back, status);
+    assert!(json.contains("\"block_label\":\"Interval 2 of 4\""));
+    assert!(json.contains("\"erg_active\":true"));
+    assert!(json.contains("\"draft_saving_pct\":27"));
+    assert!(json.contains("\"fish_collected\":12"));
+    assert!(json.contains("\"fish_combo\":4"));
+    assert!(json.contains("\"course_reversed\":true"));
+    assert!(json.contains("\"name\":\"Feather\""));
+    assert!(json.contains("\"name\":\"Sweet spot\""));
+    assert!(json.contains("\"name\":\"Summit climb\""));
+
+    let first_try = SegmentStatus {
+        name: "Summit climb".to_owned(),
+        elapsed_s: 3.0,
+        progress: 0.0,
+        delta_s: None,
+    };
+    let encoded = serde_json::to_string(&first_try).expect("segment");
+    assert!(encoded.contains("\"delta_s\":null"));
+    let decoded: SegmentStatus = serde_json::from_str(&encoded).expect("segment back");
+    assert_eq!(decoded, first_try);
+
+    let behind = SegmentStatus {
+        name: "Valley".to_owned(),
+        elapsed_s: 12.0,
+        progress: 1.0,
+        delta_s: Some(0.8),
+    };
+    let again: SegmentStatus =
+        serde_json::from_str(&serde_json::to_string(&behind).expect("behind"))
+            .expect("behind back");
+    assert_eq!(again, behind);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn feature_status_round_trips_over_http() {
+    let server = start(CourseProfile::default());
+    let client = client();
+    let url = format!("http://{}/api/status", server.local_addr());
+    let fresh: RideStatus = send_get(&client, &url).await.json().await.expect("default");
+    assert_eq!(fresh, RideStatus::default());
+    assert!(fresh.workout.is_none());
+    assert!(fresh.segment.is_none());
+    assert!(fresh.draft_saving_pct.is_none());
+    assert!(fresh.fish_collected.is_none());
+    assert!(fresh.fish_combo.is_none());
+    assert!(fresh.active_powerup.is_none());
+    assert!(!fresh.course_reversed);
+
+    let status = feature_status();
+    server.publish_status(status.clone());
+    let body = send_get(&client, &url)
+        .await
+        .text()
+        .await
+        .expect("status body");
+    let got: RideStatus = serde_json::from_str(&body).expect("status");
+    assert_eq!(got, status);
+    assert_eq!(got.workout.as_ref().map(|w| w.target_w), Some(245));
+    assert_eq!(got.segment.as_ref().and_then(|s| s.delta_s), Some(-1.5));
+    assert_eq!(got.draft_saving_pct, Some(27));
+    assert_eq!(got.fish_collected, Some(12));
+    assert_eq!(got.fish_combo, Some(4));
+    assert_eq!(
+        got.active_powerup.as_ref().map(|p| p.name.as_str()),
+        Some("Feather")
+    );
+    assert!(got.course_reversed);
+
+    let telemetry = send_get(
+        &client,
+        &format!("http://{}/api/telemetry", server.local_addr()),
+    )
+    .await
+    .text()
+    .await
+    .expect("telemetry");
+    assert!(
+        !telemetry.contains("course_reversed"),
+        "status leaked into telemetry: {telemetry}"
+    );
+    assert!(
+        !telemetry.contains("block_label"),
+        "status leaked into telemetry: {telemetry}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn feature_status_streams_on_the_event_source() {
+    let server = start(CourseProfile::default());
+    let status = feature_status();
+    server.publish_status(status.clone());
+
+    let client = client();
+    let response = send_get(&client, &format!("http://{}/events", server.local_addr())).await;
+    assert_eq!(response.status(), 200);
+    let mut stream = response.bytes_stream();
+    let mut buf = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw = false;
+    while Instant::now() < deadline && !saw {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let Ok(Some(Ok(chunk))) = tokio::time::timeout(left, stream.next()).await else {
+            break;
+        };
+        buf.extend_from_slice(&chunk);
+        if status_events(&buf).iter().any(|event| event == &status) {
+            saw = true;
+        }
+    }
+    assert!(
+        saw,
+        "missing feature status: {}",
+        String::from_utf8_lossy(&buf)
+    );
+
+    let cleared = sample_status();
+    server.publish_status(cleared.clone());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw_clear = false;
+    while Instant::now() < deadline && !saw_clear {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let Ok(Some(Ok(chunk))) = tokio::time::timeout(left, stream.next()).await else {
+            break;
+        };
+        buf.extend_from_slice(&chunk);
+        if status_events(&buf).iter().any(|event| event == &cleared) {
+            saw_clear = true;
+        }
+    }
+    assert!(
+        saw_clear,
+        "cleared status did not stream: {}",
+        String::from_utf8_lossy(&buf)
+    );
+    let cleared_event = status_events(&buf)
+        .into_iter()
+        .find(|event| event == &cleared)
+        .expect("cleared event");
+    assert!(cleared_event.workout.is_none());
+    assert!(cleared_event.segment.is_none());
+    assert!(cleared_event.active_powerup.is_none());
+    assert!(!cleared_event.course_reversed);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dashboard_html_has_feature_hooks_without_inner_html() {
+    let server = start(CourseProfile::default());
+    let client = client();
+    let html = send_get(&client, &format!("http://{}/", server.local_addr()))
+        .await
+        .text()
+        .await
+        .expect("html");
+    for hook in [
+        "id=\"course-live\" hidden",
+        "id=\"workout\" hidden",
+        "id=\"workout-name\"",
+        "id=\"workout-block\"",
+        "id=\"workout-watts\"",
+        "id=\"workout-erg\"",
+        "id=\"workout-time\"",
+        "id=\"workout-fill\"",
+        "id=\"segment\" hidden",
+        "id=\"segment-name\"",
+        "id=\"segment-time\"",
+        "id=\"segment-fill\"",
+        "id=\"segment-delta\"",
+        "id=\"subbar\" hidden",
+        "id=\"pill-draft\" hidden",
+        "id=\"pill-fish\" hidden",
+        "id=\"pill-power\" hidden",
+        "id=\"pill-reverse\" hidden",
+        "textContent",
+        "renderWorkout",
+        "renderSegment",
+        "renderPills",
+        "FIRST TRY",
+        ">ERG<",
+    ] {
+        assert!(html.contains(hook), "missing {hook}");
+    }
+    assert!(!html.contains("innerHTML"));
+    assert!(!html.contains("INNERHTML"));
 }

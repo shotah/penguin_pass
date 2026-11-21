@@ -69,6 +69,7 @@ const HEADER: &str = "\
 # course: \"penguin_pass\", or { terrain = \"desert\", distance_km = 10, seed = 7 }.
 # terrain is flat, rolling, mountain, or desert. A missing course is Penguin Pass.
 # A saved course that cannot be built falls back to Penguin Pass.
+# course_reversed: when true, that course is ridden backward. Missing loads as false.
 # music_volume, ambient_volume, and effects_volume are 0 to 100.
 # music_folder is the player's own folder of music files.
 # rider_breathing: when true, a quiet breath follows the effort. Off when missing.
@@ -161,6 +162,12 @@ pub struct Settings {
     /// names it. Building the course happens when the session starts.
     #[serde(default)]
     pub course: CourseChoice,
+    /// Ride [`Self::course`] backward.
+    ///
+    /// Missing from older files, which load as `false`. Forward and reverse
+    /// personal bests are stored separately.
+    #[serde(default)]
+    pub course_reversed: bool,
     /// Playback volume for the rider's music, from 0 to 100.
     ///
     /// The default is [`DEFAULT_MUSIC_VOLUME`]. Godot applies this to the
@@ -267,6 +274,7 @@ impl Default for Settings {
             fullscreen: default_true(),
             control_trainer: default_true(),
             course: CourseChoice::PenguinPass,
+            course_reversed: false,
             music_volume: default_music_volume(),
             ambient_volume: default_music_volume(),
             effects_volume: default_music_volume(),
@@ -636,7 +644,8 @@ fn notes_from(value: &toml::Value) -> Result<Vec<String>, String> {
             | "arcade"
             | "ghost"
             | "rider_breathing"
-            | "strava_auto_upload" => {
+            | "strava_auto_upload"
+            | "course_reversed" => {
                 expect_bool(key, item)?;
             }
             "last_trainer_id" => expect_string(key, item)?,
@@ -1114,6 +1123,7 @@ mod tests {
         assert_eq!(settings.weather, "clear");
         assert_eq!(settings.bots_count, 8);
         assert!(settings.strava_auto_upload);
+        assert!(!settings.course_reversed);
 
         let profile = settings.rider_profile();
         let defaults = RiderProfile::default();
@@ -1143,6 +1153,7 @@ mod tests {
                 distance_km: 10,
                 seed: 7,
             },
+            course_reversed: true,
             music_volume: 40,
             ambient_volume: 25,
             effects_volume: 80,
@@ -1181,6 +1192,7 @@ mod tests {
         assert!(text.contains("rain"), "{text}");
         assert!(text.contains("bots_count"), "{text}");
         assert!(text.contains("strava_auto_upload"), "{text}");
+        assert!(text.contains("course_reversed = true"), "{text}");
         assert!(tmp_files(path.parent().expect("parent")).is_empty());
 
         let loaded = Settings::load(&path);
@@ -1286,6 +1298,7 @@ mod tests {
         assert_eq!(loaded.settings.weather, "clear");
         assert_eq!(loaded.settings.bots_count, 8);
         assert!(loaded.settings.strava_auto_upload);
+        assert!(!loaded.settings.course_reversed);
         assert!(loaded.settings.missing_music_folder().is_none());
     }
 
@@ -1335,6 +1348,43 @@ mod tests {
         assert_eq!(settings.normalized().music_volume, 100);
         settings.music_folder = Some(PathBuf::from("   "));
         assert_eq!(settings.normalized().music_folder, None);
+    }
+
+    #[test]
+    fn course_reversed_missing_is_false_and_a_bad_value_is_rejected() {
+        let dir = TempDir::new();
+        let missing = write(&dir, "older.toml", "ftp_w = 210\n");
+        let loaded = Settings::load(&missing);
+        assert!(!loaded.settings.course_reversed);
+        assert_eq!(loaded.settings.ftp_w, 210);
+
+        let path = dir.path().join("rev.toml");
+        let settings = Settings {
+            course_reversed: true,
+            ..Settings::default()
+        };
+        settings.save(&path).expect("save");
+        let again = Settings::load(&path);
+        assert_eq!(again.warning, None);
+        assert!(again.settings.course_reversed);
+
+        let bad = write(
+            &dir,
+            "bad-rev.toml",
+            "course_reversed = \"yes\"\nftp_w = 220\n",
+        );
+        let before = fs::read_to_string(&bad).expect("fixture");
+        let loaded = Settings::load(&bad);
+        assert_eq!(loaded.settings, Settings::default());
+        assert!(
+            loaded
+                .warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains("course_reversed")),
+            "{:?}",
+            loaded.warning
+        );
+        assert_eq!(fs::read_to_string(&bad).expect("still there"), before);
     }
 
     #[test]

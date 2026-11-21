@@ -25,8 +25,9 @@ use crate::stats::SegmentResult;
 /// Fish drawn when they are at most this far ahead of the rider, in meters.
 const FISH_AHEAD_M: f64 = 150.0;
 
-/// How many lane slots the fish field uses.
-const FISH_SLOTS: u8 = 5;
+/// How many paved lane slots the fish field uses. Slot 8, the gravel
+/// right shoulder, stays clear.
+const FISH_SLOTS: u8 = 8;
 
 /// One lap of segments, for the banners.
 #[derive(Debug, Clone, PartialEq)]
@@ -235,7 +236,7 @@ impl Play {
             records: Records::default(),
             profile: Profile::default(),
             dir: None,
-            lane: 2.0,
+            lane: 6.0,
             closed: false,
             assisted: false,
             run: None,
@@ -260,15 +261,21 @@ impl Play {
         self.profile = Profile::load(dir.join("arcade.toml"));
         self.dir = Some(dir);
         if self.run.is_some() {
-            self.open(course, choice, arcade);
+            self.open(course, choice, arcade, course.is_reversed());
         }
     }
 
-    pub(crate) fn open(&mut self, course: &Course, choice: &CourseChoice, arcade: bool) {
+    pub(crate) fn open(
+        &mut self,
+        course: &Course,
+        choice: &CourseChoice,
+        arcade: bool,
+        reversed: bool,
+    ) {
         self.closed = false;
         self.assisted = false;
         let length_m = course.length_m();
-        let key = records_key(choice);
+        let key = records_key(choice, reversed);
         let segments = detect(course);
         let efforts = self.records.efforts(&key, length_m);
         let stored = self.records.ghost(&key, length_m);
@@ -306,7 +313,7 @@ impl Play {
 
     pub(crate) fn set_lane(&mut self, slot: f32) {
         if slot.is_finite() {
-            self.lane = slot.clamp(0.0, 4.0);
+            self.lane = slot.clamp(0.0, 8.0);
         }
     }
 
@@ -763,15 +770,16 @@ fn segment_kind(run: &CourseRun, id: &str) -> Option<SegmentKind> {
         .map(|segment| segment.kind)
 }
 
-fn records_key(choice: &CourseChoice) -> String {
-    match choice {
+fn records_key(choice: &CourseChoice, reversed: bool) -> String {
+    let key = match choice {
         CourseChoice::PenguinPass => "penguin_pass".to_owned(),
         CourseChoice::Generated {
             terrain,
             distance_km,
             seed,
         } => format!("{}-{distance_km}-{seed}", terrain.as_str()),
-    }
+    };
+    if reversed { format!("{key}:rev") } else { key }
 }
 
 fn badge_course(choice: &CourseChoice) -> String {
@@ -879,6 +887,25 @@ mod tests {
     }
 
     #[test]
+    fn records_key_keeps_a_reversed_course_separate() {
+        assert_eq!(
+            records_key(&CourseChoice::PenguinPass, false),
+            "penguin_pass"
+        );
+        assert_eq!(
+            records_key(&CourseChoice::PenguinPass, true),
+            "penguin_pass:rev"
+        );
+        let desert = CourseChoice::Generated {
+            terrain: TerrainPreset::Desert,
+            distance_km: 20,
+            seed: 7,
+        };
+        assert_eq!(records_key(&desert, false), "desert-20-7");
+        assert_eq!(records_key(&desert, true), "desert-20-7:rev");
+    }
+
+    #[test]
     fn epoch_is_the_civil_origin() {
         assert_eq!(civil_ymd(0), (1970, 1, 1));
         let _ = local_date(0);
@@ -971,7 +998,7 @@ mod tests {
         session.set_sim_power(700);
         let length = session.course_facts().length_m;
         let fish = nearest_fish(&session).expect("a fish ahead");
-        let wrong = if fish.slot == 0 { 4.0 } else { 0.0 };
+        let wrong = if fish.slot == 0 { 7.0 } else { 0.0 };
         let events = cross_fish(&mut session, wrong, fish.total_distance_m);
         assert!(
             events

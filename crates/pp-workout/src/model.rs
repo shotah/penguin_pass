@@ -3,6 +3,8 @@
 //! Power on a step is a fraction of FTP. `1.0` is threshold. A warm-up,
 //! cool-down, or ramp stores the fraction at each end and the runner moves
 //! in a straight line between them. Free ride and max effort have no target.
+//! [`Workout::intensity_factor`], [`Workout::tss`], and [`Workout::estimated_kj`]
+//! turn those fractions into a training load.
 
 /// One line of text shown during a step.
 #[derive(Debug, Clone, PartialEq)]
@@ -208,6 +210,54 @@ impl Workout {
             average_ftp_fraction: average,
             stress_score,
         }
+    }
+
+    /// Intensity Factor: the fourth-root mean of the planned fraction of FTP.
+    ///
+    /// Each targeted second is one sample. A ramp is sampled at the middle of
+    /// each second, so the slope is weighted by time. Free-ride and max-effort
+    /// seconds have no target and are left out. An empty plan, or a plan with
+    /// no targeted second, is `0.0`.
+    #[must_use]
+    pub fn intensity_factor(&self) -> f32 {
+        let sampled = target_samples(self);
+        if sampled.count == 0 {
+            return 0.0;
+        }
+        let mean = sampled.fourths / sampled.count as f64;
+        if !mean.is_finite() || mean <= 0.0 {
+            return 0.0;
+        }
+        let factor = mean.powf(0.25);
+        if factor.is_finite() {
+            factor as f32
+        } else {
+            0.0
+        }
+    }
+
+    /// Training Stress Score from [`Self::intensity_factor`].
+    ///
+    /// `duration_s * IF² / 36`, which is `hours * IF² * 100`, rounded to the
+    /// nearest integer. An hour at FTP scores 100. An hour at 70% of FTP
+    /// scores 49. The duration is the whole plan. The result is clamped to `u16`.
+    #[must_use]
+    pub fn tss(&self) -> u16 {
+        let factor = f64::from(self.intensity_factor());
+        let score = f64::from(self.duration_s()) * factor * factor / 36.0;
+        rounded_u16(score)
+    }
+
+    /// Estimated mechanical work, in kilojoules, if every target is held.
+    ///
+    /// Each targeted second contributes `fraction * ftp_w` joules. The sum is
+    /// divided by 1000 and rounded. Open seconds contribute nothing. An hour
+    /// at 250 W is 900. The result is clamped to `u16`.
+    #[must_use]
+    pub fn estimated_kj(&self, ftp_w: u16) -> u16 {
+        let sampled = target_samples(self);
+        let joules = sampled.fraction_sum * f64::from(ftp_w);
+        rounded_u16(joules / 1000.0)
     }
 
     /// One bar per expanded piece, in order. Repeats are already unrolled.
@@ -510,6 +560,67 @@ fn whole_seconds(duration_s: f32) -> usize {
     }
 }
 
+struct TargetSamples {
+    fourths: f64,
+    fraction_sum: f64,
+    count: usize,
+}
+
+/// One sample per targeted second. Ramps use the same midpoint as [`stress_score`].
+fn target_samples(workout: &Workout) -> TargetSamples {
+    let mut fourths = 0.0_f64;
+    let mut fraction_sum = 0.0_f64;
+    let mut count = 0_usize;
+    for atom in expand(workout) {
+        let seconds = whole_seconds(atom.duration_s);
+        if seconds == 0 {
+            continue;
+        }
+        match atom.shape {
+            Shape::Open => {}
+            Shape::Hold(power) => {
+                let power = f64::from(power);
+                let steps = seconds as f64;
+                fourths += power.powi(4) * steps;
+                fraction_sum += power * steps;
+                count += seconds;
+            }
+            Shape::Ramp { low, high } => {
+                let low = f64::from(low);
+                let high = f64::from(high);
+                let steps = seconds as f64;
+                for index in 0..seconds {
+                    let t = (index as f64 + 0.5) / steps;
+                    let power = low + (high - low) * t;
+                    fourths += power.powi(4);
+                    fraction_sum += power;
+                    count += 1;
+                }
+            }
+        }
+    }
+    TargetSamples {
+        fourths,
+        fraction_sum,
+        count,
+    }
+}
+
+fn rounded_u16(value: f64) -> u16 {
+    if !value.is_finite() || value <= 0.0 {
+        return 0;
+    }
+    let rounded = value.round();
+    if rounded >= f64::from(u16::MAX) {
+        u16::MAX
+    } else {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        {
+            rounded as u16
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -619,5 +730,83 @@ mod tests {
         let atoms = expand(&plan);
         assert_eq!(atoms[0].cues.len(), 1);
         assert!(atoms[1].cues.is_empty());
+    }
+
+    #[test]
+    fn an_hour_at_ftp_has_if_one_tss_one_hundred_and_nine_hundred_kj() {
+        let plan = workout(vec![steady(3600.0, 1.0)]);
+        let factor = plan.intensity_factor();
+        assert!((factor - 1.0).abs() < 1e-5, "{factor}");
+        assert_eq!(plan.tss(), 100);
+        assert_eq!(plan.estimated_kj(250), 900);
+        assert_eq!(plan.estimated_kj(0), 0);
+    }
+
+    #[test]
+    fn an_hour_at_seventy_percent_has_if_point_seven_and_tss_forty_nine() {
+        let plan = workout(vec![steady(3600.0, 0.70)]);
+        let factor = plan.intensity_factor();
+        assert!((factor - 0.70).abs() < 1e-5, "{factor}");
+        assert_eq!(plan.tss(), 49);
+    }
+
+    #[test]
+    fn ramps_and_empty_plans_stay_finite() {
+        let empty = workout(vec![]);
+        assert_eq!(empty.intensity_factor(), 0.0);
+        assert_eq!(empty.tss(), 0);
+        assert_eq!(empty.estimated_kj(250), 0);
+
+        let zero = workout(vec![steady(0.0, 1.0)]);
+        assert_eq!(zero.intensity_factor(), 0.0);
+        assert_eq!(zero.tss(), 0);
+        assert_eq!(zero.estimated_kj(200), 0);
+
+        let open = workout(vec![Step::FreeRide(OpenStep {
+            duration_s: 120.0,
+            cues: Vec::new(),
+            show_power: Some(0.5),
+        })]);
+        assert_eq!(open.intensity_factor(), 0.0);
+        assert_eq!(open.tss(), 0);
+        assert_eq!(open.estimated_kj(250), 0);
+
+        let ramp = workout(vec![Step::Ramp(RampStep {
+            duration_s: 600.0,
+            power_low: 0.50,
+            power_high: 1.00,
+            cadence_rpm: None,
+            cues: Vec::new(),
+        })]);
+        let factor = ramp.intensity_factor();
+        assert!(factor.is_finite(), "{factor}");
+        // A rising ramp's fourth-root mean sits above the arithmetic mean, 0.75.
+        assert!(factor > 0.75, "{factor}");
+        assert!(factor < 1.0, "{factor}");
+        assert!(ramp.tss() > 0);
+        // Midpoint samples of a straight ramp sum to the trapezoid:
+        // 600 s * 0.75 * 200 W / 1000 = 90 kJ.
+        assert_eq!(ramp.estimated_kj(200), 90);
+
+        let short = workout(vec![Step::Warmup(RampStep {
+            duration_s: 10.0,
+            power_low: 0.40,
+            power_high: 0.80,
+            cadence_rpm: None,
+            cues: Vec::new(),
+        })]);
+        let short_factor = short.intensity_factor();
+        assert!(short_factor.is_finite(), "{short_factor}");
+        assert!(short_factor > 0.60, "{short_factor}");
+        assert!(short_factor < 0.80, "{short_factor}");
+        // Ten seconds at this height rounds the score down to 0.
+        assert_eq!(short.tss(), 0);
+        assert!(short.estimated_kj(180) > 0);
+
+        let long = workout(vec![steady(3_000_000.0, 1.0)]);
+        assert!((long.intensity_factor() - 1.0).abs() < 1e-5);
+        assert_eq!(long.tss(), u16::MAX);
+        let hard = workout(vec![steady(7200.0, 2.0)]);
+        assert_eq!(hard.estimated_kj(u16::MAX), u16::MAX);
     }
 }

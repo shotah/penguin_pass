@@ -163,7 +163,7 @@ pub(crate) fn make_company(
     taken: &[String],
     factor: Option<f32>,
 ) -> Rider {
-    let slot_cycle = [3.0_f32, 4.0, 1.0, 3.0, 2.0, 4.0, 0.0, 1.0];
+    let slot_cycle = [5.0_f32, 6.0, 7.0, 5.0, 6.0, 7.0, 4.0, 5.0];
     let home = slot_cycle[index % slot_cycle.len()];
     let mass = (center_mass_kg + MASS_OFFSET_KG[index % MASS_OFFSET_KG.len()]).clamp(55.0, 100.0);
     let factor = factor.unwrap_or(COMPANY_FACTOR[index % COMPANY_FACTOR.len()]);

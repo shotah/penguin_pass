@@ -272,7 +272,8 @@ impl Session {
     pub fn with_options(settings: Settings, options: SessionOptions) -> Self {
         course_sel::warm_catalog();
         let mut settings = settings.normalized();
-        let (course, choice, fallback) = course_sel::open_course(&settings.course);
+        let (course, choice, fallback) =
+            course_sel::open_course(&settings.course, settings.course_reversed);
         settings.course = choice.clone();
         let mut sim = SimTrainer::new("Simulated rider");
         sim.set_power(0);
@@ -788,12 +789,23 @@ impl Session {
         let old_endpoint = self.dashboard_endpoint();
         let rider_changed = new.rider_profile() != self.settings.rider_profile();
         let control_changed = new.control_trainer != self.settings.control_trainer;
+        let reversed_changed = new.course_reversed != self.settings.course_reversed;
+        let previous_reversed = self.settings.course_reversed;
         let requested = new.course.clone();
         let choice = self.choice.clone();
         self.settings = new;
         self.settings.course = choice.clone();
         if requested != choice {
             if let Err(detail) = self.set_course(requested) {
+                self.settings.course_reversed = previous_reversed;
+                self.events.push(RideEvent::CourseUnavailable { detail });
+                if rider_changed {
+                    self.ride.set_rider(self.settings.rider_profile());
+                }
+            }
+        } else if reversed_changed {
+            if let Err(detail) = self.reload_course_direction() {
+                self.settings.course_reversed = previous_reversed;
                 self.events.push(RideEvent::CourseUnavailable { detail });
                 if rider_changed {
                     self.ride.set_rider(self.settings.rider_profile());
@@ -914,17 +926,65 @@ impl Session {
     /// Build `choice`, swap it in, and reset the ride to zero.
     ///
     /// The phase, the trainer connection, and the other settings stay.
-    /// Course facts, the road ahead, the summary, and the lap length follow
-    /// the new course. The TV dashboard is told, and
-    /// [`RideEvent::CourseSelected`] is queued. On failure the old course
-    /// stays and the string is a plain sentence.
+    /// [`Settings::course_reversed`] is honored, so a reversed session stays
+    /// reversed. Course facts, the road ahead, the summary, and the lap
+    /// length follow the new course. The TV dashboard is told, and
+    /// [`RideEvent::CourseSelected`] is queued. The event name ends with
+    /// ` (Reverse)` when the course is ridden backward. On failure the old
+    /// course stays and the string is a plain sentence.
     ///
     /// # Errors
     ///
     /// Returns a sentence when the route cannot be generated. Penguin Pass
     /// does not fail.
     pub fn set_course(&mut self, choice: CourseChoice) -> Result<(), String> {
-        let course = course_sel::build_course(&choice)?;
+        let course = course_sel::build_course_dir(&choice, self.settings.course_reversed)?;
+        self.commit_course(course, choice);
+        Ok(())
+    }
+
+    /// Whether the loaded course is ridden backward.
+    #[must_use]
+    pub fn course_reversed(&self) -> bool {
+        self.settings.course_reversed
+    }
+
+    /// Ride the current course forward or backward.
+    ///
+    /// `Ok(())` and no event when `reversed` already matches. Otherwise the
+    /// course is rebuilt from [`Self::course_choice`], the ride returns to
+    /// the start line, segment records use a `:rev` key when `reversed` is
+    /// true, the TV course profile is refreshed, and settings are saved when
+    /// a settings path is known. [`RideEvent::CourseSelected`] carries
+    /// [`CourseChoice::label_with_direction`], so the toast ends with
+    /// ` (Reverse)` when `reversed` is true.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the route cannot be generated. The previous
+    /// direction stays loaded.
+    pub fn set_course_reversed(&mut self, reversed: bool) -> Result<(), String> {
+        if self.settings.course_reversed == reversed {
+            return Ok(());
+        }
+        let choice = self.choice.clone();
+        let course = course_sel::build_course_dir(&choice, reversed)?;
+        self.settings.course_reversed = reversed;
+        self.commit_course(course, choice);
+        if let Some(path) = self.settings_path.clone() {
+            let _ = self.save_settings(&path);
+        }
+        Ok(())
+    }
+
+    fn reload_course_direction(&mut self) -> Result<(), String> {
+        let choice = self.choice.clone();
+        let course = course_sel::build_course_dir(&choice, self.settings.course_reversed)?;
+        self.commit_course(course, choice);
+        Ok(())
+    }
+
+    fn commit_course(&mut self, course: Course, choice: CourseChoice) {
         let riding = self.phase == RidePhase::Riding;
         if riding {
             self.finish_play();
@@ -938,7 +998,9 @@ impl Session {
         self.power.clear();
         self.choice = choice.clone();
         self.settings.course = choice;
-        let name = self.ride.course().name().to_owned();
+        let name = self
+            .choice
+            .label_with_direction(self.settings.course_reversed);
         self.events.push(RideEvent::CourseSelected { name });
         self.push_dashboard_course();
         if riding {
@@ -946,7 +1008,6 @@ impl Session {
         } else {
             self.open_play();
         }
-        Ok(())
     }
 
     /// Rider profile the physics are using right now.
@@ -1089,8 +1150,9 @@ impl Session {
         view
     }
 
-    /// Lane the rider is in, from `0.0` to `4.0`. The game calls this every frame.
+    /// Lane the rider is in, from `0.0` to `8.0`. The game calls this every frame.
     ///
+    /// `0.0` is the left asphalt edge and `8.0` is the gravel right shoulder.
     /// A fish is collected when this value is within half a slot of the fish.
     /// Non-finite values are ignored.
     pub fn set_lane_position(&mut self, slot: f32) {
@@ -1868,7 +1930,9 @@ impl Session {
         let count = self.settings.bots_count;
         let ftp_w = self.settings.ftp_w;
         let dir = self.bundle_dir();
-        self.play_state.open(self.ride.course(), &choice, arcade);
+        let reversed = self.ride.course().is_reversed();
+        self.play_state
+            .open(self.ride.course(), &choice, arcade, reversed);
         self.group
             .on_ride_start(self.ride.course(), &choice, count, ftp_w, dir.as_deref());
     }
@@ -2223,6 +2287,13 @@ impl Session {
 
     fn cast_status(&self) -> pp_cast::RideStatus {
         let trainer = self.using_trainer;
+        let frame = self.ride.telemetry();
+        let view = self
+            .play_state
+            .view(self.settings.arcade, self.settings.ghost, &frame);
+        let draft = self
+            .group
+            .draft_saving_pct(&self.player_input(&frame, frame.power_w));
         let link = match self.link_phase() {
             LinkPhase::Searching | LinkPhase::Connecting => pp_cast::LinkPhase::Searching,
             LinkPhase::Connected => pp_cast::LinkPhase::Connected,
@@ -2247,7 +2318,36 @@ impl Session {
                 ResistanceMode::ReadingOnly => pp_cast::ResistanceMode::ReadingOnly,
             }),
             power_3s_w: self.power.average_3s(self.clock_s),
+            workout: self.cast_workout(),
+            segment: view.active_segment.as_ref().map(cast_segment),
+            draft_saving_pct: (draft > 0).then_some(draft),
+            fish_collected: optional_arcade_count(self.settings.arcade, view.fish_count),
+            fish_combo: optional_arcade_count(self.settings.arcade, view.combo),
+            active_powerup: view.powerup_active.map(|power| pp_cast::PowerupStatus {
+                name: power.kind.to_string(),
+                remaining_s: power.remaining_s.max(0.0),
+            }),
+            course_reversed: self.settings.course_reversed,
         }
+    }
+
+    fn cast_workout(&self) -> Option<pp_cast::WorkoutStatus> {
+        let view = self.group.workout_view()?;
+        let name = self.group.workout_name()?.to_owned();
+        let span = view.total_elapsed_s + view.total_remaining_s;
+        let progress = if span.is_finite() && span > 0.0 {
+            (view.total_elapsed_s / span).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        Some(pp_cast::WorkoutStatus {
+            name,
+            block_label: view.label,
+            target_w: rounded_watts(view.target_w),
+            remaining_s: rounded_seconds(view.step_remaining_s),
+            progress,
+            erg_active: self.group.holding_erg(),
+        })
     }
 
     fn poll_dashboard(&self) {
@@ -2536,6 +2636,50 @@ fn append_warning(line: String, warning: Option<String>) -> String {
     match warning {
         Some(warning) if !warning.is_empty() => format!("{line} ({warning})"),
         _ => line,
+    }
+}
+
+fn cast_segment(segment: &crate::play::ActiveSegment) -> pp_cast::SegmentStatus {
+    pp_cast::SegmentStatus {
+        name: segment.name.clone(),
+        elapsed_s: finite_f32(segment.elapsed_s),
+        progress: segment.fraction.clamp(0.0, 1.0),
+        delta_s: segment.split_s.map(|seconds| finite_f32(-seconds)),
+    }
+}
+
+fn optional_arcade_count(arcade: bool, count: u32) -> Option<u32> {
+    (arcade && count > 0).then_some(count)
+}
+
+fn finite_f32(value: f64) -> f32 {
+    if value.is_finite() { value as f32 } else { 0.0 }
+}
+
+fn rounded_watts(watts: Option<f32>) -> u16 {
+    let Some(watts) = watts else {
+        return 0;
+    };
+    if !watts.is_finite() || watts <= 0.0 {
+        return 0;
+    }
+    let rounded = watts.round();
+    if rounded >= f32::from(u16::MAX) {
+        u16::MAX
+    } else {
+        rounded as u16
+    }
+}
+
+fn rounded_seconds(seconds: f32) -> u32 {
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return 0;
+    }
+    let rounded = seconds.round();
+    if rounded >= 4_294_967_295.0 {
+        u32::MAX
+    } else {
+        rounded as u32
     }
 }
 
@@ -4072,7 +4216,7 @@ mod tests {
         let started = Instant::now();
         let catalog = session.course_catalog();
         eprintln!("course_catalog first call {:?}", started.elapsed());
-        assert_eq!(catalog.len(), 6);
+        assert_eq!(catalog.len(), 8);
         assert_eq!(catalog[0].name, "Penguin Pass");
         assert_eq!(catalog[0].theme, "alpine");
         assert!(matches!(catalog[0].choice, CourseChoice::PenguinPass));
@@ -4084,8 +4228,21 @@ mod tests {
         assert_eq!(catalog[4].theme, "desert");
         assert_eq!(catalog[5].name, "Flat 10 km");
         assert_eq!(catalog[5].theme, "alpine");
+        assert_eq!(catalog[6].name, "Rolling 20 km");
+        assert_eq!(catalog[7].name, "Desert 20 km");
+        assert_eq!(catalog[7].theme, "desert");
         assert!((catalog[1].length_m - 5_000.0).abs() < 200.0);
         assert!((catalog[5].length_m - 10_000.0).abs() < 200.0);
+        assert!(
+            (catalog[6].length_m - 20_000.0).abs() < 1_000.0,
+            "{}",
+            catalog[6].length_m
+        );
+        assert!(
+            (catalog[7].length_m - 20_000.0).abs() < 1_000.0,
+            "{}",
+            catalog[7].length_m
+        );
         for option in catalog {
             assert!(option.profile.len() <= 64, "{}", option.profile.len());
             assert!(option.profile.len() >= 2, "{}", option.name);
@@ -4098,6 +4255,7 @@ mod tests {
         assert_eq!(again[4].name, "Desert 10 km");
 
         assert!(session.reroll(0).is_none());
+        assert!(session.reroll(8).is_none());
         assert!(session.reroll(9).is_none());
         let rolled = session.reroll(5).expect("new flat route");
         match &rolled.choice {
@@ -4141,6 +4299,218 @@ mod tests {
         let profile = fetch_course(&urls[0]);
         assert_eq!(profile.name, "Rolling 5 km");
         assert!((profile.length_m - 5_000.0).abs() < 200.0);
+    }
+
+    #[test]
+    fn a_reversed_setting_opens_backward_and_set_course_keeps_it() {
+        let mut settings = offline();
+        settings.course_reversed = true;
+        let mut session = Session::new(settings);
+        assert!(session.course_reversed());
+        assert!(session.course().is_reversed());
+        session
+            .set_course(CourseChoice::Generated {
+                terrain: TerrainPreset::Rolling,
+                distance_km: 5,
+                seed: 3,
+            })
+            .expect("rolling 5 km");
+        assert!(session.course().is_reversed());
+        assert!(session.course_reversed());
+        assert!(session.drain_events().iter().any(|event| {
+            matches!(event, RideEvent::CourseSelected { name } if name == "Rolling 5 km (Reverse)")
+        }));
+    }
+
+    #[test]
+    fn set_course_reversed_mirrors_the_profile_and_splits_records() {
+        let dir = std::env::temp_dir().join(format!(
+            "pp-session-rev-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp");
+        let settings_path = dir.join("settings.toml");
+        let records_path = dir.join("records.toml");
+        let mut session = Session::new(offline());
+        session.set_settings_path(&settings_path);
+        assert!(!session.course_reversed());
+        assert!(!session.course().is_reversed());
+        session.set_course_reversed(false).expect("unchanged");
+        assert!(
+            !session
+                .drain_events()
+                .iter()
+                .any(|event| matches!(event, RideEvent::CourseSelected { .. }))
+        );
+
+        session.set_sim_power(1_200);
+        let _forward = finish_any_segment(&mut session, 900.0);
+        let forward = session.course().clone();
+        session.set_course_reversed(true).expect("reverse");
+        assert!(session.course_reversed());
+        assert!(session.course().is_reversed());
+        let length = forward.length_m();
+        let sample = length * 0.37;
+        let mirrored = (length - sample).rem_euclid(length);
+        let mirrored_gap =
+            (session.course().elevation_at(sample) - forward.elevation_at(mirrored)).abs();
+        assert!(
+            mirrored_gap < 0.01_f32,
+            "reversed elevation should match the mirrored forward point, gap {mirrored_gap}"
+        );
+        let same_gap = (session.course().elevation_at(sample) - forward.elevation_at(sample)).abs();
+        assert!(
+            same_gap > 0.05_f32,
+            "the sample should move when the course turns around, gap {same_gap}"
+        );
+        assert!(session.drain_events().iter().any(|event| {
+            matches!(event, RideEvent::CourseSelected { name } if name == "Penguin Pass (Reverse)")
+        }));
+        let loaded = crate::Settings::load(&settings_path);
+        assert_eq!(loaded.warning, None, "{:?}", loaded.warning);
+        assert!(loaded.settings.course_reversed);
+        let records = std::fs::read_to_string(&records_path).expect("forward records");
+        assert!(records.contains("key = \"penguin_pass\""), "{records}");
+        assert!(
+            !records.contains("penguin_pass:rev"),
+            "reverse efforts stay out of the forward file: {records}"
+        );
+        assert!(
+            session
+                .play()
+                .segments
+                .iter()
+                .all(|segment| segment.best_s.is_none()),
+            "reverse should not inherit the forward best"
+        );
+
+        session.set_course_reversed(true).expect("still reversed");
+        assert!(
+            !session
+                .drain_events()
+                .iter()
+                .any(|event| matches!(event, RideEvent::CourseSelected { .. }))
+        );
+
+        session.set_sim_power(1_200);
+        let _backward = finish_any_segment(&mut session, 900.0);
+        session.end_ride();
+        let records = std::fs::read_to_string(&records_path).expect("both records");
+        assert!(records.contains("key = \"penguin_pass\""), "{records}");
+        assert!(records.contains("key = \"penguin_pass:rev\""), "{records}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cast_segment_reports_ahead_as_a_negative_delta() {
+        let segment = crate::ActiveSegment {
+            id: "climb".to_owned(),
+            name: "Summit climb".to_owned(),
+            elapsed_s: 12.5,
+            fraction: 0.25,
+            split_s: Some(1.5),
+        };
+        let status = super::cast_segment(&segment);
+        assert_eq!(status.name, "Summit climb");
+        assert!((status.elapsed_s - 12.5_f32).abs() < 1.0e-4_f32);
+        assert!((status.progress - 0.25_f32).abs() < 1.0e-4_f32);
+        let delta = status.delta_s.expect("ahead of the best");
+        assert!((delta + 1.5_f32).abs() < 1.0e-3_f32, "{delta}");
+    }
+
+    #[test]
+    fn cast_status_fills_the_dashboard_fields_and_streams() {
+        let mut session = Session::with_options(
+            Settings::default(),
+            SessionOptions {
+                trainer_factory: Box::new(FailingFactory),
+                dashboard_host: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                dashboard_port: Some(0),
+            },
+        );
+        let status = wait_dashboard(&mut session, |status| {
+            !status.dashboard_urls.is_empty() || status.dashboard_error.is_some()
+        });
+        assert_eq!(status.dashboard, DashboardRun::Running);
+        let urls = status.dashboard_urls;
+        session.tick(0.0);
+        let forward = fetch_course(&urls[0]);
+
+        session.set_course_reversed(true).expect("reverse");
+        session.tick(0.0);
+        let backward = fetch_course(&urls[0]);
+        assert_eq!(forward.length_m, backward.length_m);
+        assert_ne!(forward.points, backward.points);
+        assert!(session.course().is_reversed());
+
+        session.select_workout(Some("endurance-20"));
+        session.set_sim_power(180);
+        session.tick(1.0);
+        let cast = session.cast_status();
+        assert!(cast.course_reversed);
+        assert!(cast.fish_collected.is_none());
+        assert!(cast.fish_combo.is_none());
+        assert!(cast.active_powerup.is_none());
+        let segment = cast.segment.expect("a lap or a climb is open");
+        assert!(!segment.name.is_empty());
+        assert!((0.0..=1.0).contains(&segment.progress));
+        let workout = cast.workout.expect("endurance");
+        assert_eq!(workout.name, "Endurance");
+        assert_eq!(workout.block_label, "Warm up");
+        assert!(workout.target_w > 0, "{}", workout.target_w);
+        assert!(workout.remaining_s > 0);
+        assert!(workout.erg_active);
+        assert!((0.0..=1.0).contains(&workout.progress));
+
+        let streamed = fetch_status(&urls[0]);
+        assert!(streamed.course_reversed);
+        assert_eq!(
+            streamed.workout.as_ref().map(|item| item.name.as_str()),
+            Some("Endurance")
+        );
+        assert_eq!(
+            streamed.workout.as_ref().map(|item| item.erg_active),
+            Some(true)
+        );
+        assert!(streamed.segment.is_some());
+
+        session
+            .set_course(CourseChoice::Generated {
+                terrain: TerrainPreset::Flat,
+                distance_km: 2,
+                seed: 2,
+            })
+            .expect("flat");
+        assert!(session.course().is_reversed());
+        collect_one_fish(&mut session);
+        let cast = session.cast_status();
+        let fish = cast.fish_collected.expect("a fish was collected");
+        assert!(fish > 0);
+        let combo = cast.fish_combo.expect("the collect starts a combo");
+        assert!(combo > 0);
+        session.tick(0.0);
+        let streamed = fetch_status(&urls[0]);
+        assert_eq!(streamed.fish_collected, Some(fish));
+        assert_eq!(streamed.fish_combo, Some(combo));
+        assert!(streamed.course_reversed);
+
+        let saving = ride_until_draft(&mut session);
+        let cast = session.cast_status();
+        assert_eq!(cast.draft_saving_pct, Some(saving));
+        assert!(cast.fish_collected.is_some());
+        session.tick(0.0);
+        let streamed = fetch_status(&urls[0]);
+        assert_eq!(streamed.draft_saving_pct, Some(saving));
+        assert!(streamed.fish_collected.is_some());
+        assert!(streamed.course_reversed);
+        if let Some(power) = streamed.active_powerup {
+            assert!(!power.name.is_empty());
+            assert!(power.remaining_s >= 0.0);
+        }
     }
 
     #[test]
@@ -4737,6 +5107,85 @@ mod tests {
         let port = listener.local_addr().expect("addr").port();
         assert!(port >= 1024, "ephemeral port {port}");
         port
+    }
+
+    fn finish_any_segment(session: &mut Session, max_s: f64) -> String {
+        let mut elapsed = 0.0;
+        while elapsed < max_s {
+            session.tick(0.5);
+            elapsed += 0.5;
+            for event in session.drain_events() {
+                if let RideEvent::SegmentFinished { name, .. } = event {
+                    return name;
+                }
+            }
+        }
+        panic!(
+            "no segment finished by {:.0} m",
+            session.telemetry().distance_m
+        );
+    }
+
+    fn collect_one_fish(session: &mut Session) {
+        session.set_sim_power(700);
+        let mut elapsed = 0.0;
+        let fish = loop {
+            if let Some(fish) = session.play().fish_ahead.into_iter().next() {
+                break fish;
+            }
+            session.tick(0.15);
+            elapsed += 0.15;
+            if elapsed > 120.0 {
+                panic!("no fish ahead by {:.0} m", session.telemetry().distance_m);
+            }
+        };
+        let target_m = fish.total_distance_m;
+        let slot = f32::from(fish.slot);
+        while session.telemetry().distance_m + 3.0 < target_m && elapsed < 200.0 {
+            session.tick(0.15);
+            elapsed += 0.15;
+            let _ = session.drain_events();
+        }
+        session.set_lane_position(slot);
+        while session.telemetry().distance_m < target_m + 2.0 && elapsed < 220.0 {
+            session.set_lane_position(slot);
+            session.tick(0.1);
+            elapsed += 0.1;
+            let _ = session.drain_events();
+        }
+        assert!(
+            session.play().fish_count > 0,
+            "fish at {target_m:.0} m was not collected, now {:.0} m",
+            session.telemetry().distance_m
+        );
+    }
+
+    fn ride_until_draft(session: &mut Session) -> u8 {
+        session.set_sim_power(220);
+        let mut closest = f64::MAX;
+        for _ in 0..6_000 {
+            let me = session.telemetry().distance_m;
+            if let Some(bot) = session
+                .play()
+                .bots
+                .iter()
+                .filter(|bot| bot.total_distance_m > me)
+                .min_by(|left, right| {
+                    left.total_distance_m
+                        .partial_cmp(&right.total_distance_m)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+            {
+                closest = closest.min(bot.total_distance_m - me);
+                session.set_lane_position(bot.slot);
+            }
+            session.tick(0.05);
+            let saving = session.play().draft_saving_pct;
+            if saving > 0 {
+                return saving;
+            }
+        }
+        panic!("never sat in a draft, closest gap {closest:.1} m");
     }
 
     fn fetch_telemetry(base: &str) -> Telemetry {

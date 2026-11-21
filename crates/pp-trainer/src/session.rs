@@ -11,12 +11,17 @@ use pp_core::TrainerCommand;
 #[cfg(test)]
 use pp_core::TrainerSample;
 use pp_ftms::{
-    CYCLING_POWER_MEASUREMENT_UUID, ControlPointRequest, ControlPointResponse, ControlResult,
-    CyclingPowerMeasurement, FEC_NOTIFY_UUID, FITNESS_MACHINE_CONTROL_POINT_UUID,
-    FITNESS_MACHINE_STATUS_UUID, FecChecksum, FecData, FecMessage, HEART_RATE_MEASUREMENT_UUID,
-    HeartRateMeasurement, INDOOR_BIKE_DATA_UUID, IndoorBikeData, IndoorBikeSimulation,
-    OPCODE_REQUEST_CONTROL, OPCODE_SET_INDOOR_BIKE_SIMULATION, OPCODE_SET_TARGET_POWER,
-    OPCODE_START_OR_RESUME, TargetPower, TrackResistance, UserConfiguration, crank_cadence_rpm,
+    CSC_MEASUREMENT_UUID, CYCLING_POWER_MEASUREMENT_UUID, ControlPointRequest,
+    ControlPointResponse, ControlResult, CscMeasurement, CyclingPowerMeasurement, FEC_NOTIFY_UUID,
+    FITNESS_MACHINE_CONTROL_POINT_UUID, FITNESS_MACHINE_STATUS_UUID, FecChecksum, FecData,
+    FecMessage, HEART_RATE_MEASUREMENT_UUID, HeartRateMeasurement, INDOOR_BIKE_DATA_UUID,
+    IndoorBikeData, IndoorBikeSimulation, OPCODE_REQUEST_CONTROL,
+    OPCODE_SET_INDOOR_BIKE_SIMULATION, OPCODE_SET_TARGET_POWER, OPCODE_START_OR_RESUME,
+    TargetPower, TrackResistance, UserConfiguration, WAHOO_OP_SET_ERG_POWER,
+    WAHOO_OP_SET_SIM_GRADE, WAHOO_OP_SET_SIM_PARAMETERS, WAHOO_OP_UNLOCK,
+    WAHOO_TRAINER_CONTROL_UUID, WahooCommand, WahooResponse, WahooSimParameters, ZWIFT_HANDSHAKE,
+    ZWIFT_TRAINER_NOTIFY_UUID, ZWIFT_TRAINER_RESPONSE_UUID, ZwiftHubCommand, ZwiftPhysical,
+    ZwiftRidingData, ZwiftSimulation, crank_cadence_rpm,
 };
 use uuid::Uuid;
 
@@ -27,7 +32,7 @@ use crate::sample_is_fresh;
 use crate::trace::{BleTrace, TraceRow, hex_bytes};
 
 /// What the peripheral can do, after service discovery.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct DeviceProfile {
     pub indoor_bike: bool,
     pub cycling_power: bool,
@@ -37,6 +42,16 @@ pub(crate) struct DeviceProfile {
     pub fec_notify: bool,
     /// Tacx FE-C write characteristic (`6e40fec3-…`).
     pub fec_write: bool,
+    /// CSC Measurement (`0x2A5B`). Cadence fallback. Not a control path.
+    pub csc: bool,
+    /// Wahoo trainer control (`A026E005-…`), under Cycling Power.
+    pub wahoo_control: bool,
+    /// Zwift trainer notify (`00000002-19ca-…`).
+    pub zwift_notify: bool,
+    /// Zwift trainer write (`00000003-19ca-…`).
+    pub zwift_write: bool,
+    /// Zwift trainer response (`00000004-19ca-…`).
+    pub zwift_response: bool,
 }
 
 /// Something that happened on the link, or a command from the game.
@@ -63,6 +78,10 @@ pub(crate) enum OutAction {
     WriteControl(Vec<u8>),
     /// Write one FE-C frame to the Tacx UART characteristic. No response is required.
     WriteFec(Vec<u8>),
+    /// Write one Wahoo WCPS command and wait for the response indication.
+    WriteWahoo(Vec<u8>),
+    /// Write one Zwift trainer frame. No response is required.
+    WriteZwift(Vec<u8>),
     /// Drop the current link.
     Disconnect,
     /// The backoff elapsed. Open the link again.
@@ -87,7 +106,18 @@ enum ControlWire {
     None,
     Ftms,
     Fec,
+    /// Legacy KICKR control, after FTMS and FE-C.
+    Wahoo,
+    /// Zwift trainer service, after FTMS, FE-C, and Wahoo.
+    Zwift,
 }
+
+/// CSC may refresh cadence once primary cadence is this old.
+///
+/// The stamp is the last FTMS, Cycling Power, FE-C, or Zwift cadence, not the
+/// CSC sample. CSC notifies about once a second, so it keeps updating while
+/// the primary source is quiet and stays out of the way while that source is fresh.
+const PRIMARY_CADENCE_STALE_MS: u64 = 2_500;
 
 /// How long to wait for a trainer frame before the first FE-C write.
 ///
@@ -146,6 +176,10 @@ pub(crate) struct Engine {
     profile: Option<DeviceProfile>,
     reading: Reading,
     last_crank: Option<pp_ftms::CrankRevolutionData>,
+    /// Crank counters from CSC Measurement. Separate from [`Self::last_crank`].
+    last_csc_crank: Option<pp_ftms::CrankRevolutionData>,
+    /// Engine time of the last cadence from the primary telemetry source.
+    primary_cadence_at_ms: Option<u64>,
     pending: Option<Pending>,
     inflight: Option<Pending>,
     last_sent_grade: Option<f32>,
@@ -161,9 +195,9 @@ pub(crate) struct Engine {
     reconnect_at_ms: Option<u64>,
     reconnect_armed: bool,
     wire: ControlWire,
-    /// `ftms`, `cps`, or `fec`. `none` until service discovery finishes.
+    /// `ftms`, `cps`, `fec`, or `zwift`. `none` until service discovery finishes.
     telemetry: &'static str,
-    /// `ftms`, `fec`, or `none`.
+    /// `ftms`, `fec`, `wahoo`, `zwift`, or `none`.
     control: &'static str,
     /// Checksum on the latest valid FE-C frame. `None` until one arrives.
     fec_checksum: Option<FecChecksum>,
@@ -190,6 +224,8 @@ impl Engine {
             profile: None,
             reading: Reading::default(),
             last_crank: None,
+            last_csc_crank: None,
+            primary_cadence_at_ms: None,
             pending: None,
             inflight: None,
             last_sent_grade: None,
@@ -226,12 +262,12 @@ impl Engine {
         self.trace = trace;
     }
 
-    /// `ftms`, `cps`, or `fec` once a data characteristic has been chosen.
+    /// `ftms`, `cps`, `fec`, or `zwift` once a data characteristic has been chosen.
     pub(crate) fn telemetry_label(&self) -> &'static str {
         self.telemetry
     }
 
-    /// `ftms`, `fec`, or `none`, matching the write path actually taken.
+    /// `ftms`, `fec`, `wahoo`, `zwift`, or `none`, matching the write path taken.
     pub(crate) fn control_label(&self) -> &'static str {
         self.control
     }
@@ -285,6 +321,8 @@ impl Engine {
         self.profile = None;
         self.reading = Reading::default();
         self.last_crank = None;
+        self.last_csc_crank = None;
+        self.primary_cadence_at_ms = None;
         self.pending = None;
         self.inflight = None;
         self.last_sent_grade = None;
@@ -312,9 +350,9 @@ impl Engine {
 
     /// Forget the link. Used when the owner is shutting down.
     ///
-    /// On an FE-C control session this first queues a 0% grade, the same
-    /// release the game asks for when a ride ends. Read-only mode and the
-    /// FTMS path return no write: FTMS grade 0 is the caller's
+    /// On an FE-C, Wahoo, or Zwift control session this first queues a 0%
+    /// grade, the same release the game asks for when a ride ends. Read-only
+    /// mode and the FTMS path return no write: FTMS grade 0 is the caller's
     /// [`pp_core::TrainerCommand::SetGrade`].
     pub(crate) fn stop(&mut self) -> Vec<OutAction> {
         let mut release = self.take_user_config();
@@ -329,17 +367,31 @@ impl Engine {
         release
     }
 
-    /// A 0% FE-C grade, when this session is allowed to write one.
+    /// A 0% grade, when this session is allowed to write one.
     ///
-    /// Called on shutdown and when a live FE-C link is about to drop. It
+    /// Called on shutdown and when a live control link is about to drop. It
     /// ignores the grade delta and the rate limit so the trainer is left flat.
+    /// FTMS is left to the caller. A Wahoo session still in the unlock
+    /// handshake has not accepted grade yet, so it writes nothing.
     pub(crate) fn release_flat(&mut self) -> Vec<OutAction> {
-        if self.config.mode != SessionMode::Control || self.wire != ControlWire::Fec {
+        if self.config.mode != SessionMode::Control {
             return Vec::new();
         }
-        if matches!(self.phase, Phase::Idle | Phase::Stopped | Phase::Connecting) {
+        if matches!(
+            self.phase,
+            Phase::Idle | Phase::Stopped | Phase::Connecting | Phase::Handshaking
+        ) {
             return Vec::new();
         }
+        match self.wire {
+            ControlWire::Fec => self.release_fec_flat(),
+            ControlWire::Wahoo => self.release_wahoo_flat(),
+            ControlWire::Zwift => self.release_zwift_flat(),
+            ControlWire::None | ControlWire::Ftms => Vec::new(),
+        }
+    }
+
+    fn release_fec_flat(&mut self) -> Vec<OutAction> {
         let Ok(bytes) = (TrackResistance {
             grade_pct: 0.0,
             rolling_resistance: Some(self.config.crr),
@@ -350,6 +402,24 @@ impl Engine {
         self.last_sent_grade = Some(0.0);
         self.trace_fec_tx(&bytes, "grade=0");
         vec![OutAction::WriteFec(bytes)]
+    }
+
+    fn release_wahoo_flat(&mut self) -> Vec<OutAction> {
+        let Ok(bytes) = (WahooCommand::SetSimGrade { grade_pct: 0.0 }).encode() else {
+            return Vec::new();
+        };
+        self.last_sent_grade = Some(0.0);
+        self.trace_wahoo_tx(&bytes, "grade=0");
+        vec![OutAction::WriteWahoo(bytes)]
+    }
+
+    fn release_zwift_flat(&mut self) -> Vec<OutAction> {
+        let Ok(bytes) = zwift_simulation(0.0, &self.config).encode() else {
+            return Vec::new();
+        };
+        self.last_sent_grade = Some(0.0);
+        self.trace_zwift_tx(&bytes, "grade=0");
+        vec![OutAction::WriteZwift(bytes)]
     }
 
     pub(crate) fn handle(&mut self, now_ms: u64, event: InEvent) -> Vec<OutAction> {
@@ -393,26 +463,17 @@ impl Engine {
     fn on_ready(&mut self, now_ms: u64, profile: DeviceProfile) -> Vec<OutAction> {
         self.profile = Some(profile);
         let mut actions = Vec::new();
-        let data = if profile.indoor_bike {
-            self.telemetry = "ftms";
-            Some(INDOOR_BIKE_DATA_UUID)
-        } else if profile.cycling_power {
-            self.telemetry = "cps";
-            Some(CYCLING_POWER_MEASUREMENT_UUID)
-        } else if profile.fec_notify {
-            self.telemetry = "fec";
-            Some(FEC_NOTIFY_UUID)
-        } else {
-            None
-        };
-        let Some(data) = data else {
-            self.fail_and_backoff(now_ms, "no indoor bike, cycling power, or FE-C data");
+        let Some(data) = self.select_telemetry(&profile) else {
+            self.fail_and_backoff(now_ms, "no indoor bike, cycling power, FE-C, or Zwift data");
             actions.push(OutAction::Disconnect);
             return actions;
         };
         actions.push(OutAction::Subscribe(data));
         if !profile.indoor_bike && profile.fec_notify && data != FEC_NOTIFY_UUID {
             actions.push(OutAction::Subscribe(FEC_NOTIFY_UUID));
+        }
+        if profile.csc {
+            actions.push(OutAction::Subscribe(CSC_MEASUREMENT_UUID));
         }
         if profile.heart_rate {
             actions.push(OutAction::Subscribe(HEART_RATE_MEASUREMENT_UUID));
@@ -423,25 +484,42 @@ impl Engine {
             self.mark_connected();
             return actions;
         }
+        actions.extend(self.begin_control(now_ms, &profile));
+        actions
+    }
+
+    /// Indoor Bike, then Cycling Power, then FE-C, then Zwift riding data.
+    fn select_telemetry(&mut self, profile: &DeviceProfile) -> Option<Uuid> {
+        if profile.indoor_bike {
+            self.telemetry = "ftms";
+            Some(INDOOR_BIKE_DATA_UUID)
+        } else if profile.cycling_power {
+            self.telemetry = "cps";
+            Some(CYCLING_POWER_MEASUREMENT_UUID)
+        } else if profile.fec_notify {
+            self.telemetry = "fec";
+            Some(FEC_NOTIFY_UUID)
+        } else if profile.zwift_notify {
+            self.telemetry = "zwift";
+            Some(ZWIFT_TRAINER_NOTIFY_UUID)
+        } else {
+            None
+        }
+    }
+
+    /// FTMS, then FE-C, then Wahoo WCPS, then the Zwift trainer write.
+    fn begin_control(&mut self, now_ms: u64, profile: &DeviceProfile) -> Vec<OutAction> {
         if profile.control_point {
-            self.wire = ControlWire::Ftms;
-            self.control = "ftms";
-            actions.push(OutAction::Subscribe(FITNESS_MACHINE_CONTROL_POINT_UUID));
-            let bytes = vec![OPCODE_REQUEST_CONTROL];
-            self.trace_control(&bytes, "request control");
-            actions.push(OutAction::WriteControl(bytes));
-            self.arm_wait(now_ms, OPCODE_REQUEST_CONTROL);
-            self.phase = Phase::Handshaking;
-            return actions;
+            return self.begin_ftms(now_ms);
         }
         if profile.fec_write {
-            self.wire = ControlWire::Fec;
-            self.control = "fec";
-            self.fec_user_pending = true;
-            self.fec_hold_until_ms = Some(now_ms.saturating_add(FEC_CHECKSUM_HOLD_MS));
-            self.mark_connected();
-            actions.extend(self.flush(now_ms));
-            return actions;
+            return self.begin_fec(now_ms);
+        }
+        if profile.wahoo_control {
+            return self.begin_wahoo(now_ms);
+        }
+        if profile.zwift_write {
+            return self.begin_zwift(now_ms, profile);
         }
         // Power and cadence still flow. The warning is the phrase the session
         // crate already treats as "resistance is not available".
@@ -449,6 +527,71 @@ impl Engine {
         self.control = "none";
         self.note("control not permitted");
         self.mark_connected();
+        Vec::new()
+    }
+
+    fn begin_ftms(&mut self, now_ms: u64) -> Vec<OutAction> {
+        self.wire = ControlWire::Ftms;
+        self.control = "ftms";
+        let bytes = vec![OPCODE_REQUEST_CONTROL];
+        self.trace_control(&bytes, "request control");
+        self.arm_wait(now_ms, OPCODE_REQUEST_CONTROL);
+        self.phase = Phase::Handshaking;
+        vec![
+            OutAction::Subscribe(FITNESS_MACHINE_CONTROL_POINT_UUID),
+            OutAction::WriteControl(bytes),
+        ]
+    }
+
+    fn begin_fec(&mut self, now_ms: u64) -> Vec<OutAction> {
+        self.wire = ControlWire::Fec;
+        self.control = "fec";
+        self.fec_user_pending = true;
+        self.fec_hold_until_ms = Some(now_ms.saturating_add(FEC_CHECKSUM_HOLD_MS));
+        self.mark_connected();
+        self.flush(now_ms)
+    }
+
+    fn begin_wahoo(&mut self, now_ms: u64) -> Vec<OutAction> {
+        self.wire = ControlWire::Wahoo;
+        self.control = "wahoo";
+        let Ok(bytes) = WahooCommand::Unlock.encode() else {
+            self.fail_and_backoff(now_ms, "wahoo unlock failed");
+            return vec![OutAction::Disconnect];
+        };
+        self.trace_wahoo_tx(&bytes, "unlock");
+        self.arm_wait(now_ms, WAHOO_OP_UNLOCK);
+        self.phase = Phase::Handshaking;
+        vec![
+            OutAction::Subscribe(WAHOO_TRAINER_CONTROL_UUID),
+            OutAction::WriteWahoo(bytes),
+        ]
+    }
+
+    fn begin_zwift(&mut self, now_ms: u64, profile: &DeviceProfile) -> Vec<OutAction> {
+        self.wire = ControlWire::Zwift;
+        self.control = "zwift";
+        let mut actions = Vec::new();
+        if profile.zwift_response {
+            actions.push(OutAction::Subscribe(ZWIFT_TRAINER_RESPONSE_UUID));
+        }
+        let handshake = ZWIFT_HANDSHAKE.to_vec();
+        self.trace_zwift_tx(&handshake, "RideOn");
+        actions.push(OutAction::WriteZwift(handshake));
+        let physical = ZwiftHubCommand::SetPhysical(ZwiftPhysical {
+            gear_ratio_x10000: None,
+            bike_weight_kg: finite_kg(self.config.bike_mass_kg),
+            rider_weight_kg: finite_kg(self.config.rider_mass_kg),
+        });
+        match physical.encode() {
+            Ok(bytes) => {
+                self.trace_zwift_tx(&bytes, "physical");
+                actions.push(OutAction::WriteZwift(bytes));
+            }
+            Err(_) => self.note("zwift physical: non-finite"),
+        }
+        self.mark_connected();
+        actions.extend(self.flush(now_ms));
         actions
     }
 
@@ -458,6 +601,9 @@ impl Engine {
         }
         if uuid == FITNESS_MACHINE_CONTROL_POINT_UUID {
             return self.on_control(now_ms, bytes);
+        }
+        if uuid == WAHOO_TRAINER_CONTROL_UUID {
+            return self.on_wahoo(now_ms, bytes);
         }
         if uuid == INDOOR_BIKE_DATA_UUID {
             self.on_indoor(now_ms, bytes);
@@ -471,6 +617,10 @@ impl Engine {
             }
         } else if uuid == FEC_NOTIFY_UUID {
             return self.on_fec(now_ms, bytes);
+        } else if uuid == CSC_MEASUREMENT_UUID {
+            self.on_csc(now_ms, bytes);
+        } else if uuid == ZWIFT_TRAINER_NOTIFY_UUID {
+            self.on_zwift_riding(now_ms, bytes);
         } else if uuid == HEART_RATE_MEASUREMENT_UUID {
             self.on_hr(now_ms, bytes);
         }
@@ -485,7 +635,7 @@ impl Engine {
             remember(&mut self.reading.speed_kph, speed, now_ms);
         }
         if let Some(cadence) = data.instantaneous_cadence_rpm {
-            remember(&mut self.reading.cadence_rpm, cadence, now_ms);
+            self.remember_primary_cadence(cadence, now_ms);
         }
         if let Some(power) = data.instantaneous_power_w {
             remember(&mut self.reading.power_w, non_negative_watts(power), now_ms);
@@ -512,8 +662,125 @@ impl Engine {
             now_ms,
         );
         if let Some(rpm) = cadence {
+            self.remember_primary_cadence(rpm, now_ms);
+        }
+    }
+
+    fn on_csc(&mut self, now_ms: u64, bytes: &[u8]) {
+        let Ok(data) = CscMeasurement::parse(bytes) else {
+            return;
+        };
+        let Some(crank) = data.crank else {
+            return;
+        };
+        let rpm = self
+            .last_csc_crank
+            .and_then(|previous| crank_cadence_rpm(previous, crank));
+        self.last_csc_crank = Some(crank);
+        if let Some(rpm) = rpm
+            && self.primary_cadence_stale(now_ms)
+        {
             remember(&mut self.reading.cadence_rpm, rpm, now_ms);
         }
+    }
+
+    fn on_zwift_riding(&mut self, now_ms: u64, bytes: &[u8]) {
+        if self.telemetry != "zwift" {
+            return;
+        }
+        let Ok(data) = ZwiftRidingData::parse(bytes) else {
+            return;
+        };
+        if let Some(power) = data.power_w {
+            remember(&mut self.reading.power_w, power, now_ms);
+        }
+        if let Some(rpm) = data.cadence_rpm {
+            self.remember_primary_cadence(f32::from(rpm), now_ms);
+        }
+        if let Some(speed) = data.speed_kph {
+            remember(&mut self.reading.speed_kph, speed, now_ms);
+        }
+        if let Some(heart) = data.heart_rate_bpm {
+            remember(&mut self.reading.heart_rate_bpm, heart, now_ms);
+        }
+    }
+
+    fn on_wahoo(&mut self, now_ms: u64, bytes: &[u8]) -> Vec<OutAction> {
+        let Ok(response) = WahooResponse::parse(bytes) else {
+            return Vec::new();
+        };
+        let Some(waiting) = &self.awaiting else {
+            return Vec::new();
+        };
+        if response.request_opcode != waiting.opcode {
+            return Vec::new();
+        }
+        let opcode = response.request_opcode;
+        self.awaiting = None;
+        match opcode {
+            WAHOO_OP_UNLOCK => {
+                if !response.is_success() {
+                    self.fail_and_backoff(now_ms, "wahoo unlock failed");
+                    return vec![OutAction::Disconnect];
+                }
+                self.send_wahoo_sim_parameters(now_ms)
+            }
+            WAHOO_OP_SET_SIM_PARAMETERS => {
+                if !response.is_success() {
+                    self.note(format!(
+                        "wahoo sim parameters: result {:#04x}",
+                        response.result_code
+                    ));
+                }
+                self.mark_connected();
+                self.flush(now_ms)
+            }
+            WAHOO_OP_SET_SIM_GRADE | WAHOO_OP_SET_ERG_POWER => {
+                if response.is_success() {
+                    self.consecutive_timeouts = 0;
+                    self.inflight = None;
+                    self.flush(now_ms)
+                } else {
+                    self.remember_rejection();
+                    let what = if opcode == WAHOO_OP_SET_SIM_GRADE {
+                        "grade"
+                    } else {
+                        "target power"
+                    };
+                    self.note(format!(
+                        "wahoo {what}: result {:#04x}",
+                        response.result_code
+                    ));
+                    Vec::new()
+                }
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn send_wahoo_sim_parameters(&mut self, now_ms: u64) -> Vec<OutAction> {
+        let command = WahooCommand::SetSimParameters(WahooSimParameters {
+            weight_kg: total_mass_kg(&self.config),
+            crr: self.config.crr,
+            wind_resistance_kg_per_m: self.config.cw_kg_per_m,
+        });
+        let Ok(bytes) = command.encode() else {
+            self.fail_and_backoff(now_ms, "wahoo sim parameters rejected");
+            return vec![OutAction::Disconnect];
+        };
+        self.trace_wahoo_tx(&bytes, "sim parameters");
+        self.arm_wait(now_ms, WAHOO_OP_SET_SIM_PARAMETERS);
+        vec![OutAction::WriteWahoo(bytes)]
+    }
+
+    fn primary_cadence_stale(&self, now_ms: u64) -> bool {
+        self.primary_cadence_at_ms
+            .is_none_or(|at| now_ms.saturating_sub(at) >= PRIMARY_CADENCE_STALE_MS)
+    }
+
+    fn remember_primary_cadence(&mut self, rpm: f32, now_ms: u64) {
+        self.primary_cadence_at_ms = Some(now_ms);
+        remember(&mut self.reading.cadence_rpm, rpm, now_ms);
     }
 
     fn on_fec(&mut self, now_ms: u64, bytes: &[u8]) -> Vec<OutAction> {
@@ -556,7 +823,7 @@ impl Engine {
                     remember(&mut self.reading.power_w, power, now_ms);
                 }
                 if let Some(rpm) = data.cadence_rpm {
-                    remember(&mut self.reading.cadence_rpm, f32::from(rpm), now_ms);
+                    self.remember_primary_cadence(f32::from(rpm), now_ms);
                 }
             }
             FecData::TrackResistance(_) | FecData::UserConfiguration(_) => {}
@@ -765,6 +1032,26 @@ impl Engine {
             }
             return vec![OutAction::WriteFec(bytes)];
         }
+        if self.wire == ControlWire::Wahoo {
+            let Ok(bytes) = (WahooCommand::SetSimGrade { grade_pct: grade }).encode() else {
+                return Vec::new();
+            };
+            if self.trace.is_recording() {
+                self.trace_wahoo_tx(&bytes, &format!("grade={grade}"));
+            }
+            self.inflight = Some(Pending::Grade(grade));
+            self.arm_wait(now_ms, WAHOO_OP_SET_SIM_GRADE);
+            return vec![OutAction::WriteWahoo(bytes)];
+        }
+        if self.wire == ControlWire::Zwift {
+            let Ok(bytes) = zwift_simulation(grade, &self.config).encode() else {
+                return Vec::new();
+            };
+            if self.trace.is_recording() {
+                self.trace_zwift_tx(&bytes, &format!("grade={grade}"));
+            }
+            return vec![OutAction::WriteZwift(bytes)];
+        }
         let simulation = IndoorBikeSimulation {
             wind_speed_mps: self.config.wind_speed_mps,
             grade_pct: grade,
@@ -804,6 +1091,12 @@ impl Engine {
             }
             return vec![OutAction::WriteFec(bytes)];
         }
+        if self.wire == ControlWire::Wahoo {
+            return self.flush_wahoo_power(now_ms, watts);
+        }
+        if self.wire == ControlWire::Zwift {
+            return self.flush_zwift_power(now_ms, watts);
+        }
         if self.wire != ControlWire::Ftms {
             self.pending = None;
             return Vec::new();
@@ -830,6 +1123,46 @@ impl Engine {
         self.last_command_ms = Some(now_ms);
         self.arm_wait(now_ms, OPCODE_SET_TARGET_POWER);
         vec![OutAction::WriteControl(bytes)]
+    }
+
+    fn flush_wahoo_power(&mut self, now_ms: u64, watts: u16) -> Vec<OutAction> {
+        if self.rejected_power == Some(watts) || self.last_sent_power == Some(watts) {
+            self.pending = None;
+            return Vec::new();
+        }
+        let Ok(bytes) = (WahooCommand::SetErgPower { watts }).encode() else {
+            self.pending = None;
+            return Vec::new();
+        };
+        self.pending = None;
+        self.rejected_power = None;
+        self.inflight = Some(Pending::Power(watts));
+        self.last_sent_power = Some(watts);
+        self.last_command_ms = Some(now_ms);
+        if self.trace.is_recording() {
+            self.trace_wahoo_tx(&bytes, &format!("target-power={watts}"));
+        }
+        self.arm_wait(now_ms, WAHOO_OP_SET_ERG_POWER);
+        vec![OutAction::WriteWahoo(bytes)]
+    }
+
+    fn flush_zwift_power(&mut self, now_ms: u64, watts: u16) -> Vec<OutAction> {
+        if self.rejected_power == Some(watts) || self.last_sent_power == Some(watts) {
+            self.pending = None;
+            return Vec::new();
+        }
+        let Ok(bytes) = (ZwiftHubCommand::SetTargetPower { watts }).encode() else {
+            self.pending = None;
+            return Vec::new();
+        };
+        self.pending = None;
+        self.rejected_power = None;
+        self.last_sent_power = Some(watts);
+        self.last_command_ms = Some(now_ms);
+        if self.trace.is_recording() {
+            self.trace_zwift_tx(&bytes, &format!("target-power={watts}"));
+        }
+        vec![OutAction::WriteZwift(bytes)]
     }
 
     fn on_link_lost(&mut self, now_ms: u64) -> Vec<OutAction> {
@@ -908,14 +1241,24 @@ impl Engine {
                 self.fail_and_backoff(now_ms, "control point timed out");
                 vec![OutAction::Disconnect]
             }
+            WAHOO_OP_UNLOCK => {
+                self.fail_and_backoff(now_ms, "wahoo unlock timed out");
+                vec![OutAction::Disconnect]
+            }
             OPCODE_START_OR_RESUME => {
                 self.note("start or resume timed out");
                 self.mark_connected();
                 self.flush(now_ms)
             }
-            OPCODE_SET_INDOOR_BIKE_SIMULATION | OPCODE_SET_TARGET_POWER => {
-                self.on_command_timeout(now_ms)
+            WAHOO_OP_SET_SIM_PARAMETERS => {
+                self.note("wahoo sim parameters timed out");
+                self.mark_connected();
+                self.flush(now_ms)
             }
+            OPCODE_SET_INDOOR_BIKE_SIMULATION
+            | OPCODE_SET_TARGET_POWER
+            | WAHOO_OP_SET_SIM_GRADE
+            | WAHOO_OP_SET_ERG_POWER => self.on_command_timeout(now_ms),
             _ => {
                 self.fail_and_backoff(now_ms, "control point timed out");
                 vec![OutAction::Disconnect]
@@ -1022,6 +1365,22 @@ impl Engine {
         self.trace_row("tx", "fec", &hex, page, None, None, None, note);
     }
 
+    fn trace_wahoo_tx(&mut self, bytes: &[u8], note: &str) {
+        if !self.trace.is_recording() {
+            return;
+        }
+        let hex = hex_bytes(bytes);
+        self.trace_row("tx", "wahoo", &hex, None, None, None, None, note);
+    }
+
+    fn trace_zwift_tx(&mut self, bytes: &[u8], note: &str) {
+        if !self.trace.is_recording() {
+            return;
+        }
+        let hex = hex_bytes(bytes);
+        self.trace_row("tx", "zwift", &hex, None, None, None, None, note);
+    }
+
     fn record_rx(&mut self, uuid: Uuid, bytes: &[u8]) {
         let channel = channel_name(uuid);
         let hex = hex_bytes(bytes);
@@ -1066,6 +1425,24 @@ impl Engine {
             power = data.instantaneous_power_w.map(i32::from);
             cadence = data.instantaneous_cadence_rpm;
             speed = data.instantaneous_speed_kph;
+        } else if uuid == WAHOO_TRAINER_CONTROL_UUID {
+            note = wahoo_rx_note(bytes);
+        } else if uuid == ZWIFT_TRAINER_NOTIFY_UUID
+            && let Ok(data) = ZwiftRidingData::parse(bytes)
+        {
+            power = data.power_w.map(i32::from);
+            cadence = data.cadence_rpm.map(f32::from);
+            speed = data.speed_kph;
+            if let Some(heart) = data.heart_rate_bpm {
+                note = format!("hr={heart}");
+            }
+        } else if uuid == CSC_MEASUREMENT_UUID
+            && let Ok(data) = CscMeasurement::parse(bytes)
+        {
+            cadence = data.crank.and_then(|crank| {
+                self.last_csc_crank
+                    .and_then(|previous| crank_cadence_rpm(previous, crank))
+            });
         }
         self.trace_row("rx", &channel, &hex, fec_page, power, cadence, speed, &note);
     }
@@ -1112,9 +1489,46 @@ fn channel_name(uuid: Uuid) -> String {
         "ftms-status".to_string()
     } else if uuid == HEART_RATE_MEASUREMENT_UUID {
         "hr".to_string()
+    } else if uuid == CSC_MEASUREMENT_UUID {
+        "csc".to_string()
+    } else if uuid == WAHOO_TRAINER_CONTROL_UUID {
+        "wahoo".to_string()
+    } else if uuid == ZWIFT_TRAINER_NOTIFY_UUID || uuid == ZWIFT_TRAINER_RESPONSE_UUID {
+        "zwift".to_string()
     } else {
         uuid.to_string()
     }
+}
+
+fn wahoo_rx_note(bytes: &[u8]) -> String {
+    let Ok(response) = WahooResponse::parse(bytes) else {
+        return String::new();
+    };
+    let what = match response.request_opcode {
+        WAHOO_OP_UNLOCK => "unlock",
+        WAHOO_OP_SET_SIM_PARAMETERS => "sim parameters",
+        WAHOO_OP_SET_SIM_GRADE => "grade",
+        WAHOO_OP_SET_ERG_POWER => "target-power",
+        _ => "command",
+    };
+    if response.is_success() {
+        format!("{what} ok")
+    } else {
+        format!("{what} result={:02x}", response.result_code)
+    }
+}
+
+fn zwift_simulation(grade_pct: f32, config: &crate::config::TrainerConfig) -> ZwiftHubCommand {
+    ZwiftHubCommand::SetSimulation(ZwiftSimulation {
+        wind_speed_mps: 0.0,
+        grade_pct,
+        cw_kg_per_m: config.cw_kg_per_m,
+        crr: config.crr,
+    })
+}
+
+fn total_mass_kg(config: &crate::config::TrainerConfig) -> f32 {
+    finite_kg(config.rider_mass_kg).unwrap_or(0.0) + finite_kg(config.bike_mass_kg).unwrap_or(0.0)
 }
 
 fn user_configuration(config: &crate::config::TrainerConfig) -> UserConfiguration {
@@ -1181,6 +1595,9 @@ mod tests {
         subs: Vec<Uuid>,
         writes: Vec<Vec<u8>>,
         fec: Vec<Vec<u8>>,
+        wahoo: Vec<Vec<u8>>,
+        zwift: Vec<Vec<u8>>,
+        wahoo_script: std::collections::VecDeque<u8>,
     }
 
     impl FakePeripheral {
@@ -1195,6 +1612,9 @@ mod tests {
                 subs: Vec::new(),
                 writes: Vec::new(),
                 fec: Vec::new(),
+                wahoo: Vec::new(),
+                zwift: Vec::new(),
+                wahoo_script: std::collections::VecDeque::new(),
             }
         }
 
@@ -1202,6 +1622,26 @@ mod tests {
             match action {
                 OutAction::Subscribe(uuid) => self.subs.push(*uuid),
                 OutAction::WriteFec(bytes) => self.fec.push(bytes.clone()),
+                OutAction::WriteZwift(bytes) => self.zwift.push(bytes.clone()),
+                OutAction::WriteWahoo(bytes) => {
+                    let opcode = bytes.first().copied();
+                    self.wahoo.push(bytes.clone());
+                    let allowed = self
+                        .respond_limit
+                        .is_none_or(|limit| self.responses_sent < limit);
+                    if self.auto_respond
+                        && allowed
+                        && let Some(opcode) = opcode
+                        && self.subs.contains(&WAHOO_TRAINER_CONTROL_UUID)
+                    {
+                        let code = self.wahoo_script.pop_front().unwrap_or(self.result_code);
+                        self.responses_sent += 1;
+                        self.events.push_back(InEvent::Value {
+                            uuid: WAHOO_TRAINER_CONTROL_UUID,
+                            bytes: vec![code, opcode],
+                        });
+                    }
+                }
                 OutAction::WriteControl(bytes) => {
                     let opcode = bytes.first().copied();
                     self.writes.push(bytes.clone());
@@ -1309,6 +1749,7 @@ mod tests {
             control_point: true,
             fec_notify: false,
             fec_write: false,
+            ..DeviceProfile::default()
         }
     }
 
@@ -1340,6 +1781,7 @@ mod tests {
             control_point: true,
             fec_notify: false,
             fec_write: false,
+            ..DeviceProfile::default()
         };
         let mut harness = Harness::control();
         harness.connect(profile);
@@ -1505,6 +1947,7 @@ mod tests {
             control_point: true,
             fec_notify: false,
             fec_write: false,
+            ..DeviceProfile::default()
         };
         let mut power = Harness::control();
         power.connect(power_profile);
@@ -1564,6 +2007,7 @@ mod tests {
             control_point: true,
             fec_notify: false,
             fec_write: false,
+            ..DeviceProfile::default()
         };
         let mut harness = Harness::control();
         harness.connect(profile);
@@ -1701,6 +2145,7 @@ mod tests {
             control_point: false,
             fec_notify: true,
             fec_write: true,
+            ..DeviceProfile::default()
         }
     }
 
@@ -1841,6 +2286,7 @@ mod tests {
             control_point: false,
             fec_notify: false,
             fec_write: false,
+            ..DeviceProfile::default()
         };
         let mut harness = Harness::control();
         harness.connect(profile);
@@ -1924,6 +2370,7 @@ mod tests {
                 control_point: true,
                 fec_notify: false,
                 fec_write: false,
+                ..DeviceProfile::default()
             }),
         );
         assert!(!actions.is_empty());
@@ -1942,6 +2389,7 @@ mod tests {
                 control_point: false,
                 fec_notify: true,
                 fec_write: true,
+                ..DeviceProfile::default()
             }),
         );
         engine.handle(
@@ -2107,5 +2555,303 @@ mod tests {
         bytes.extend_from_slice(&revolutions.to_le_bytes());
         bytes.extend_from_slice(&event.to_le_bytes());
         bytes
+    }
+
+    fn csc_crank(revolutions: u16, event: u16) -> Vec<u8> {
+        let mut bytes = vec![0x02];
+        bytes.extend_from_slice(&revolutions.to_le_bytes());
+        bytes.extend_from_slice(&event.to_le_bytes());
+        bytes
+    }
+
+    fn wahoo_profile() -> DeviceProfile {
+        DeviceProfile {
+            cycling_power: true,
+            wahoo_control: true,
+            ..DeviceProfile::default()
+        }
+    }
+
+    fn zwift_profile() -> DeviceProfile {
+        DeviceProfile {
+            zwift_notify: true,
+            zwift_write: true,
+            zwift_response: true,
+            ..DeviceProfile::default()
+        }
+    }
+
+    fn set_masses(harness: &mut Harness) {
+        harness.engine.config.rider_mass_kg = Some(75.0);
+        harness.engine.config.bike_mass_kg = Some(8.0);
+    }
+
+    #[test]
+    fn legacy_wahoo_kickr_unlocks_then_sets_grade_power_and_flat() {
+        let dir = std::env::temp_dir().join(format!("pp-wahoo-wire-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut harness = Harness::control();
+        set_masses(&mut harness);
+        harness
+            .engine
+            .set_trace_log(crate::trace::BleTrace::open(&dir));
+        harness.connect(wahoo_profile());
+        assert_eq!(harness.engine.state(), ConnectionState::Connected);
+        assert_eq!(harness.engine.telemetry_label(), "cps");
+        assert_eq!(harness.engine.control_label(), "wahoo");
+        assert_eq!(
+            harness.fake.subs,
+            vec![CYCLING_POWER_MEASUREMENT_UUID, WAHOO_TRAINER_CONTROL_UUID,]
+        );
+        assert!(harness.fake.writes.is_empty());
+        assert!(harness.fake.zwift.is_empty());
+        let parameters = WahooCommand::SetSimParameters(WahooSimParameters {
+            weight_kg: total_mass_kg(&harness.engine.config),
+            crr: harness.engine.config.crr,
+            wind_resistance_kg_per_m: harness.engine.config.cw_kg_per_m,
+        })
+        .encode()
+        .unwrap();
+        assert_eq!(parameters[0], WAHOO_OP_SET_SIM_PARAMETERS);
+        assert_eq!(
+            harness.fake.wahoo,
+            vec![vec![0x20, 0xEE, 0xFC], parameters.clone()]
+        );
+
+        harness.command(TrainerCommand::SetGrade { grade_pct: 6.0 });
+        let grade = WahooCommand::SetSimGrade { grade_pct: 6.0 }
+            .encode()
+            .unwrap();
+        assert_eq!(grade[0], WAHOO_OP_SET_SIM_GRADE);
+        harness.now = 500;
+        harness.command(TrainerCommand::SetTargetPower { watts: 180 });
+        let power = WahooCommand::SetErgPower { watts: 180 }.encode().unwrap();
+        assert_eq!(power[0], WAHOO_OP_SET_ERG_POWER);
+        assert_eq!(
+            harness.fake.wahoo,
+            vec![vec![0x20, 0xEE, 0xFC], parameters, grade, power]
+        );
+
+        let release = harness.engine.stop();
+        let flat = WahooCommand::SetSimGrade { grade_pct: 0.0 }
+            .encode()
+            .unwrap();
+        assert_eq!(flat, vec![0x46, 0x00, 0x80]);
+        assert_eq!(release, vec![OutAction::WriteWahoo(flat)]);
+
+        let text = std::fs::read_to_string(dir.join("ble.csv")).unwrap();
+        assert!(text.contains("tx,wahoo,20eefc,,,,,unlock"), "{text}");
+        assert!(text.contains("tx,wahoo,460080,,,,,grade=0"), "{text}");
+        assert!(text.contains("rx,wahoo,"));
+        assert!(text.contains("unlock ok"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wahoo_unlock_failure_disconnects_and_a_sim_rejection_still_connects() {
+        let mut failed = Harness::with_result(SessionMode::Control, 0x00);
+        failed.connect(wahoo_profile());
+        match failed.engine.state() {
+            ConnectionState::Failed(reason) => assert!(reason.contains("unlock"), "{reason}"),
+            other => panic!("expected unlock failure, got {other:?}"),
+        }
+        assert_eq!(failed.fake.wahoo, vec![vec![0x20, 0xEE, 0xFC]]);
+        assert!(disconnected(&failed.trace));
+
+        let mut harness = Harness::control();
+        harness.fake.wahoo_script = std::collections::VecDeque::from([0x01, 0x00]);
+        harness.connect(wahoo_profile());
+        assert_eq!(harness.engine.state(), ConnectionState::Connected);
+        let warning = harness.engine.warning().unwrap();
+        assert!(warning.contains("sim parameters"), "{warning}");
+        harness.command(TrainerCommand::SetGrade { grade_pct: 2.0 });
+        assert_eq!(
+            harness.fake.wahoo.last().unwrap(),
+            &WahooCommand::SetSimGrade { grade_pct: 2.0 }
+                .encode()
+                .unwrap()
+        );
+        assert!(!disconnected(&harness.trace));
+    }
+
+    #[test]
+    fn zwift_hub_falls_back_when_ftms_fec_and_wahoo_are_absent() {
+        let dir = std::env::temp_dir().join(format!("pp-zwift-wire-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut harness = Harness::control();
+        set_masses(&mut harness);
+        harness
+            .engine
+            .set_trace_log(crate::trace::BleTrace::open(&dir));
+        harness.connect(zwift_profile());
+        assert_eq!(harness.engine.state(), ConnectionState::Connected);
+        assert_eq!(harness.engine.telemetry_label(), "zwift");
+        assert_eq!(harness.engine.control_label(), "zwift");
+        assert_eq!(
+            harness.fake.subs,
+            vec![ZWIFT_TRAINER_NOTIFY_UUID, ZWIFT_TRAINER_RESPONSE_UUID]
+        );
+        assert!(harness.fake.writes.is_empty());
+        assert!(harness.fake.wahoo.is_empty());
+        let physical = ZwiftHubCommand::SetPhysical(ZwiftPhysical {
+            gear_ratio_x10000: None,
+            bike_weight_kg: Some(8.0),
+            rider_weight_kg: Some(75.0),
+        })
+        .encode()
+        .unwrap();
+        assert_eq!(
+            harness.fake.zwift,
+            vec![ZWIFT_HANDSHAKE.to_vec(), physical.clone()]
+        );
+
+        harness.command(TrainerCommand::SetGrade { grade_pct: 5.0 });
+        let grade = zwift_simulation(5.0, &harness.engine.config)
+            .encode()
+            .unwrap();
+        harness.now = 500;
+        harness.command(TrainerCommand::SetTargetPower { watts: 160 });
+        let power = ZwiftHubCommand::SetTargetPower { watts: 160 }
+            .encode()
+            .unwrap();
+        assert_eq!(power, vec![0x04, 0x18, 0xA0, 0x01]);
+        assert_eq!(
+            harness.fake.zwift,
+            vec![ZWIFT_HANDSHAKE.to_vec(), physical, grade, power]
+        );
+
+        // Power 100, cadence 90, speed 30.00 km/h, heart rate 140.
+        let riding = vec![
+            0x03, 0x08, 0x64, 0x10, 0x5A, 0x18, 0xB8, 0x17, 0x20, 0x8C, 0x01,
+        ];
+        harness.notify(ZWIFT_TRAINER_NOTIFY_UUID, riding);
+        let sample = harness.engine.sample(harness.now).unwrap();
+        assert_eq!(sample.power_w, Some(100));
+        assert_eq!(sample.cadence_rpm, Some(90.0));
+        assert_eq!(sample.heart_rate_bpm, Some(140));
+        assert!((sample.speed_kph.unwrap() - 30.0).abs() < 1.0e-3);
+
+        let release = harness.engine.stop();
+        let flat = zwift_simulation(0.0, &harness.engine.config)
+            .encode()
+            .unwrap();
+        assert_eq!(release, vec![OutAction::WriteZwift(flat)]);
+
+        let text = std::fs::read_to_string(dir.join("ble.csv")).unwrap();
+        assert!(text.contains("tx,zwift,526964654f6e,,,,,RideOn"), "{text}");
+        assert!(text.contains("rx,zwift,"));
+        assert!(text.contains("100,90,30,hr=140"), "{text}");
+        assert!(text.contains("grade=0"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn csc_fills_cadence_when_indoor_bike_has_power_only() {
+        let profile = DeviceProfile {
+            indoor_bike: true,
+            control_point: true,
+            csc: true,
+            ..DeviceProfile::default()
+        };
+        let mut harness = Harness::control();
+        harness.connect(profile);
+        assert_eq!(harness.engine.control_label(), "ftms");
+        assert_eq!(harness.engine.telemetry_label(), "ftms");
+        assert_eq!(
+            harness.fake.subs,
+            vec![
+                INDOOR_BIKE_DATA_UUID,
+                CSC_MEASUREMENT_UUID,
+                FITNESS_MACHINE_CONTROL_POINT_UUID,
+            ]
+        );
+        // More Data set, power only, 200 W.
+        harness.notify(INDOOR_BIKE_DATA_UUID, vec![0x41, 0x00, 0xC8, 0x00]);
+        let power_only = harness.engine.sample(0).unwrap();
+        assert_eq!(power_only.power_w, Some(200));
+        assert_eq!(power_only.cadence_rpm, None);
+
+        harness.notify(CSC_MEASUREMENT_UUID, csc_crank(0, 0));
+        assert_eq!(harness.engine.sample(0).unwrap().cadence_rpm, None);
+        // 3 revolutions in 2048 ticks (2 s) is 90 rpm.
+        harness.notify(CSC_MEASUREMENT_UUID, csc_crank(3, 2048));
+        let live = harness.engine.sample(0).unwrap();
+        assert_eq!(live.power_w, Some(200));
+        assert!((live.cadence_rpm.unwrap() - 90.0).abs() < 0.01);
+
+        // Speed, cadence 80 rpm, power 200 W. Primary cadence wins immediately.
+        harness.notify(
+            INDOOR_BIKE_DATA_UUID,
+            vec![0x44, 0x00, 0xB8, 0x0B, 0xA0, 0x00, 0xC8, 0x00],
+        );
+        assert_eq!(harness.engine.sample(0).unwrap().cadence_rpm, Some(80.0));
+        // One revolution in 1024 ticks is 60 rpm, and the primary sample is fresh.
+        harness.now = 100;
+        harness.notify(CSC_MEASUREMENT_UUID, csc_crank(4, 3072));
+        assert_eq!(
+            harness.engine.sample(harness.now).unwrap().cadence_rpm,
+            Some(80.0)
+        );
+
+        harness.now = PRIMARY_CADENCE_STALE_MS;
+        harness.notify(CSC_MEASUREMENT_UUID, csc_crank(5, 4096));
+        let filled = harness.engine.sample(harness.now).unwrap();
+        assert_eq!(filled.power_w, Some(200));
+        assert!((filled.cadence_rpm.unwrap() - 60.0).abs() < 0.01);
+
+        // A later CSC packet still updates. The primary stamp was not refreshed.
+        harness.now = 3_500;
+        harness.notify(CSC_MEASUREMENT_UUID, csc_crank(8, 6144));
+        let again = harness
+            .engine
+            .sample(harness.now)
+            .unwrap()
+            .cadence_rpm
+            .unwrap();
+        assert!((again - 90.0).abs() < 0.01, "{again}");
+    }
+
+    #[test]
+    fn ftms_wins_when_wahoo_and_zwift_are_also_present() {
+        let profile = DeviceProfile {
+            indoor_bike: true,
+            cycling_power: true,
+            control_point: true,
+            csc: true,
+            wahoo_control: true,
+            zwift_notify: true,
+            zwift_write: true,
+            zwift_response: true,
+            ..DeviceProfile::default()
+        };
+        let mut harness = Harness::control();
+        harness.connect(profile);
+        assert_eq!(harness.engine.telemetry_label(), "ftms");
+        assert_eq!(harness.engine.control_label(), "ftms");
+        assert_eq!(
+            harness.fake.subs,
+            vec![
+                INDOOR_BIKE_DATA_UUID,
+                CSC_MEASUREMENT_UUID,
+                FITNESS_MACHINE_CONTROL_POINT_UUID,
+            ]
+        );
+        assert!(harness.fake.wahoo.is_empty());
+        assert!(harness.fake.zwift.is_empty());
+        assert_eq!(
+            harness.fake.writes,
+            vec![vec![OPCODE_REQUEST_CONTROL], vec![OPCODE_START_OR_RESUME]]
+        );
+
+        harness.notify(INDOOR_BIKE_DATA_UUID, vec![0x41, 0x00, 0xC8, 0x00]);
+        let riding = vec![
+            0x03, 0x08, 0x64, 0x10, 0x5A, 0x18, 0xB8, 0x17, 0x20, 0x8C, 0x01,
+        ];
+        harness.notify(ZWIFT_TRAINER_NOTIFY_UUID, riding);
+        let sample = harness.engine.sample(0).unwrap();
+        assert_eq!(sample.power_w, Some(200));
+        assert_eq!(sample.cadence_rpm, None);
+        assert_eq!(sample.speed_kph, None);
+        assert_eq!(sample.heart_rate_bpm, None);
     }
 }

@@ -25,6 +25,7 @@
     font-style: normal;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html {
     height: 100%;
     background: #0B1220;
@@ -64,6 +65,13 @@
   .foot { display: none; }
 
   .top {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.7rem;
+    min-height: 4.5rem;
+  }
+  .top-row {
     display: flex;
     align-items: center;
     min-height: 4.5rem;
@@ -251,10 +259,166 @@
     color: #B4C0D4;
   }
   .missing { color: #7C8AA3; }
+  .subbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+  }
+  .pill {
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .pill.draft { background: #5EEAD4; color: #042824; }
+  .pill.fish { background: #FFD166; color: #2A1A04; }
+  .pill.up { background: #D277FF; color: #1A0828; }
+  .pill.up.feather { background: #D6E6FF; color: #0B1220; }
+  .pill.up.aero { background: #4FA8FF; color: #041428; }
+  .pill.up.burst { background: #FF9A3C; color: #2A1004; }
+  .pill.reverse { background: #F4F8FF; color: #0B1220; }
+  .workout, .segment {
+    background: #12203F;
+    border-radius: 1.5rem;
+    min-width: 0;
+  }
+  .workout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-rows: auto 0.4rem;
+    column-gap: 1.2rem;
+    row-gap: 0.45rem;
+    align-items: center;
+    flex: 1 1 0;
+    padding: 0.7rem 1.2rem 0.65rem;
+  }
+  .workout-copy { grid-column: 1; grid-row: 1; min-width: 0; }
+  .workout-name {
+    font-weight: 600;
+    font-size: 1.5rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #B4C0D4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .workout-block {
+    font-weight: 700;
+    font-size: 2.15rem;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .workout-target {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+  }
+  .workout-watts {
+    font-size: 4rem;
+    line-height: 0.9;
+    letter-spacing: -0.03em;
+  }
+  .workout-unit {
+    margin-left: 0.35rem;
+    font-weight: 500;
+    font-size: 1.7rem;
+    color: #B4C0D4;
+  }
+  .erg {
+    margin-left: 0.7rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 0.45rem;
+    background: #3DD68C;
+    color: #062818;
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: 0.08em;
+  }
+  .workout-time {
+    grid-column: 3;
+    grid-row: 1;
+    font-size: 2.75rem;
+    line-height: 0.9;
+    min-width: 5.2ch;
+    text-align: right;
+  }
+  .workout .track { grid-column: 1 / -1; grid-row: 2; }
+  .segment {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 1 1 0;
+    padding: 0.7rem 1.2rem;
+  }
+  .segment-name {
+    font-weight: 700;
+    font-size: 2.15rem;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .segment-time {
+    font-size: 2.5rem;
+    line-height: 0.9;
+    flex: 0 0 auto;
+    min-width: 4.4ch;
+  }
+  .track {
+    height: 0.4rem;
+    background: #0B1220;
+    border-radius: 999px;
+    overflow: hidden;
+    flex: 1 1 auto;
+    min-width: 3rem;
+  }
+  .fill { height: 100%; width: 0%; border-radius: 999px; }
+  .workout .fill { background: #FFD166; }
+  .segment .fill { background: #4FA8FF; }
+  .delta {
+    flex: 0 0 auto;
+    font-weight: 700;
+    font-size: 1.7rem;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    padding: 0.4rem 0.75rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+  .delta.ahead { background: #3DD68C; color: #062818; }
+  .delta.behind { background: #FF5A52; color: #2A0604; }
+  .delta.first { background: #243456; color: #F4F8FF; }
+  .delta.even { background: #B4C0D4; color: #0B1220; }
   .course {
     display: flex;
     padding: 1rem 1.4rem 0.8rem;
   }
+  .course-live { display: none; }
+  .board.has-live { grid-template-rows: auto auto 1fr 1fr 1fr; }
+  .board.has-live .course-live {
+    display: flex;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    gap: 0.8rem;
+    min-width: 0;
+  }
+  .board.has-live .power { grid-row: 3 / span 2; }
+  .board.has-live .speed { grid-row: 3; }
+  .board.has-live .grade { grid-row: 3; }
+  .board.has-live .cadence { grid-row: 4; }
+  .board.has-live .heart { grid-row: 4; }
+  .board.has-live .course { grid-row: 5; }
   .course-main { flex: 1.7 1 0; min-width: 0; display: flex; flex-direction: column; }
   .course-next { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; margin-left: 1.5rem; }
   .cap {
@@ -302,6 +466,18 @@
     .stream { margin-left: auto; font-size: 1.05rem; }
     .trainer { display: none; }
     .course { height: 9.5rem; }
+    .course-live { flex-direction: column; width: 100%; }
+    .workout {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: auto auto 0.35rem;
+    }
+    .workout-target { grid-column: 1; grid-row: 2; }
+    .workout-time { grid-column: 2; grid-row: 2; font-size: 1.7rem; }
+    .workout .track { grid-column: 1 / -1; grid-row: 3; }
+    .workout-watts { font-size: 2.6rem; }
+    .workout-block, .segment-name { font-size: 1.25rem; }
+    .workout-name, .pill, .delta, .erg { font-size: 1.05rem; }
+    .segment-time { font-size: 1.5rem; }
     .course-next { display: none; }
     .foot {
       display: flex;
@@ -317,6 +493,7 @@
 <body>
 <main class="board" id="board">
   <header class="top">
+    <div class="top-row">
     <img class="badge" src="/logo.svg" alt="">
     <div class="brand">
       <div class="brand-name">Penguin Pass</div>
@@ -330,7 +507,35 @@
       <div class="total" aria-label="Lap"><span class="k">Lap</span><span class="v num val-lap">&mdash;</span></div>
     </div>
     <div class="stream connecting" id="status">Connecting</div>
+    </div>
+    <div class="subbar" id="subbar" hidden>
+      <div class="pill draft" id="pill-draft" hidden></div>
+      <div class="pill fish" id="pill-fish" hidden></div>
+      <div class="pill up" id="pill-power" hidden></div>
+      <div class="pill reverse" id="pill-reverse" hidden></div>
+    </div>
   </header>
+  <div class="course-live" id="course-live" hidden>
+    <section class="workout" id="workout" hidden aria-label="Workout">
+      <div class="workout-copy">
+        <div class="workout-name" id="workout-name" hidden></div>
+        <div class="workout-block" id="workout-block"></div>
+      </div>
+      <div class="workout-target">
+        <span class="workout-watts num" id="workout-watts"></span>
+        <span class="workout-unit">W</span>
+        <span class="erg" id="workout-erg" hidden>ERG</span>
+      </div>
+      <div class="workout-time num" id="workout-time"></div>
+      <div class="track" aria-hidden="true"><div class="fill" id="workout-fill"></div></div>
+    </section>
+    <section class="segment" id="segment" hidden aria-label="Segment">
+      <div class="segment-name" id="segment-name"></div>
+      <div class="segment-time num" id="segment-time"></div>
+      <div class="track" aria-hidden="true"><div class="fill" id="segment-fill"></div></div>
+      <div class="delta" id="segment-delta"></div>
+    </section>
+  </div>
   <section class="power" aria-label="Power">
     <div class="ladder" id="ladder"></div>
     <div class="hero-block">
@@ -385,6 +590,7 @@
   var ride = null;
   var litZone = -1;
   var previewDown = location.search.indexOf("preview=reconnecting") !== -1;
+  var previewFeatures = location.search.indexOf("preview=features") !== -1;
 
   function dash() { return "\u2014"; }
   function missing(value) {
@@ -444,6 +650,46 @@
     var mm = (m < 10 ? "0" : "") + m;
     var ss = (s < 10 ? "0" : "") + s;
     return h + ":" + mm + ":" + ss;
+  }
+  function formatMmss(seconds) {
+    if (missing(seconds)) return dash();
+    var n = Number(seconds);
+    if (missing(n) || n < 0) return dash();
+    var total = Math.floor(n);
+    if (total > 59999) total = 59999;
+    var m = Math.floor(total / 60);
+    var s = total % 60;
+    var ss = (s < 10 ? "0" : "") + s;
+    return m + ":" + ss;
+  }
+  function clamp01(value) {
+    var n = Number(value);
+    if (missing(n)) return 0;
+    if (n < 0) return 0;
+    if (n > 1) return 1;
+    return n;
+  }
+  function clampNum(value, lo, hi) {
+    if (missing(value)) return null;
+    var n = Number(value);
+    if (missing(n)) return null;
+    if (n < lo) return lo;
+    if (n > hi) return hi;
+    return n;
+  }
+  function cleanLabel(value, max) {
+    if (value === null || value === undefined) return "";
+    var text = String(value).replace(/[\u0000-\u001F\u007F]/g, "").trim();
+    if (text.length > max) text = text.slice(0, max);
+    return text;
+  }
+  function showEl(el, on) {
+    if (on) el.removeAttribute("hidden");
+    else el.setAttribute("hidden", "");
+  }
+  function setBar(id, progress) {
+    var pct = Math.round(clamp01(progress) * 1000) / 10;
+    document.getElementById(id).style.width = pct + "%";
   }
   function gradeColor(grade) {
     var color = "#F4F8FF";
@@ -568,11 +814,168 @@
     setGroup("val-lap", !t || missing(t.lap) ? dash() : String(t.lap), !t || missing(t.lap));
     drawCharts();
   }
+  function paintDelta(delta) {
+    var el = document.getElementById("segment-delta");
+    if (missing(delta) || missing(Number(delta))) {
+      el.textContent = "FIRST TRY";
+      el.className = "delta first";
+      return;
+    }
+    var n = clampNum(Number(delta), -9999, 9999);
+    var tenths = Math.round(Math.abs(n) * 10) / 10;
+    var body = tenths.toFixed(1);
+    if (n < 0 && tenths > 0) {
+      el.textContent = "-" + body + "s";
+      el.className = "delta ahead";
+      return;
+    }
+    if (n > 0 && tenths > 0) {
+      el.textContent = "+" + body + "s";
+      el.className = "delta behind";
+      return;
+    }
+    el.textContent = "0.0s";
+    el.className = "delta even";
+  }
+  function powerupClass(name) {
+    var key = name.toLowerCase();
+    if (key === "feather") return "pill up feather";
+    if (key === "aero") return "pill up aero";
+    if (key === "burst") return "pill up burst";
+    return "pill up";
+  }
+  function renderPills(s) {
+    var draft = document.getElementById("pill-draft");
+    var fish = document.getElementById("pill-fish");
+    var power = document.getElementById("pill-power");
+    var reverse = document.getElementById("pill-reverse");
+    var any = false;
+    var saving = clampNum(s ? s.draft_saving_pct : null, 0, 100);
+    if (saving !== null && saving > 0) {
+      draft.textContent = "DRAFT -" + Math.round(saving) + "%";
+      showEl(draft, true);
+      any = true;
+    } else {
+      draft.textContent = "";
+      showEl(draft, false);
+    }
+    var collected = clampNum(s ? s.fish_collected : null, 0, 999999);
+    if (collected !== null && collected > 0) {
+      var text = "FISH " + Math.round(collected);
+      var combo = clampNum(s ? s.fish_combo : null, 0, 999);
+      if (combo !== null && combo > 0) text += " \u00b7 x" + Math.round(combo);
+      fish.textContent = text;
+      showEl(fish, true);
+      any = true;
+    } else {
+      fish.textContent = "";
+      showEl(fish, false);
+    }
+    var up = s ? s.active_powerup : null;
+    var raw = up ? cleanLabel(up.name, 16) : "";
+    if (raw) {
+      var secs = clampNum(up.remaining_s, 0, 999);
+      power.className = powerupClass(raw);
+      power.textContent = secs === null ? raw.toUpperCase() : raw.toUpperCase() + " " + Math.floor(secs) + "s";
+      showEl(power, true);
+      any = true;
+    } else {
+      power.textContent = "";
+      power.className = "pill up";
+      showEl(power, false);
+    }
+    if (s && s.course_reversed === true) {
+      reverse.textContent = "REVERSE";
+      showEl(reverse, true);
+      any = true;
+    } else {
+      reverse.textContent = "";
+      showEl(reverse, false);
+    }
+    showEl(document.getElementById("subbar"), any);
+  }
+  function renderWorkout(w) {
+    var card = document.getElementById("workout");
+    if (!w) {
+      setBar("workout-fill", 0);
+      showEl(card, false);
+      return false;
+    }
+    var name = cleanLabel(w.name, 48);
+    var block = cleanLabel(w.block_label, 64);
+    var nameEl = document.getElementById("workout-name");
+    nameEl.textContent = name;
+    showEl(nameEl, name.length > 0);
+    document.getElementById("workout-block").textContent = block || dash();
+    var wattsMissing = missing(w.target_w) || missing(Number(w.target_w));
+    setText("workout-watts", formatPower(w.target_w), wattsMissing);
+    showEl(document.getElementById("workout-erg"), w.erg_active === true);
+    var timeMissing = missing(w.remaining_s) || missing(Number(w.remaining_s)) || Number(w.remaining_s) < 0;
+    setText("workout-time", formatMmss(w.remaining_s), timeMissing);
+    setBar("workout-fill", w.progress);
+    showEl(card, true);
+    return true;
+  }
+  function renderSegment(seg) {
+    var card = document.getElementById("segment");
+    if (!seg) {
+      setBar("segment-fill", 0);
+      showEl(card, false);
+      return false;
+    }
+    var name = cleanLabel(seg.name, 48);
+    document.getElementById("segment-name").textContent = name || dash();
+    var timeMissing = missing(seg.elapsed_s) || missing(Number(seg.elapsed_s)) || Number(seg.elapsed_s) < 0;
+    setText("segment-time", formatMmss(seg.elapsed_s), timeMissing);
+    setBar("segment-fill", seg.progress);
+    paintDelta(seg.delta_s);
+    showEl(card, true);
+    return true;
+  }
+  function syncLive(on) {
+    showEl(document.getElementById("course-live"), on);
+    document.getElementById("board").className = on ? "board has-live" : "board";
+  }
+  function featurePreview() {
+    return {
+      ftp_w: 250,
+      source: "trainer",
+      trainer_name: "Tacx Neo 2T",
+      link: "connected",
+      resistance: "controlled",
+      power_3s_w: 345,
+      workout: {
+        name: "Sweet spot",
+        block_label: "Interval 2 of 4",
+        target_w: 245,
+        remaining_s: 134,
+        progress: 0.42,
+        erg_active: true
+      },
+      segment: {
+        name: "Summit climb",
+        elapsed_s: 84,
+        progress: 0.55,
+        delta_s: -1.4
+      },
+      draft_saving_pct: 27,
+      fish_collected: 12,
+      fish_combo: 4,
+      active_powerup: { name: "Feather", remaining_s: 14 },
+      course_reversed: true
+    };
+  }
   function renderStatus(s) {
+    if (previewFeatures) s = featurePreview();
     ride = s;
     renderTrainer(s);
+    var workoutOn = renderWorkout(s && s.workout);
+    var segmentOn = renderSegment(s && s.segment);
+    renderPills(s);
+    syncLive(workoutOn || segmentOn);
     if (latest) render(latest);
     else drawCharts();
+    setTimeout(drawCharts, 60);
   }
   function lengthOf() {
     var length = course.length_m;
@@ -892,6 +1295,7 @@
   loadJson("/api/status", function (data) { renderStatus(data); });
   loadJson("/api/telemetry", function (data) { render(data); });
   showStream("connecting");
+  if (previewFeatures) renderStatus(null);
   connect();
   holdWake();
   document.addEventListener("visibilitychange", function () {

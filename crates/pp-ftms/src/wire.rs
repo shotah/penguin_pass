@@ -30,6 +30,11 @@ impl<'a> Reader<'a> {
         Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
     }
 
+    pub(crate) fn u32(&mut self, what: &'static str) -> Result<u32, FtmsError> {
+        let bytes = self.take(4, what)?;
+        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
     pub(crate) fn i16(&mut self, what: &'static str) -> Result<i16, FtmsError> {
         let bytes = self.take(2, what)?;
         Ok(i16::from_le_bytes([bytes[0], bytes[1]]))

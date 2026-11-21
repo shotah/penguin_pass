@@ -115,10 +115,7 @@ fn place(
     rider_distance_m: f64,
     dt: f64,
 ) {
-    let slot = bot.slot.clamp(0.0, 4.0);
-    let inner = lane.offset_for_slot(0);
-    let outer = lane.offset_for_slot(4);
-    let offset = inner + (outer - inner) * (slot / 4.0);
+    let offset = lane.offset_for_slot_fraction(bot.slot);
     let position = course.position_at(bot.total_distance_m);
     let tangent = course.tangent_at(bot.total_distance_m);
     let forward = Vector3::new(tangent[0], tangent[1], tangent[2]);

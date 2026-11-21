@@ -235,7 +235,12 @@ fn riders_start_spread_and_rolling() {
             rider.kit.as_str(),
             "default" | "kit-sunrise" | "kit-glacier" | "kit-kom-dots"
         ));
-        assert!((0.0..=4.0).contains(&rider.slot));
+        assert!(
+            (0.0..=7.0).contains(&rider.slot),
+            "{} sat outside the paved slots at {:.2}",
+            rider.name,
+            rider.slot
+        );
         if rider.total_distance_m > 20.0 {
             ahead = true;
         }
@@ -259,6 +264,28 @@ fn riders_start_spread_and_rolling() {
         (2..=6).contains(&near),
         "start has {near} riders within 200 m"
     );
+}
+
+#[test]
+fn bots_leave_the_shoulder_clear_when_the_player_rides_there() {
+    let course = flat_loop(5_000.0);
+    let mut peloton = Peloton::new(&course, 5, BotConfig::default());
+    let dt = 1.0 / 30.0;
+    let speed = 8.0_f32;
+    for step in 0..(40.0 / dt) as i32 {
+        let t = dt * (step + 1) as f32;
+        let mut player = player_at(f64::from(speed) * f64::from(t), speed, 220.0);
+        player.slot = 8.0;
+        peloton.tick(dt, &player);
+        for rider in peloton.riders() {
+            assert!(
+                (0.0..=7.0).contains(&rider.slot),
+                "rider {} sat on the shoulder at {:.2} while the player was in slot 8",
+                rider.id,
+                rider.slot
+            );
+        }
+    }
 }
 
 #[test]

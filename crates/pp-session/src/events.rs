@@ -60,9 +60,12 @@ pub enum RideEvent {
         /// Time for that lap, in seconds.
         time_s: f64,
     },
-    /// [`crate::Session::set_course`] swapped in a new course.
+    /// [`crate::Session::set_course`] or [`crate::Session::set_course_reversed`]
+    /// swapped in a course.
     CourseSelected {
-        /// [`crate::CourseChoice::label`] of the course now loaded.
+        /// [`crate::CourseChoice::label_with_direction`] of the course now loaded.
+        ///
+        /// The name ends with ` (Reverse)` when the course is ridden backward.
         name: String,
     },
     /// A saved course could not be built, so the ride is Penguin Pass.

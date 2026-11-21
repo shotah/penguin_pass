@@ -295,6 +295,25 @@ fn extremes_two_and_one_hundred_km() {
 }
 
 #[test]
+fn twenty_and_forty_km_loops_are_closed_and_finite() {
+    let started = Instant::now();
+    for preset in [
+        TerrainPreset::Flat,
+        TerrainPreset::Rolling,
+        TerrainPreset::Mountain,
+        TerrainPreset::Desert,
+    ] {
+        for distance_m in [20_000.0, 40_000.0] {
+            assert_rideable(preset, 1, distance_m, false);
+        }
+    }
+    eprintln!(
+        "20 km and 40 km suite {:.1}s",
+        started.elapsed().as_secs_f64()
+    );
+}
+
+#[test]
 fn stability_fingerprints() {
     // Locked after the pictures in docs/img/routes were accepted.
     // ChaCha12 (rand_chacha 0.3.1 / rand 0.8.5) plus this JSON writer.

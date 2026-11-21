@@ -55,6 +55,8 @@ pub enum ShellEffect {
     Menu(Action),
     /// Select this course row.
     PickCourse(usize),
+    /// Flip the loaded course between forward and reverse.
+    ToggleCourseDirection,
     /// Choose a workout. `None` is a free ride.
     PickWorkout(Option<String>),
     /// Nudge workout targets by this many percent.
@@ -118,6 +120,8 @@ pub struct Shell {
     pause_index: usize,
     summary_index: usize,
     course_index: usize,
+    /// The loaded course is ridden backward. The direction row shows it.
+    course_reversed: bool,
     confirm_index: usize,
     progress_index: usize,
     progress_rows: Vec<ShellRow>,
@@ -141,6 +145,7 @@ impl Default for Shell {
             pause_index: 0,
             summary_index: 0,
             course_index: 0,
+            course_reversed: false,
             confirm_index: 0,
             progress_index: 0,
             progress_rows: Vec::new(),
@@ -201,7 +206,11 @@ impl Shell {
         ) || (matches!(self.screen, Screen::Progress | Screen::Workout) && self.settings_from_title)
     }
 
-    /// Badge lines for the Progress screen. `blurbs` is the focused row's sentence.
+    /// Whether the course picker should say Reverse.
+    pub fn show_course_reversed(&mut self, reversed: bool) {
+        self.course_reversed = reversed;
+    }
+
     /// Name shown on the title's Workout row, and the picker list.
     pub fn set_workouts(&mut self, selected: &str, rows: Vec<ShellRow>, ids: Vec<Option<String>>) {
         self.workout_name = selected.to_owned();
@@ -352,7 +361,7 @@ impl Shell {
                 )
             }
             Screen::Course => {
-                let rows: Vec<ShellRow> = courses
+                let mut rows: Vec<ShellRow> = courses
                     .iter()
                     .map(|card| {
                         row(
@@ -366,8 +375,19 @@ impl Shell {
                         )
                     })
                     .collect();
-                let detail = if rows.is_empty() {
+                let direction_at = rows.len();
+                rows.push(row(
+                    "Direction",
+                    if self.course_reversed {
+                        "Reverse"
+                    } else {
+                        "Forward"
+                    },
+                ));
+                let detail = if courses.is_empty() {
                     "Building course…".to_owned()
+                } else if self.course_index >= direction_at {
+                    "Left, right, or accept turns the course around.".to_owned()
                 } else if self.course_index > 0 {
                     "Left or right makes a new route. Accept starts it.".to_owned()
                 } else {
@@ -635,20 +655,31 @@ impl Shell {
     }
 
     fn course_command(&mut self, command: Command, fresh: bool, count: usize) -> ShellEffect {
-        let count = count.max(1);
+        // `count` is the catalog. The last row is Direction, not a course.
+        let direction_at = count;
+        let total = count + 1;
         match command {
-            Command::Up => move_focus(&mut self.course_index, count, false, fresh),
-            Command::Down => move_focus(&mut self.course_index, count, true, fresh),
+            Command::Up => move_focus(&mut self.course_index, total, false, fresh),
+            Command::Down => move_focus(&mut self.course_index, total, true, fresh),
             Command::Back => {
                 self.screen = Screen::Title;
             }
             Command::Accept => {
-                let index = self.course_index.min(count - 1);
+                let index = self.course_index.min(total - 1);
+                if index == direction_at {
+                    return ShellEffect::ToggleCourseDirection;
+                }
                 self.screen = Screen::Title;
                 return ShellEffect::PickCourse(index);
             }
             Command::Left | Command::Right => {
-                let index = self.course_index.min(count - 1);
+                let index = self.course_index.min(total - 1);
+                if index == direction_at {
+                    if fresh {
+                        return ShellEffect::ToggleCourseDirection;
+                    }
+                    return ShellEffect::None;
+                }
                 if index > 0 {
                     return ShellEffect::Reroll(index);
                 }
@@ -962,5 +993,139 @@ mod tests {
         ));
         assert_eq!(shell.screen(), Screen::Title);
         assert!(shell.holds_rider());
+    }
+
+    #[test]
+    fn the_title_course_row_shows_reverse_and_the_picker_toggles_it() {
+        let mut shell = Shell::new(false);
+        let titled = shell.view(
+            "Penguin Pass (Reverse)",
+            "Not paired",
+            "5.0 km",
+            &[],
+            "",
+            "",
+        );
+        assert_eq!(titled.rows[1].label, "Course");
+        assert_eq!(titled.rows[1].detail, "Penguin Pass (Reverse)");
+
+        shell.handle(Command::Down, true, &snap(), 8);
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 8),
+            ShellEffect::None
+        ));
+        assert_eq!(shell.screen(), Screen::Course);
+        let cards = course_cards(8);
+        let opened = shell.view("Penguin Pass", "", "", &cards, "", "");
+        assert_eq!(opened.selected, 0);
+        assert_eq!(opened.rows[0].label, "Course 0");
+        assert_eq!(opened.rows[8].label, "Direction");
+        assert_eq!(opened.rows[8].detail, "Forward");
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 8),
+            ShellEffect::PickCourse(0)
+        ));
+        assert_eq!(shell.screen(), Screen::Title);
+
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 8),
+            ShellEffect::None
+        ));
+        assert_eq!(shell.screen(), Screen::Course);
+        for _ in 0..8 {
+            shell.handle(Command::Down, true, &snap(), 8);
+        }
+        let at_direction = shell.view("Penguin Pass", "", "", &cards, "", "");
+        assert_eq!(at_direction.selected, 8);
+        assert_eq!(at_direction.rows[8].label, "Direction");
+        assert_eq!(
+            at_direction.detail,
+            "Left, right, or accept turns the course around."
+        );
+        shell.handle(Command::Down, false, &snap(), 8);
+        assert_eq!(
+            shell.view("Penguin Pass", "", "", &cards, "", "").selected,
+            8
+        );
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 8),
+            ShellEffect::ToggleCourseDirection
+        ));
+        assert_eq!(shell.screen(), Screen::Course);
+        assert!(matches!(
+            shell.handle(Command::Right, true, &snap(), 8),
+            ShellEffect::ToggleCourseDirection
+        ));
+        assert!(matches!(
+            shell.handle(Command::Left, true, &snap(), 8),
+            ShellEffect::ToggleCourseDirection
+        ));
+        assert!(matches!(
+            shell.handle(Command::Right, false, &snap(), 8),
+            ShellEffect::None
+        ));
+        shell.show_course_reversed(true);
+        let reversed = shell.view("Penguin Pass (Reverse)", "", "", &cards, "", "");
+        assert_eq!(reversed.rows[8].detail, "Reverse");
+
+        shell.course_index = 0;
+        shell.handle(Command::Up, true, &snap(), 8);
+        assert_eq!(
+            shell.view("Penguin Pass", "", "", &cards, "", "").selected,
+            8
+        );
+        shell.course_index = 1;
+        assert!(matches!(
+            shell.handle(Command::Left, true, &snap(), 8),
+            ShellEffect::Reroll(1)
+        ));
+    }
+
+    #[test]
+    fn the_workout_picker_reaches_every_plan() {
+        let mut shell = Shell::new(false);
+        let mut rows = vec![row("Free ride", "")];
+        let mut ids = vec![None];
+        for index in 0..15 {
+            rows.push(row(
+                &format!("Workout {index}"),
+                "45 min · 58 TSS · IF 0.88 · 540 kJ",
+            ));
+            ids.push(Some(format!("w{index}")));
+        }
+        shell.set_workouts("Free ride", rows, ids);
+        for _ in 0..5 {
+            shell.handle(Command::Down, true, &snap(), 1);
+        }
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::None
+        ));
+        assert_eq!(shell.screen(), Screen::Workout);
+        for _ in 0..15 {
+            shell.handle(Command::Down, true, &snap(), 1);
+        }
+        let view = shell.view("", "", "", &[], "", "");
+        assert_eq!(view.rows.len(), 16);
+        assert_eq!(view.selected, 15);
+        assert!(view.rows[15].detail.contains("TSS"));
+        assert!(view.rows[15].detail.contains("IF"));
+        assert!(view.rows[15].detail.contains("kJ"));
+        assert!(matches!(
+            shell.handle(Command::Accept, true, &snap(), 1),
+            ShellEffect::PickWorkout(Some(id)) if id == "w14"
+        ));
+    }
+
+    fn course_cards(count: usize) -> Vec<CourseCard> {
+        (0..count)
+            .map(|index| CourseCard {
+                name: format!("Course {index}"),
+                length_m: 5_000.0,
+                ascent_m: 120.0,
+                max_grade_pct: 8.0,
+                profile: vec![(0.0, 0.0), (5_000.0, 40.0)],
+            })
+            .collect()
     }
 }

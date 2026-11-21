@@ -34,6 +34,7 @@ pub(crate) struct Group {
     peloton_seed: u64,
     peloton_len: f64,
     workout_id: Option<String>,
+    workout_name: Option<String>,
     profile: Vec<WorkoutBar>,
     run: Option<WorkoutRun>,
     erg: ErgGuide,
@@ -53,6 +54,7 @@ impl Group {
             peloton_seed: 0,
             peloton_len: -1.0,
             workout_id: None,
+            workout_name: None,
             profile: Vec::new(),
             run: None,
             erg: ErgGuide::default(),
@@ -238,6 +240,10 @@ impl Group {
         self.run.as_ref().map(WorkoutRun::view)
     }
 
+    pub(crate) fn workout_name(&self) -> Option<&str> {
+        self.workout_name.as_deref()
+    }
+
     pub(crate) fn workout_profile(&self) -> Vec<WorkoutBar> {
         self.profile.clone()
     }
@@ -367,6 +373,7 @@ impl Group {
     fn restart_run(&mut self, ftp_w: u16, workouts: &[Workout]) {
         let Some(id) = self.workout_id.clone() else {
             self.run = None;
+            self.workout_name = None;
             self.erg = ErgGuide::default();
             self.erg_hold = false;
             self.erg_w = None;
@@ -383,6 +390,7 @@ impl Group {
 
     fn clear_workout(&mut self) {
         self.workout_id = None;
+        self.workout_name = None;
         self.profile.clear();
         self.run = None;
         self.erg = ErgGuide::default();
@@ -392,6 +400,7 @@ impl Group {
     }
 
     fn start_run(&mut self, workout: &Workout, ftp_w: u16) {
+        self.workout_name = Some(workout.name.clone());
         self.run = Some(WorkoutRun::new(workout, f32::from(ftp_w)));
         self.erg = ErgGuide::default();
         self.erg_hold = false;

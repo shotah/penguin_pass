@@ -27,7 +27,7 @@ pub struct Library {
 }
 
 impl Library {
-    /// The ten workouts shipped with the game.
+    /// The fifteen workouts shipped with the game.
     #[must_use]
     pub fn builtin() -> Self {
         Self {

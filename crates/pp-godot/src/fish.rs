@@ -15,7 +15,7 @@ pub struct FishSpot {
     pub index: u32,
     /// Ride distance, same scale as the rider's total distance.
     pub distance_m: f64,
-    /// Lane slot, 0 nearest the centre line.
+    /// Lane slot. `0` is the left asphalt edge. Fish stay on the paved slots.
     pub slot: u8,
     /// Larger, gold, and glowing.
     pub golden: bool,

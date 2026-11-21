@@ -129,7 +129,9 @@ func _exercise(game: Node, version: String) -> void:
 		return
 	var rider_at: Vector3 = game.rider_position()
 	var course_at: Vector3 = game.course_position()
-	if rider_at.distance_to(course_at) > 1.5:
+	# Start is 1.85 m into the right lane. The gravel shoulder is 3.35 m
+	# from the centre, so 4 m still means the bike is on the ribbon.
+	if rider_at.distance_to(course_at) > 4.0:
 		_fail("rider is not on the course: %s vs %s" % [rider_at, course_at])
 		return
 	var grade_label := str(game.hud_grade_text())

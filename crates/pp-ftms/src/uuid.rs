@@ -62,6 +62,23 @@ pub const CYCLING_POWER_MEASUREMENT_UUID16: u16 = 0x2A63;
 /// Cycling Power Measurement, 128-bit form.
 pub const CYCLING_POWER_MEASUREMENT_UUID: Uuid = uuid16(CYCLING_POWER_MEASUREMENT_UUID16);
 
+/// Cycling Speed and Cadence Service, 16-bit form.
+pub const CSC_SERVICE_UUID16: u16 = 0x1816;
+/// Cycling Speed and Cadence Service, 128-bit form.
+pub const CSC_SERVICE_UUID: Uuid = uuid16(CSC_SERVICE_UUID16);
+
+/// CSC Measurement, 16-bit form.
+pub const CSC_MEASUREMENT_UUID16: u16 = 0x2A5B;
+/// CSC Measurement, 128-bit form.
+pub const CSC_MEASUREMENT_UUID: Uuid = uuid16(CSC_MEASUREMENT_UUID16);
+
+/// Wahoo trainer control, under the Cycling Power Service.
+///
+/// Characteristic `A026E005-0A7D-4AB3-97FA-F1500F9FEB8B`. KICKR v1, v2, v3,
+/// legacy KICKR SNAP, and KICKR BIKE take WCPS commands here.
+pub const WAHOO_TRAINER_CONTROL_UUID: Uuid =
+    Uuid::from_u128(0xa026_e005_0a7d_4ab3_97fa_f150_0f9f_eb8b);
+
 /// Heart Rate Service, 16-bit form.
 pub const HEART_RATE_SERVICE_UUID16: u16 = 0x180D;
 /// Heart Rate Service, 128-bit form.
@@ -80,6 +97,24 @@ pub const FEC_SERVICE_UUID: Uuid = Uuid::from_u128(0x6e40fec1_b5a3_f393_e0a9_e50
 pub const FEC_NOTIFY_UUID: Uuid = Uuid::from_u128(0x6e40fec2_b5a3_f393_e0a9_e50e24dcca9e);
 /// App-to-trainer writes on the Tacx FE-C service.
 pub const FEC_WRITE_UUID: Uuid = Uuid::from_u128(0x6e40fec3_b5a3_f393_e0a9_e50e24dcca9e);
+
+/// Zwift trainer service, 16-bit form.
+///
+/// Zwift Hub, Zwift Hub One, Zwift Ride, Wahoo KICKR CORE (Zwift One and
+/// CORE 2), and JetBlack Victory advertise this vendor service.
+pub const ZWIFT_TRAINER_SERVICE_UUID16: u16 = 0xFC82;
+/// Zwift trainer service, 128-bit form.
+pub const ZWIFT_TRAINER_SERVICE_UUID: Uuid = uuid16(ZWIFT_TRAINER_SERVICE_UUID16);
+
+/// Trainer-to-app riding data on the Zwift trainer service.
+pub const ZWIFT_TRAINER_NOTIFY_UUID: Uuid =
+    Uuid::from_u128(0x0000_0002_19ca_4651_86e5_fa29_dcdd_09d1);
+/// App-to-trainer writes on the Zwift trainer service.
+pub const ZWIFT_TRAINER_WRITE_UUID: Uuid =
+    Uuid::from_u128(0x0000_0003_19ca_4651_86e5_fa29_dcdd_09d1);
+/// Trainer-to-app command responses on the Zwift trainer service.
+pub const ZWIFT_TRAINER_RESPONSE_UUID: Uuid =
+    Uuid::from_u128(0x0000_0004_19ca_4651_86e5_fa29_dcdd_09d1);
 
 #[cfg(test)]
 mod tests {
@@ -124,6 +159,18 @@ mod tests {
             "00002a63-0000-1000-8000-00805f9b34fb"
         );
         assert_eq!(
+            CSC_SERVICE_UUID.to_string(),
+            "00001816-0000-1000-8000-00805f9b34fb"
+        );
+        assert_eq!(
+            CSC_MEASUREMENT_UUID.to_string(),
+            "00002a5b-0000-1000-8000-00805f9b34fb"
+        );
+        assert_eq!(
+            WAHOO_TRAINER_CONTROL_UUID.to_string(),
+            "a026e005-0a7d-4ab3-97fa-f1500f9feb8b"
+        );
+        assert_eq!(
             HEART_RATE_SERVICE_UUID.to_string(),
             "0000180d-0000-1000-8000-00805f9b34fb"
         );
@@ -142,6 +189,22 @@ mod tests {
         assert_eq!(
             FEC_WRITE_UUID.to_string(),
             "6e40fec3-b5a3-f393-e0a9-e50e24dcca9e"
+        );
+        assert_eq!(
+            ZWIFT_TRAINER_SERVICE_UUID.to_string(),
+            "0000fc82-0000-1000-8000-00805f9b34fb"
+        );
+        assert_eq!(
+            ZWIFT_TRAINER_NOTIFY_UUID.to_string(),
+            "00000002-19ca-4651-86e5-fa29dcdd09d1"
+        );
+        assert_eq!(
+            ZWIFT_TRAINER_WRITE_UUID.to_string(),
+            "00000003-19ca-4651-86e5-fa29dcdd09d1"
+        );
+        assert_eq!(
+            ZWIFT_TRAINER_RESPONSE_UUID.to_string(),
+            "00000004-19ca-4651-86e5-fa29dcdd09d1"
         );
     }
 }
