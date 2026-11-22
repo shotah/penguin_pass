@@ -1,13 +1,13 @@
 //! Deterministic draws for route generation.
 //!
-//! The stream is ChaCha12 via `rand_chacha` 0.3.1 and `rand` 0.8.5.
+//! The stream is ChaCha12 via `rand` 0.10.4 (`rngs::ChaCha12Rng`).
 //! `ChaCha12Rng::seed_from_u64` expands the key. Attempt 0 uses the spec seed
 //! unchanged. Later attempts use SplitMix64 of `seed + attempt * golden ratio`
 //! so a rejected candidate does not restart the same stream.
 
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
-use rand_chacha::ChaCha12Rng;
+use rand::rngs::ChaCha12Rng;
 
 /// Random draws for one generation attempt.
 pub struct Stream {
@@ -25,7 +25,7 @@ impl Stream {
 
     /// A uniform draw in `[0, 1)`.
     pub fn f64(&mut self) -> f64 {
-        self.inner.r#gen::<f64>()
+        self.inner.random::<f64>()
     }
 
     /// A uniform draw in `[lo, hi)`.
@@ -43,7 +43,7 @@ impl Stream {
         if n == 0 {
             0
         } else {
-            self.inner.gen_range(0..n)
+            self.inner.random_range(0..n)
         }
     }
 

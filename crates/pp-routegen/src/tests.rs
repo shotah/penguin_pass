@@ -99,14 +99,14 @@ fn different_seeds_differ() {
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn stability_fingerprints() {
     // Locked after the pictures in docs/img/routes were accepted.
-    // ChaCha12 (rand_chacha 0.3.1 / rand 0.8.5) plus this JSON writer.
+    // ChaCha12 (rand 0.10.4 `rngs::ChaCha12Rng`); locked bytes moved with this bump.
     let cases = [
         (
             TerrainPreset::Desert,
             7_u64,
             10_000.0,
             "Desert 10 km",
-            0xccb3_998f_bd11_8f27,
+            0x8ad6_bf25_f272_a0b5,
         ),
         (
             TerrainPreset::Mountain,
@@ -120,14 +120,14 @@ fn stability_fingerprints() {
             3,
             5_000.0,
             "Rolling 5 km",
-            0xd13e_48e5_5dbc_e8f1,
+            0x3b7f_3f2a_a958_6c66,
         ),
         (
             TerrainPreset::Flat,
             1,
             2_000.0,
             "Flat 2 km",
-            0x1e4c_6612_ac42_1ba8,
+            0xb977_9c73_3e2d_b013,
         ),
     ];
     for (preset, seed, distance, name, expected) in cases {

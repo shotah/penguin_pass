@@ -6,7 +6,8 @@
 //!
 //! The mapping from spec to JSON is a compatibility promise: the same spec
 //! always produces the same bytes. Random draws come from ChaCha12
-//! (`rand_chacha` 0.3.1 seeded through `rand` 0.8.5). See
+//! (`rand` 0.10.4 `rngs::ChaCha12Rng`); locked bytes moved with this bump.
+//! See
 //! `docs/route-generator.md`.
 //!
 //! ```

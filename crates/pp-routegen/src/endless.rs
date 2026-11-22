@@ -9,9 +9,9 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
 
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
-use rand_chacha::ChaCha12Rng;
+use rand::rngs::ChaCha12Rng;
 
 /// Length of one endless section, in meters along the 3D centerline.
 pub const SECTION_M: f64 = 2_000.0;
@@ -39,10 +39,10 @@ impl Phases {
     fn from_seed(seed: u64) -> Self {
         let mut rng = ChaCha12Rng::seed_from_u64(seed ^ 0x00E4_D1E5);
         Self {
-            z1: rng.r#gen::<f64>() * TAU,
-            z2: rng.r#gen::<f64>() * TAU,
-            e1: rng.r#gen::<f64>() * TAU,
-            e2: rng.r#gen::<f64>() * TAU,
+            z1: rng.random::<f64>() * TAU,
+            z2: rng.random::<f64>() * TAU,
+            e1: rng.random::<f64>() * TAU,
+            e2: rng.random::<f64>() * TAU,
         }
     }
 }

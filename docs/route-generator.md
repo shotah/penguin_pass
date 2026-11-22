@@ -7,7 +7,8 @@ terrain character. It does not link Godot. The output is the JSON
 
 The same `RouteSpec` always produces the same bytes. That mapping is a
 compatibility promise: players will share seeds. Draws come from ChaCha12
-(`rand_chacha` 0.3.1, `rand` 0.8.5). Attempt 0 is seeded with the spec
+(`rand` 0.10.4 `rngs::ChaCha12Rng`; locked bytes moved with this bump).
+Attempt 0 is seeded with the spec
 seed. A rejected candidate uses SplitMix64 of
 `seed + attempt * 0x9E3779B97F4A7C15` and tries again, at most 40 times.
 

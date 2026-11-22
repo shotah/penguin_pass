@@ -29,7 +29,9 @@ copies to `licenses/assets.md`.
 | btleplug | 0.13.5 | MIT/Apache-2.0/BSD-3-Clause | https://github.com/deviceplug/btleplug |
 | bytes | 1.12.2 | MIT | https://github.com/tokio-rs/bytes |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/cfg-if |
+| chacha20 | 0.10.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/stream-ciphers |
 | chunked_transfer | 1.5.0 | MIT OR Apache-2.0 | https://github.com/frewsxcv/rust-chunked-transfer |
+| cpufeatures | 0.3.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
 | crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | dashmap | 6.2.1 | MIT | https://github.com/xacrimon/dashmap |
 | dbus | 0.9.12 | Apache-2.0/MIT | https://github.com/diwic/dbus-rs |
@@ -50,6 +52,7 @@ copies to `licenses/assets.md`.
 | futures-task | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-util | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | getrandom | 0.2.17 | MIT OR Apache-2.0 | https://github.com/rust-random/getrandom |
+| getrandom | 0.4.3 | MIT OR Apache-2.0 | https://github.com/rust-random/getrandom |
 | glam | 0.30.10 | MIT OR Apache-2.0 | https://github.com/bitshifter/glam-rs |
 | glam | 0.32.1 | MIT OR Apache-2.0 | https://github.com/bitshifter/glam-rs |
 | godot | 0.5.5 | MPL-2.0 | https://github.com/godot-rust/gdext |
@@ -111,12 +114,10 @@ copies to `licenses/assets.md`.
 | pp-view | 0.1.0 | MIT |  |
 | pp-workout | 0.1.0 | MIT |  |
 | pp-world | 0.1.0 | MIT |  |
-| ppv-lite86 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/cryptocorrosion/cryptocorrosion |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
-| rand | 0.8.5 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
-| rand_chacha | 0.3.1 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
-| rand_core | 0.6.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
+| rand | 0.10.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
+| rand_core | 0.10.1 | MIT OR Apache-2.0 | https://github.com/rust-random/rand_core |
 | ring | 0.17.14 | Apache-2.0 AND ISC | https://github.com/briansmith/ring |
 | roxmltree | 0.20.0 | MIT OR Apache-2.0 | https://github.com/RazrFalcon/roxmltree |
 | rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
@@ -173,7 +174,6 @@ copies to `licenses/assets.md`.
 | xml | 1.4.0 | MIT | https://github.com/kornelski/xml-rs |
 | yoke | 0.8.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | yoke-derive | 0.8.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
-| zerocopy | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT | https://github.com/google/zerocopy |
 | zerofrom | 0.1.8 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | zerofrom-derive | 0.1.8 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | zeroize | 1.9.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
