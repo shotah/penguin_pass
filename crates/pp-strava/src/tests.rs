@@ -826,10 +826,14 @@ fn request_timeout_is_reported() {
             .iter()
             .any(|event| matches!(event, StravaEvent::UploadFailed { .. }))
     });
-    assert!(events.iter().any(|event| matches!(
-        event,
-        StravaEvent::UploadFailed { reason, duplicate: false, .. } if reason.contains("did not respond")
-    )));
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            StravaEvent::UploadFailed { reason, duplicate: false, .. }
+                if reason.contains("did not respond")
+        )),
+        "{events:?}"
+    );
     drop(link);
     let _ = thread.join();
 }

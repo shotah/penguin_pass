@@ -1,0 +1,111 @@
+# This workflow does not wait on the other desktop. Linux CI stays in ci.yml.
+# It does not update the Flatpak "latest" prerelease.
+
+name: macOS
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.webp"
+      - "**/*.svg"
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.webp"
+      - "**/*.svg"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-macos-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  player:
+    uses: ./.github/workflows/desktop-player.yml
+    with:
+      os: macos-latest
+      label: macos-universal
+      lib: libpp_godot.release.dylib
+      editor_zip: Godot_v4.7.2-stable_macos.universal.zip
+      preset: macOS
+      out_rel: dist/penguin-pass-macos/penguin-pass.app
+      zip_name: penguin-pass-macos-universal.zip
+
+  release:
+    name: release
+    needs: player
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download the macOS zip
+        uses: actions/download-artifact@v8
+        with:
+          name: penguin-pass-macos-universal.zip
+          path: dist/release
+
+      - name: Attach the zip to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in
+            v*) ;;
+            *) echo "release: ref $tag is not a v* tag" >&2; exit 1 ;;
+          esac
+          shopt -s nullglob
+          files=(dist/release/*.zip)
+          if [[ ${#files[@]} -ne 1 ]]; then
+            echo "release: expected one zip, found ${#files[@]}" >&2
+            ls -la dist/release >&2
+            exit 1
+          fi
+          file="${files[0]}"
+          notes="Windows and macOS player zips for ${tag}. The macOS zip is ad-hoc signed at export time and is not notarized."
+          title="Penguin Pass ${tag}"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$file" --clobber
+            exit 0
+          fi
+
+          attempt=1
+          while [[ $attempt -le 5 ]]; do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release upload "$tag" "$file" --clobber
+              exit 0
+            fi
+            if gh release create "$tag" "$file" --title "$title" --notes "$notes"; then
+              exit 0
+            fi
+            sleep "$attempt"
+            attempt=$((attempt + 1))
+          done
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$file" --clobber
+            exit 0
+          fi
+
+          echo "release: could not create or upload after retries" >&2
+          exit 1

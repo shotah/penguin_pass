@@ -17,10 +17,11 @@ Desktop x86_64 and macOS. The keys that were checked against the Godot
 4.7.2 editor binary on this machine are listed below. No export was
 run.
 
-`.github/workflows/cross-platform.yml` runs tests, clippy, and a
-release library build on `windows-latest` and `macos-latest`. A `v*`
-tag or a manual run also exports a zip and, for a tag, attaches it to
-that GitHub Release. It does not update the Flatpak `latest` prerelease.
+`.github/workflows/macos.yml` and `.github/workflows/windows.yml` each
+run tests, clippy, and a release library build, and they do not wait on
+each other. A `v*` tag or a manual run exports that desktop's zip. A tag
+attaches that zip to the GitHub Release. Neither workflow updates the
+Flatpak `latest` prerelease.
 
 ## Export keys checked in the 4.7.2 editor binary
 

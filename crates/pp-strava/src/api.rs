@@ -188,7 +188,24 @@ fn call(result: Result<ureq::Response, ureq::Error>) -> Result<(u16, String), Ap
 }
 
 fn transport_timed_out(err: &ureq::Transport) -> bool {
-    err.to_string().to_ascii_lowercase().contains("timed out")
+    transport_error_timed_out(err)
+}
+
+// Windows WSAETIMEDOUT text does not contain "timed out"; follow `source()` for `TimedOut`.
+fn transport_error_timed_out(err: &(dyn std::error::Error + 'static)) -> bool {
+    let mut current = Some(err);
+    while let Some(error) = current {
+        if let Some(io_err) = error.downcast_ref::<std::io::Error>()
+            && io_err.kind() == std::io::ErrorKind::TimedOut
+        {
+            return true;
+        }
+        if error.to_string().to_ascii_lowercase().contains("timed out") {
+            return true;
+        }
+        current = error.source();
+    }
+    false
 }
 
 fn read_response(response: ureq::Response) -> (u16, String) {
@@ -386,4 +403,62 @@ struct UploadJson {
     error: Option<String>,
     #[serde(default)]
     activity_id: Option<u64>,
+}
+
+#[cfg(test)]
+mod transport_timeout_tests {
+    use std::error::Error;
+    use std::fmt;
+    use std::io::{Error as IoError, ErrorKind};
+
+    use super::transport_error_timed_out;
+
+    #[derive(Debug)]
+    struct NetworkWrapper {
+        source: IoError,
+    }
+
+    impl fmt::Display for NetworkWrapper {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("Network Error")
+        }
+    }
+
+    impl Error for NetworkWrapper {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            Some(&self.source)
+        }
+    }
+
+    #[derive(Debug)]
+    struct PhraseOnly;
+
+    impl fmt::Display for PhraseOnly {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("request timed out waiting")
+        }
+    }
+
+    impl Error for PhraseOnly {}
+
+    #[test]
+    fn windows_style_timed_out_io_in_source_chain() {
+        let io = IoError::new(
+            ErrorKind::TimedOut,
+            "A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)",
+        );
+        let wrapped = NetworkWrapper { source: io };
+        assert!(transport_error_timed_out(&wrapped));
+    }
+
+    #[test]
+    fn connection_refused_is_not_a_timeout() {
+        let io = IoError::new(ErrorKind::ConnectionRefused, "connection refused");
+        assert!(!transport_error_timed_out(&io));
+    }
+
+    #[test]
+    fn display_phrase_still_counts_as_timeout() {
+        assert!(transport_error_timed_out(&PhraseOnly));
+    }
 }

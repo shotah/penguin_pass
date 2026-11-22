@@ -67,8 +67,8 @@ macOS depot's OS to macOS.
 | Windows | `penguin-pass-windows-x86_64` | `penguin-pass.exe` |
 | macOS | `penguin-pass-macos` | `penguin-pass.app` |
 
-The Windows and macOS folders are what `.github/workflows/cross-platform.yml`
-exports on a `v*` tag or a manual run. The macOS app is ad-hoc signed by
+The Windows and macOS folders are what `.github/workflows/macos.yml` and
+`.github/workflows/windows.yml` export on a `v*` tag or a manual run. The macOS app is ad-hoc signed by
 Godot's Testing export and is not notarized. That export has not been run
 on a Mac yet. Launch options for those two depots are in `docs/cross-platform.md`.
 

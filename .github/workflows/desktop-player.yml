@@ -1,55 +1,38 @@
-# Windows and macOS build, test, and (on a tag or a manual run) player export.
-# Linux CI stays in ci.yml. This workflow does not touch the Flatpak "latest" prerelease.
-
-name: Cross-platform
+# Reusable rust + export jobs for one desktop OS. Callers own triggers and release.
 
 on:
-  workflow_dispatch:
-  pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "**/*.png"
-      - "**/*.jpg"
-      - "**/*.jpeg"
-      - "**/*.gif"
-      - "**/*.webp"
-      - "**/*.svg"
-  push:
-    branches: [main]
-    tags: ["v*"]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "**/*.png"
-      - "**/*.jpg"
-      - "**/*.jpeg"
-      - "**/*.gif"
-      - "**/*.webp"
-      - "**/*.svg"
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      label:
+        required: true
+        type: string
+      lib:
+        required: true
+        type: string
+      editor_zip:
+        required: true
+        type: string
+      preset:
+        required: true
+        type: string
+      out_rel:
+        required: true
+        type: string
+      zip_name:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: cross-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
-
 jobs:
   rust:
-    name: rust (${{ matrix.label }})
-    runs-on: ${{ matrix.os }}
+    name: rust (${{ inputs.label }})
+    runs-on: ${{ inputs.os }}
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            label: windows-x86_64
-            lib: pp_godot.release.dll
-          - os: macos-latest
-            label: macos-universal
-            lib: libpp_godot.release.dylib
     steps:
       - uses: actions/checkout@v7
 
@@ -77,51 +60,33 @@ jobs:
             lipo -create \
               target/aarch64-apple-darwin/release/libpp_godot.dylib \
               target/x86_64-apple-darwin/release/libpp_godot.dylib \
-              -output "godot/bin/${{ matrix.lib }}"
+              -output "godot/bin/${{ inputs.lib }}"
           else
             cargo build -p pp-godot --release
-            cp -f target/release/pp_godot.dll "godot/bin/${{ matrix.lib }}"
+            cp -f target/release/pp_godot.dll "godot/bin/${{ inputs.lib }}"
           fi
 
       - name: Upload the library
         uses: actions/upload-artifact@v7
         with:
-          name: native-lib-${{ matrix.label }}
-          path: godot/bin/${{ matrix.lib }}
+          name: native-lib-${{ inputs.label }}
+          path: godot/bin/${{ inputs.lib }}
           if-no-files-found: error
           retention-days: 5
 
   export:
-    name: export (${{ matrix.label }})
+    name: export (${{ inputs.label }})
     needs: rust
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ inputs.os }}
     timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            label: windows-x86_64
-            lib: pp_godot.release.dll
-            editor_zip: Godot_v4.7.2-stable_win64.exe.zip
-            preset: Windows Desktop x86_64
-            out_rel: dist/penguin-pass-windows-x86_64/penguin-pass.exe
-            zip_name: penguin-pass-windows-x86_64.zip
-          - os: macos-latest
-            label: macos-universal
-            lib: libpp_godot.release.dylib
-            editor_zip: Godot_v4.7.2-stable_macos.universal.zip
-            preset: macOS
-            out_rel: dist/penguin-pass-macos/penguin-pass.app
-            zip_name: penguin-pass-macos-universal.zip
     steps:
       - uses: actions/checkout@v7
 
       - name: Download the library
         uses: actions/download-artifact@v8
         with:
-          name: native-lib-${{ matrix.label }}
+          name: native-lib-${{ inputs.label }}
           path: godot/bin
 
       - name: Restore Godot 4.7.2
@@ -162,9 +127,9 @@ jobs:
           print("verified " + name)
           PY
           }
-          fetch "${{ matrix.editor_zip }}"
+          fetch "${{ inputs.editor_zip }}"
           fetch "Godot_v4.7.2-stable_export_templates.tpz"
-          unzip -qo "$dest/${{ matrix.editor_zip }}" -d "$dest/editor"
+          unzip -qo "$dest/${{ inputs.editor_zip }}" -d "$dest/editor"
           unzip -qo "$dest/Godot_v4.7.2-stable_export_templates.tpz" \
             "templates/windows_debug_x86_64.exe" \
             "templates/windows_release_x86_64.exe" \
@@ -174,9 +139,9 @@ jobs:
       - name: Export the player
         shell: bash
         env:
-          PRESET: ${{ matrix.preset }}
-          OUT_REL: ${{ matrix.out_rel }}
-          LIB: ${{ matrix.lib }}
+          PRESET: ${{ inputs.preset }}
+          OUT_REL: ${{ inputs.out_rel }}
+          LIB: ${{ inputs.lib }}
         run: |
           set -euo pipefail
           root="$PWD"
@@ -264,8 +229,8 @@ jobs:
       - name: Zip the export
         shell: bash
         env:
-          ZIP_NAME: ${{ matrix.zip_name }}
-          LABEL: ${{ matrix.label }}
+          ZIP_NAME: ${{ inputs.zip_name }}
+          LABEL: ${{ inputs.label }}
         run: |
           set -euo pipefail
           python3 - "$ZIP_NAME" "$LABEL" <<'PY'
@@ -293,54 +258,7 @@ jobs:
       - name: Upload the player zip
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.zip_name }}
-          path: dist/${{ matrix.zip_name }}
+          name: ${{ inputs.zip_name }}
+          path: dist/${{ inputs.zip_name }}
           if-no-files-found: error
           retention-days: 14
-
-  release:
-    name: release
-    needs: export
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - name: Download the Windows zip
-        uses: actions/download-artifact@v8
-        with:
-          name: penguin-pass-windows-x86_64.zip
-          path: dist/release
-
-      - name: Download the macOS zip
-        uses: actions/download-artifact@v8
-        with:
-          name: penguin-pass-macos-universal.zip
-          path: dist/release
-
-      - name: Attach the zips to the GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          case "$tag" in
-            v*) ;;
-            *) echo "release: ref $tag is not a v* tag" >&2; exit 1 ;;
-          esac
-          shopt -s nullglob
-          files=(dist/release/*.zip)
-          if [[ ${#files[@]} -ne 2 ]]; then
-            echo "release: expected two zips, found ${#files[@]}" >&2
-            ls -la dist/release >&2
-            exit 1
-          fi
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "${files[@]}" --clobber
-          else
-            gh release create "$tag" "${files[@]}" \
-              --title "Penguin Pass ${tag}" \
-              --notes "Windows and macOS player zips for ${tag}. The macOS zip is ad-hoc signed at export time and is not notarized."
-          fi
