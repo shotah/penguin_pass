@@ -10,7 +10,7 @@ publish.workspace = true
 pp-course = { path = "../pp-course" }
 # ChaCha12 via rand 0.8 is the stability promise. Do not bump without
 # updating the fingerprint tests and docs/route-generator.md.
-rand = "=0.8.5"
+rand = "=0.10.4"
 rand_chacha = "=0.3.1"
 serde_json = "1"
 
