@@ -23,7 +23,7 @@
   <developer id="io.github.shotah">
     <name>shotah</name>
   </developer>
-  <url type="homepage">https://github.com/shotah/penguin_pass</url>
+  <url type="homepage">https://shotah.github.io/penguin_pass/</url>
   <url type="bugtracker">https://github.com/shotah/penguin_pass/issues</url>
   <url type="vcs-browser">https://github.com/shotah/penguin_pass</url>
   <categories>
@@ -60,12 +60,18 @@
   <releases>
     <release version="0.1.0" date="2026-11-20"/>
   </releases>
-  <!-- Before the first public release, add a screenshots block with a real
-       https URL of a PNG or JPEG, for example:
   <screenshots>
     <screenshot type="default">
-      <image type="source" width="1920" height="1080">https://example.invalid/penguin-pass.png</image>
+      <caption>Alpine peloton and drafting on Penguin Pass</caption>
+      <image type="source" width="1920" height="1080">https://shotah.github.io/penguin_pass/assets/alpine-peloton-1080.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Desert climbs under sunset skies</caption>
+      <image type="source" width="1920" height="1080">https://shotah.github.io/penguin_pass/assets/desert-volcano-1080.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Structured ERG workouts with live power targets</caption>
+      <image type="source" width="1920" height="1080">https://shotah.github.io/penguin_pass/assets/workout-1080.png</image>
     </screenshot>
   </screenshots>
-  -->
 </component>
