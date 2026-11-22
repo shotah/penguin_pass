@@ -21,6 +21,7 @@
 #   package     Tar the export and print its size and SHA-256
 #   licenses    Write docs/third-party-licenses.md from cargo metadata
 #   release     Bump, tag v<version>, and push. Default bump is patch.
+#               Asks before the 4+ minute lint, typecheck, and test suite.
 #               BUMP=minor, BUMP=major, or BUMP=X.Y.Z selects another version.
 #               DRY=1 is --dry-run. NOPUSH=1 commits and tags without pushing.
 #

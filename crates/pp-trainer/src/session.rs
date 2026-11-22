@@ -7,15 +7,15 @@
 //!
 //! Time is a millisecond counter the caller passes in, so tests never sleep.
 
-use pp_core::TrainerCommand;
 #[cfg(test)]
 use pp_core::TrainerSample;
+use pp_core::{RoadSurface, TrainerCommand};
 use pp_ftms::{
     CSC_MEASUREMENT_UUID, CYCLING_POWER_MEASUREMENT_UUID, ControlPointRequest,
     ControlPointResponse, ControlResult, CscMeasurement, CyclingPowerMeasurement, FEC_NOTIFY_UUID,
     FITNESS_MACHINE_CONTROL_POINT_UUID, FITNESS_MACHINE_STATUS_UUID, FecChecksum, FecData,
     FecMessage, HEART_RATE_MEASUREMENT_UUID, HeartRateMeasurement, INDOOR_BIKE_DATA_UUID,
-    IndoorBikeData, IndoorBikeSimulation, OPCODE_REQUEST_CONTROL,
+    IndoorBikeData, IndoorBikeSimulation, NeoRoadFeel, OPCODE_REQUEST_CONTROL,
     OPCODE_SET_INDOOR_BIKE_SIMULATION, OPCODE_SET_TARGET_POWER, OPCODE_START_OR_RESUME,
     TargetPower, TrackResistance, UserConfiguration, WAHOO_OP_SET_ERG_POWER,
     WAHOO_OP_SET_SIM_GRADE, WAHOO_OP_SET_SIM_PARAMETERS, WAHOO_OP_UNLOCK,
@@ -214,6 +214,8 @@ pub(crate) struct Engine {
     zwift_handshaked: bool,
     pending_gear: Option<u8>,
     last_sent_gear: Option<u8>,
+    pending_surface: Option<RoadSurface>,
+    last_sent_surface: Option<RoadSurface>,
 }
 
 impl Engine {
@@ -257,6 +259,8 @@ impl Engine {
             zwift_handshaked: false,
             pending_gear: None,
             last_sent_gear: None,
+            pending_surface: None,
+            last_sent_surface: None,
         }
     }
 
@@ -313,7 +317,10 @@ impl Engine {
 
     /// No control-point write is waiting and no command is queued.
     pub(crate) fn control_settled(&self) -> bool {
-        self.awaiting.is_none() && self.pending.is_none() && self.pending_gear.is_none()
+        self.awaiting.is_none()
+            && self.pending.is_none()
+            && self.pending_gear.is_none()
+            && self.pending_surface.is_none()
     }
 
     /// The most recent non-fatal control-point problem, if any.
@@ -361,6 +368,8 @@ impl Engine {
         self.zwift_handshaked = false;
         self.pending_gear = None;
         self.last_sent_gear = None;
+        self.pending_surface = None;
+        self.last_sent_surface = None;
         if !resumed {
             self.trace_state("connecting");
         }
@@ -379,6 +388,7 @@ impl Engine {
         self.awaiting = None;
         self.reconnect_armed = false;
         self.pending = None;
+        self.pending_surface = None;
         self.state = ConnectionState::Disconnected;
         self.trace_state("disconnected");
         self.trace.flush();
@@ -410,7 +420,8 @@ impl Engine {
     }
 
     fn release_fec_flat(&mut self) -> Vec<OutAction> {
-        let Ok(bytes) = (TrackResistance {
+        let mut actions = Vec::new();
+        let Ok(grade) = (TrackResistance {
             grade_pct: 0.0,
             rolling_resistance: Some(self.config.crr),
         })
@@ -418,8 +429,13 @@ impl Engine {
             return Vec::new();
         };
         self.last_sent_grade = Some(0.0);
-        self.trace_fec_tx(&bytes, "grade=0");
-        vec![OutAction::WriteFec(bytes)]
+        self.trace_fec_tx(&grade, "grade=0");
+        actions.push(OutAction::WriteFec(grade));
+        let feel = NeoRoadFeel::from_surface(RoadSurface::Smooth).encode(self.outgoing_checksum());
+        self.last_sent_surface = Some(RoadSurface::Smooth);
+        self.trace_fec_tx(&feel, "road-feel=smooth");
+        actions.push(OutAction::WriteFec(feel));
+        actions
     }
 
     fn release_wahoo_flat(&mut self) -> Vec<OutAction> {
@@ -1000,6 +1016,10 @@ impl Engine {
             TrainerCommand::SetTargetPower { watts } => {
                 self.pending = Some(Pending::Power(watts));
             }
+            TrainerCommand::SetRoadFeel { surface } => {
+                self.pending_surface = Some(surface);
+                return self.flush(now_ms);
+            }
         }
         self.flush(now_ms)
     }
@@ -1018,8 +1038,10 @@ impl Engine {
         actions.extend(self.take_user_config());
         if self.wire == ControlWire::None {
             self.pending = None;
+            self.pending_surface = None;
             return actions;
         }
+        actions.extend(self.flush_road_feel());
         let Some(pending) = self.pending else {
             return actions;
         };
@@ -1031,6 +1053,25 @@ impl Engine {
             Pending::Power(watts) => self.flush_power(now_ms, watts),
         });
         actions
+    }
+
+    fn flush_road_feel(&mut self) -> Vec<OutAction> {
+        let Some(surface) = self.pending_surface else {
+            return Vec::new();
+        };
+        if self.wire != ControlWire::Fec {
+            self.pending_surface = None;
+            return Vec::new();
+        }
+        if self.last_sent_surface == Some(surface) {
+            self.pending_surface = None;
+            return Vec::new();
+        }
+        self.pending_surface = None;
+        let bytes = NeoRoadFeel::from_surface(surface).encode(self.outgoing_checksum());
+        self.last_sent_surface = Some(surface);
+        self.trace_fec_tx(&bytes, &format!("road-feel={}", surface.label()));
+        vec![OutAction::WriteFec(bytes)]
     }
 
     fn flush_virtual_gear(&mut self) -> Vec<OutAction> {
@@ -2349,8 +2390,8 @@ mod tests {
         control.connect(fec_profile(false));
         control.command(TrainerCommand::SetGrade { grade_pct: 3.0 });
         let release = control.engine.stop();
-        // Nothing has been heard yet, so the held page 55 and the flat page 51
-        // both go out with the ANT XOR.
+        // Nothing has been heard yet, so the held page 55, the flat page 51,
+        // and the smooth road-feel page all go out with the ANT XOR.
         assert_eq!(
             release,
             vec![
@@ -2360,8 +2401,115 @@ mod tests {
                 OutAction::WriteFec(vec![
                     0xA4, 0x09, 0x4F, 0x05, 0x33, 0xFF, 0xFF, 0xFF, 0xFF, 0x20, 0x4E, 0x50, 0xEA,
                 ]),
+                OutAction::WriteFec(
+                    NeoRoadFeel::from_surface(RoadSurface::Smooth).encode(FecChecksum::Xor),
+                ),
             ]
         );
+    }
+
+    fn fec_page_25_sum() -> Vec<u8> {
+        vec![
+            0xA4, 0x09, 0x4E, 0x05, 0x19, 0x07, 0x5A, 0xE8, 0x03, 0xFA, 0x00, 0x30, 0xEB,
+        ]
+    }
+
+    fn fec_frames_with_page(fec: &[Vec<u8>], page: u8) -> impl Iterator<Item = &Vec<u8>> {
+        fec.iter().filter(move |frame| frame.get(4) == Some(&page))
+    }
+
+    #[test]
+    fn fec_road_feel_waits_for_checksum_hold_and_skips_duplicates() {
+        let mut harness = Harness::control();
+        harness.connect(fec_profile(false));
+        harness.command(TrainerCommand::SetRoadFeel {
+            surface: RoadSurface::Gravel,
+        });
+        assert!(harness.fake.fec.is_empty());
+
+        harness.notify(FEC_NOTIFY_UUID, fec_page_25_sum());
+        let gravel = NeoRoadFeel::from_surface(RoadSurface::Gravel).encode(FecChecksum::Sum);
+        assert_eq!(harness.fake.fec.last().unwrap(), &gravel);
+
+        let before = harness.fake.fec.len();
+        harness.command(TrainerCommand::SetRoadFeel {
+            surface: RoadSurface::Gravel,
+        });
+        assert_eq!(harness.fake.fec.len(), before);
+
+        harness.command(TrainerCommand::SetRoadFeel {
+            surface: RoadSurface::Smooth,
+        });
+        let smooth = NeoRoadFeel::from_surface(RoadSurface::Smooth).encode(FecChecksum::Sum);
+        assert_eq!(harness.fake.fec.last().unwrap(), &smooth);
+    }
+
+    #[test]
+    fn fec_road_feel_and_grade_do_not_share_the_pending_slot() {
+        let mut harness = Harness::control();
+        harness.connect(fec_profile(false));
+        harness.notify(FEC_NOTIFY_UUID, fec_page_25_sum());
+        harness.fake.fec.clear();
+
+        harness.command(TrainerCommand::SetGrade { grade_pct: 2.0 });
+        assert_eq!(fec_frames_with_page(&harness.fake.fec, 0x33).count(), 1);
+
+        harness.command(TrainerCommand::SetRoadFeel {
+            surface: RoadSurface::Gravel,
+        });
+        assert_eq!(fec_frames_with_page(&harness.fake.fec, 0xFC).count(), 1);
+
+        harness.command(TrainerCommand::SetRoadFeel {
+            surface: RoadSurface::Smooth,
+        });
+        harness.now = 500;
+        harness.command(TrainerCommand::SetGrade { grade_pct: 4.0 });
+        assert_eq!(fec_frames_with_page(&harness.fake.fec, 0x33).count(), 2);
+        assert_eq!(fec_frames_with_page(&harness.fake.fec, 0xFC).count(), 2);
+    }
+
+    #[test]
+    fn ftms_ignores_road_feel() {
+        let mut harness = Harness::control();
+        harness.connect(full_profile());
+        let writes_before = harness.fake.writes.len();
+        harness.command(TrainerCommand::SetRoadFeel {
+            surface: RoadSurface::Gravel,
+        });
+        assert_eq!(harness.fake.writes.len(), writes_before);
+        assert!(harness.fake.fec.is_empty());
+    }
+
+    #[test]
+    fn fec_stop_releases_smooth_road_feel_after_gravel() {
+        let mut harness = Harness::control();
+        harness.connect(fec_profile(false));
+        harness.notify(FEC_NOTIFY_UUID, fec_page_25_sum());
+        harness.command(TrainerCommand::SetRoadFeel {
+            surface: RoadSurface::Gravel,
+        });
+        harness.fake.fec.clear();
+
+        let release = harness.engine.stop();
+        let smooth = NeoRoadFeel::from_surface(RoadSurface::Smooth).encode(FecChecksum::Sum);
+        assert!(
+            release
+                .iter()
+                .any(|action| matches!(action, OutAction::WriteFec(bytes) if bytes == &smooth))
+        );
+        assert!(release.iter().any(
+            |action| matches!(action, OutAction::WriteFec(bytes) if bytes.get(4) == Some(&0x33))
+        ));
+    }
+
+    #[test]
+    fn fec_read_only_ignores_road_feel() {
+        let mut harness = Harness::with_result(SessionMode::ReadOnly, 0x01);
+        harness.connect(fec_profile(true));
+        harness.command(TrainerCommand::SetRoadFeel {
+            surface: RoadSurface::Gravel,
+        });
+        assert!(harness.fake.fec.is_empty());
     }
 
     #[test]

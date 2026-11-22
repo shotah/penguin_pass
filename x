@@ -607,11 +607,43 @@ release_self_test() {
         echo "release self-test: real Cargo.toml or Cargo.lock changed" >&2
         exit 1
     fi
+    if ! printf 'y\n' | release_confirm >/dev/null 2>&1; then
+        echo "release self-test: y was refused" >&2
+        exit 1
+    fi
+    if printf 'n\n' | release_confirm >/dev/null 2>&1; then
+        echo "release self-test: n was accepted" >&2
+        exit 1
+    fi
+    if printf '\n' | release_confirm >/dev/null 2>&1; then
+        echo "release self-test: an empty answer was accepted" >&2
+        exit 1
+    fi
+    if release_confirm </dev/null >/dev/null 2>&1; then
+        echo "release self-test: end of input was accepted" >&2
+        exit 1
+    fi
     echo "release: 0.1.0 -> 0.1.1"
     release_dry=1
     release_no_push=0
     release_git 0.1.1
     echo "release self-test: ok"
+}
+
+# Ask before lint, typecheck, and the full test suite. Dry-run returns first.
+release_confirm() {
+    echo "release: lint, typecheck, and the full test suite run next. This takes 4+ minutes." >&2
+    local answer=""
+    if ! read -r -p "Continue? [y/N] " answer; then
+        echo >&2
+        echo "release: cancelled" >&2
+        return 1
+    fi
+    case "${answer,,}" in
+        y|yes) return 0 ;;
+    esac
+    echo "release: cancelled" >&2
+    return 1
 }
 
 release_status_branch_live() {
@@ -689,6 +721,7 @@ cmd_release() {
         release_git "$new"
         return 0
     fi
+    release_confirm || exit 1
     backup=$(mktemp -d)
     cp "$ROOT/Cargo.toml" "$ROOT/Cargo.lock" "$backup/"
     if ! release_write_version "$ROOT/Cargo.toml" "$new"; then

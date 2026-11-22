@@ -102,8 +102,8 @@ impl ControlPointRequest {
     /// [`TrainerCommand::SetGrade`] keeps `simulation`'s wind, `crr`, and `cw`,
     /// and replaces the grade. [`TrainerCommand::SetTargetPower`] saturates
     /// into `sint16` watts (the wire type); values above 32767 become 32767.
-    /// [`TrainerCommand::SetVirtualGear`] is not an FTMS control-point opcode;
-    /// it returns `None`.
+    /// [`TrainerCommand::SetVirtualGear`] and [`TrainerCommand::SetRoadFeel`]
+    /// are not FTMS control-point opcodes; they return `None`.
     #[must_use]
     pub fn from_trainer_command(
         command: TrainerCommand,
@@ -119,7 +119,7 @@ impl ControlPointRequest {
             TrainerCommand::SetTargetPower { watts } => Some(Self::SetTargetPower {
                 watts: i16::try_from(watts).unwrap_or(i16::MAX),
             }),
-            TrainerCommand::SetVirtualGear { .. } => None,
+            TrainerCommand::SetVirtualGear { .. } | TrainerCommand::SetRoadFeel { .. } => None,
         }
     }
 

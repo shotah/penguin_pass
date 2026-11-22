@@ -173,6 +173,7 @@ impl Trainer for FakeLink {
             }
             TrainerCommand::SetTargetPower { .. } => {}
             TrainerCommand::SetVirtualGear { .. } => {}
+            TrainerCommand::SetRoadFeel { .. } => {}
         }
         Ok(())
     }

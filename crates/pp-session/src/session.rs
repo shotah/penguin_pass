@@ -9,7 +9,7 @@ use std::thread::JoinHandle;
 
 use pp_bots::PlayerInput;
 use pp_cast::{CastConfig, CastServer, CourseProfile, ProfilePoint as CastPoint};
-use pp_core::{Telemetry, TrainerCommand, TrainerSample};
+use pp_core::{RoadSurface, Telemetry, TrainerCommand, TrainerSample, surface_under};
 use pp_course::{Course, Ride};
 use pp_trainer::{
     ConnectionState, DiscoveredTrainer, HeartRateLink, SessionMode, SimTrainer, Trainer,
@@ -586,6 +586,7 @@ impl Session {
         self.note_link_events();
         self.refresh_pairing();
         self.send_grade(telemetry.grade_pct);
+        self.send_road_feel();
         self.trace_tick(dt, &observed, telemetry.speed_mps, &telemetry);
         self.publish_dashboard(telemetry);
         self.note_dashboard_event();
@@ -602,6 +603,7 @@ impl Session {
         self.note_link_events();
         self.refresh_pairing();
         self.send_grade(0.0);
+        self.send_road_feel();
         let motion = self.ride.telemetry();
         self.trace_tick(dt, &observed, motion.speed_mps, &motion);
         let mut frame = self.ride.telemetry();
@@ -2261,6 +2263,27 @@ impl Session {
         }
         let _ = trainer.send(TrainerCommand::SetGrade { grade_pct: 0.0 });
         self.last_grade_sent = Some(0.0);
+        let _ = trainer.send(TrainerCommand::SetRoadFeel {
+            surface: RoadSurface::Smooth,
+        });
+    }
+
+    fn send_road_feel(&mut self) {
+        if self.using_trainer && !self.controlling_trainer() {
+            return;
+        }
+        if !self.using_trainer {
+            return;
+        }
+        let Some(trainer) = self.trainer.as_mut() else {
+            return;
+        };
+        if !matches!(trainer.state(), ConnectionState::Connected) {
+            return;
+        }
+        // A course span replaces `None`.
+        let surface = surface_under(self.play_state.lane(), None);
+        let _ = trainer.send(TrainerCommand::SetRoadFeel { surface });
     }
 
     fn trainer_mode(&self) -> SessionMode {
@@ -2867,6 +2890,7 @@ mod tests {
         name: String,
         sample: Option<TrainerSample>,
         grades: Vec<f32>,
+        surfaces: Vec<RoadSurface>,
         fail_send: bool,
         discovered: Vec<DiscoveredTrainer>,
         connects: Vec<String>,
@@ -2890,6 +2914,7 @@ mod tests {
                 name: "FTMS".to_owned(),
                 sample: None,
                 grades: Vec::new(),
+                surfaces: Vec::new(),
                 fail_send: false,
                 discovered: Vec::new(),
                 connects: Vec::new(),
@@ -2925,7 +2950,13 @@ mod tests {
         }
 
         fn clear_grades(&self) {
-            lock(&self.0).grades.clear();
+            let mut state = lock(&self.0);
+            state.grades.clear();
+            state.surfaces.clear();
+        }
+
+        fn surfaces(&self) -> Vec<RoadSurface> {
+            lock(&self.0).surfaces.clone()
         }
 
         fn set_fail_send(&self, fail: bool) {
@@ -3006,6 +3037,7 @@ mod tests {
                 TrainerCommand::SetGrade { grade_pct } => state.grades.push(grade_pct),
                 TrainerCommand::SetVirtualGear { gear } => state.virtual_gears.push(gear),
                 TrainerCommand::SetTargetPower { .. } => {}
+                TrainerCommand::SetRoadFeel { surface } => state.surfaces.push(surface),
             }
             Ok(())
         }
@@ -3277,6 +3309,57 @@ mod tests {
         assert_eq!(frame.power_w, 220.0);
         assert!(frame.elapsed_s > 0.0);
         assert!(handle.grades().is_empty());
+    }
+
+    #[test]
+    fn road_feel_follows_lane_on_connected_controlled_trainer() {
+        let handle = Handle::new();
+        handle.set_discovered(vec![neo()]);
+        let mut session = session_with(offline(), &handle);
+        assert_eq!(session.phase(), RidePhase::Riding);
+
+        session.connect("neo-1");
+        handle.set_state(ConnectionState::Connected);
+        session.tick(0.0);
+
+        session.set_lane_position(6.0);
+        session.tick(0.05);
+        assert_eq!(handle.surfaces().last().copied(), Some(RoadSurface::Smooth));
+
+        session.set_lane_position(7.49);
+        session.tick(0.05);
+        assert_eq!(handle.surfaces().last().copied(), Some(RoadSurface::Smooth));
+
+        session.set_lane_position(7.5);
+        session.tick(0.05);
+        assert_eq!(handle.surfaces().last().copied(), Some(RoadSurface::Gravel));
+
+        session.set_lane_position(8.0);
+        session.tick(0.05);
+        assert_eq!(handle.surfaces().last().copied(), Some(RoadSurface::Gravel));
+
+        session.set_lane_position(2.0);
+        session.tick(0.05);
+        assert_eq!(handle.surfaces().last().copied(), Some(RoadSurface::Smooth));
+
+        session.set_lane_position(8.0);
+        session.tick(0.05);
+        assert_eq!(handle.surfaces().last().copied(), Some(RoadSurface::Gravel));
+
+        let surfaces_len = handle.surfaces().len();
+        handle.set_state(ConnectionState::Disconnected);
+        session.set_lane_position(2.0);
+        session.tick(0.05);
+        assert_eq!(
+            handle.surfaces().len(),
+            surfaces_len,
+            "a dropped link must not send road feel"
+        );
+
+        handle.set_state(ConnectionState::Connected);
+        session.end_ride();
+        assert_eq!(handle.surfaces().last().copied(), Some(RoadSurface::Smooth));
+        assert_eq!(handle.grades().last().copied(), Some(0.0));
     }
 
     #[test]

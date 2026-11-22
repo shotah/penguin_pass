@@ -105,7 +105,14 @@ the same pad inputs fall back to simulated power.
 
 - **Garmin Tacx Neo 2T.** Power and hill resistance on a real ride. The
   trainer advertises Cycling Power and FE-C, not FTMS, so that ride took
-  the FE-C control path. See the roadmap in `README.md` and
+  the FE-C control path. Road feel goes out on the same FE-C control link
+  as grade. Lane slot 7.5 and above is the gravel right shoulder, off the
+  asphalt; that sends gravel (pattern 7, intensity 40). Asphalt, the end of
+  the ride, and releasing the link send surface 0 so the motor stops. The
+  bytes are pycycling `set_neo_modes`. This bike has not confirmed the
+  shake yet. A course span can name another surface through
+  `surface_under` (wooden boards for a bridge, gravel for a whole trail)
+  without a new trainer command. See the roadmap in `README.md` and
   `docs/trainer-trace-plan.md` for what is still open on that bike
   (standing-start feel, a traced ERG workout).
 - **Zwift controllers** (Play, Click, Ride). Buttons and steering, not

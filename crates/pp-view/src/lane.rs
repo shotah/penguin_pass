@@ -255,6 +255,11 @@ mod tests {
     }
 
     #[test]
+    fn gravel_shoulder_slot_matches_lane_geometry() {
+        assert_eq!(pp_core::GRAVEL_SHOULDER_SLOT, f32::from(PAVED_SLOTS) - 0.5);
+    }
+
+    #[test]
     fn fractional_slots_round_trip_across_the_road() {
         let spec = spec();
         assert_eq!(PAVED_SLOTS, 8);

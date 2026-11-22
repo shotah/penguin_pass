@@ -116,6 +116,7 @@ impl Trainer for SimTrainer {
             TrainerCommand::SetTargetPower { watts } => {
                 self.last_target_power_w = Some(watts);
             }
+            TrainerCommand::SetRoadFeel { .. } => {}
             TrainerCommand::SetVirtualGear { gear } => {
                 self.last_virtual_gear = Some(gear);
             }

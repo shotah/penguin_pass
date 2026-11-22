@@ -38,7 +38,7 @@ pub use feature::{
     TARGET_FEATURE_POWER,
 };
 pub use fec::{
-    FecChecksum, FecData, FecMessage, GeneralFeData, SpecificTrainerData, TargetPower,
+    FecChecksum, FecData, FecMessage, GeneralFeData, NeoRoadFeel, SpecificTrainerData, TargetPower,
     TrackResistance, UserConfiguration,
 };
 pub use heart_rate::HeartRateMeasurement;

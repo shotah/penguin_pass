@@ -64,6 +64,13 @@ const PAGE_TRAINER: u8 = 0x19;
 const PAGE_TARGET_POWER: u8 = 0x31;
 const PAGE_TRACK: u8 = 0x33;
 const PAGE_USER: u8 = 0x37;
+const PAGE_NEO_ROAD_FEEL: u8 = 0xFC;
+
+/// Neo road-feel intensity for every surface except [`pp_core::RoadSurface::Smooth`].
+///
+/// pycycling notes 50% is already strong on a Neo and 100% is untested and may
+/// damage the trainer, so this crate never sends 100 or the 255 “default” sentinel.
+const NEO_ROAD_FEEL_INTENSITY_DEFAULT: u8 = 40;
 
 const SPEED_INVALID: u16 = 0xFFFF;
 const HEART_RATE_INVALID: u8 = 0xFF;
@@ -223,6 +230,54 @@ pub struct SpecificTrainerData {
 pub struct TargetPower {
     /// Target power, in watts.
     pub watts: f32,
+}
+
+/// Page 252 (0xFC), Tacx Neo road feel. Encode-only; not part of [`FecData`].
+///
+/// Layout follows pycycling `set_neo_modes` with isokinetic mode off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NeoRoadFeel {
+    /// Surface pattern, 0..=9.
+    pub pattern: u8,
+    /// Shake intensity, 0..=100.
+    pub intensity: u8,
+}
+
+impl NeoRoadFeel {
+    /// Map a game surface onto the Neo pattern and intensity.
+    #[must_use]
+    pub const fn from_surface(surface: pp_core::RoadSurface) -> Self {
+        let pattern = match surface {
+            pp_core::RoadSurface::Smooth => 0,
+            pp_core::RoadSurface::ConcretePlates => 1,
+            pp_core::RoadSurface::CattleGrid => 2,
+            pp_core::RoadSurface::CobblestonesHard => 3,
+            pp_core::RoadSurface::CobblestonesSoft => 4,
+            pp_core::RoadSurface::BrickRoad => 5,
+            pp_core::RoadSurface::OffRoad => 6,
+            pp_core::RoadSurface::Gravel => 7,
+            pp_core::RoadSurface::Ice => 8,
+            pp_core::RoadSurface::WoodenBoards => 9,
+        };
+        let intensity = if matches!(surface, pp_core::RoadSurface::Smooth) {
+            0
+        } else {
+            NEO_ROAD_FEEL_INTENSITY_DEFAULT
+        };
+        Self { pattern, intensity }
+    }
+
+    /// Clamp pattern to 0..=9 and intensity to 0..=100, then encode.
+    #[must_use]
+    pub fn encode(self, checksum: FecChecksum) -> Vec<u8> {
+        let pattern = self.pattern.min(9);
+        let intensity = self.intensity.min(100);
+        command_frame(
+            PAGE_NEO_ROAD_FEEL,
+            [0x00, 0x00, 0x00, 0x00, pattern, intensity, 0x00],
+            checksum,
+        )
+    }
 }
 
 impl TargetPower {
@@ -877,6 +932,62 @@ mod tests {
             .encode(FecChecksum::Xor)
             .is_err()
         );
+    }
+
+    #[test]
+    fn page_fc_gravel_matches_pycycling_vector() {
+        let page = NeoRoadFeel::from_surface(pp_core::RoadSurface::Gravel);
+        assert_eq!(
+            page.encode(FecChecksum::Xor),
+            vec![
+                0xA4, 0x09, 0x4F, 0x05, 0xFC, 0x00, 0x00, 0x00, 0x00, 0x07, 0x28, 0x00, 0x34,
+            ]
+        );
+        let mut sum_page = page.encode(FecChecksum::Sum);
+        assert_eq!(sum_page[12], 0x88);
+        sum_page[12] = 0x34;
+        assert_eq!(sum_page, page.encode(FecChecksum::Xor));
+    }
+
+    #[test]
+    fn page_fc_from_surface_sets_pattern_and_intensity() {
+        let smooth = NeoRoadFeel::from_surface(pp_core::RoadSurface::Smooth);
+        assert_eq!(smooth.pattern, 0);
+        assert_eq!(smooth.intensity, 0);
+        let boards = NeoRoadFeel::from_surface(pp_core::RoadSurface::WoodenBoards);
+        assert_eq!(boards.pattern, 9);
+        assert_eq!(boards.intensity, 40);
+    }
+
+    #[test]
+    fn page_fc_clamps_pattern_and_intensity() {
+        let page = NeoRoadFeel {
+            pattern: 99,
+            intensity: 255,
+        };
+        let encoded = page.encode(FecChecksum::Xor);
+        assert_eq!(encoded[9], 9);
+        assert_eq!(encoded[10], 100);
+        assert_ne!(encoded[10], 255);
+    }
+
+    #[test]
+    fn page_fc_maps_every_road_surface_pattern() {
+        let surfaces = [
+            (pp_core::RoadSurface::Smooth, 0),
+            (pp_core::RoadSurface::ConcretePlates, 1),
+            (pp_core::RoadSurface::CattleGrid, 2),
+            (pp_core::RoadSurface::CobblestonesHard, 3),
+            (pp_core::RoadSurface::CobblestonesSoft, 4),
+            (pp_core::RoadSurface::BrickRoad, 5),
+            (pp_core::RoadSurface::OffRoad, 6),
+            (pp_core::RoadSurface::Gravel, 7),
+            (pp_core::RoadSurface::Ice, 8),
+            (pp_core::RoadSurface::WoodenBoards, 9),
+        ];
+        for (surface, pattern) in surfaces {
+            assert_eq!(NeoRoadFeel::from_surface(surface).pattern, pattern);
+        }
     }
 
     #[test]

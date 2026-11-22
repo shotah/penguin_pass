@@ -152,6 +152,24 @@ connects. Byte 3 is `0xFF`.
 | 6 | Wheel diameter, 0.01 m. `0` when unknown |
 | 7 | Gear ratio, 0.03. `0` is invalid |
 
+Page 252 (0xFC), Tacx Neo road feel. This is not an ANT+ FE-C profile page; it
+is pycycling's `set_neo_modes` with isokinetic mode off. Byte 0 is `0xFC`.
+Byte 1 is `0x00`. Byte 2 is the isokinetic flag (`0`). Byte 3 is isokinetic
+speed (`0`). Byte 4 is `0x00`. Byte 5 is the surface pattern. Byte 6 is
+intensity, 0–100. Byte 7 is `0x00`.
+
+Surface pattern numbers match pycycling's `RoadSurface`: smooth `0`,
+concrete plates `1`, cattle grid `2`, hard cobblestones `3`, soft cobblestones
+`4`, brick road `5`, off-road `6`, gravel `7`, ice `8`, wooden boards `9`.
+Intensity is `0` for smooth and `40` for every other surface. This crate
+never sends `100` or the `255` default sentinel: pycycling notes 50% is already
+strong on a Neo and 100% is untested and may damage the trainer. The checksum
+rule is the same as page 51: XOR of every byte including sync, or the low 8
+bits of the sum of every byte except sync. Road feel does not change grade. The FE-C control session
+writes the page when the surface changes, and writes surface 0 when the link
+releases. FTMS, Wahoo, and Zwift ignore the command. It does not use the
+grade rate limit.
+
 `TrainerConfig` carries `rider_mass_kg` and `bike_mass_kg` when the session
 has them. An absent mass is the invalid sentinel, and the trainer keeps its
 own value for that field. Grade control does not depend on the page.
@@ -173,7 +191,8 @@ Checked before encoding:
   that XOR and its `fecSetTrackResistance` is what GoldenCheetah writes to
   `6e40fec3-…`.
 - pycycling `tacx_trainer_control.py` (`_send_fec_cmd`, `set_track_resistance`,
-  `set_user_configuration`). The checksum is the Tacx sum. Page 55 puts the
+  `set_user_configuration`, `set_neo_modes`, `RoadSurface`). The checksum is
+  the Tacx sum. Page 55 puts the
   wheel-diameter offset in the low nibble of byte 4 and the bicycle-weight
   low nibble in the high nibble. That matches the notes for this change.
 - qdomyos-zwift `tacxneo2.cpp`. Grade uses the sum excluding sync, plus one.

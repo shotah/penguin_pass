@@ -89,6 +89,115 @@ impl Telemetry {
     }
 }
 
+/// What the wheels are rolling on.
+///
+/// A trainer that can shake maps this to road feel. [`Self::Smooth`] is
+/// pavement and turns the effect off. A course span (a bridge deck, a gravel
+/// trail) names a surface directly. The lane is the other source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoadSurface {
+    /// Smooth pavement. Road feel is off.
+    Smooth,
+    /// Concrete plates.
+    ConcretePlates,
+    /// Cattle grid.
+    CattleGrid,
+    /// Hard cobblestones.
+    CobblestonesHard,
+    /// Soft cobblestones.
+    CobblestonesSoft,
+    /// Brick road.
+    BrickRoad,
+    /// Compact dirt.
+    OffRoad,
+    /// Loose gravel.
+    Gravel,
+    /// Ice.
+    Ice,
+    /// Plank deck. A bridge uses this.
+    WoodenBoards,
+}
+
+impl Serialize for RoadSurface {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.label())
+    }
+}
+
+impl<'de> Deserialize<'de> for RoadSurface {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let label = String::deserialize(deserializer)?;
+        Self::from_label(&label)
+            .ok_or_else(|| serde::de::Error::custom(format!("unknown road surface {label:?}")))
+    }
+}
+
+impl RoadSurface {
+    #[must_use]
+    fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "smooth" => Some(Self::Smooth),
+            "concrete-plates" => Some(Self::ConcretePlates),
+            "cattle-grid" => Some(Self::CattleGrid),
+            "cobblestones-hard" => Some(Self::CobblestonesHard),
+            "cobblestones-soft" => Some(Self::CobblestonesSoft),
+            "brick-road" => Some(Self::BrickRoad),
+            "off-road" => Some(Self::OffRoad),
+            "gravel" => Some(Self::Gravel),
+            "ice" => Some(Self::Ice),
+            "wooden-boards" => Some(Self::WoodenBoards),
+            _ => None,
+        }
+    }
+
+    /// Stable name for logs and course data.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Smooth => "smooth",
+            Self::ConcretePlates => "concrete-plates",
+            Self::CattleGrid => "cattle-grid",
+            Self::CobblestonesHard => "cobblestones-hard",
+            Self::CobblestonesSoft => "cobblestones-soft",
+            Self::BrickRoad => "brick-road",
+            Self::OffRoad => "off-road",
+            Self::Gravel => "gravel",
+            Self::Ice => "ice",
+            Self::WoodenBoards => "wooden-boards",
+        }
+    }
+}
+
+/// Lane slot where the gravel right shoulder takes over.
+///
+/// Slots `0.0` through `7.0` are the paved road (`pp-view` slots 0..=7).
+/// Slot `8.0` is the gravel shoulder, past the right edge of the asphalt.
+/// Feel starts halfway through the move onto that shoulder.
+pub const GRAVEL_SHOULDER_SLOT: f32 = 7.5;
+
+/// Surface under the wheels.
+///
+/// `span` is a course feature at this distance. It wins over the lane, so a
+/// wooden bridge stays wooden in the shoulder slot and a gravel trail is
+/// gravel in every lane. [`Some`]`(`[`RoadSurface::Smooth`]`)` is pavement,
+/// not “no span.” `None` is today's roads: slot [`GRAVEL_SHOULDER_SLOT`] and
+/// above is gravel, and the rest is smooth. A non-finite slot with no span
+/// is smooth.
+#[must_use]
+pub fn surface_under(lane_slot: f32, span: Option<RoadSurface>) -> RoadSurface {
+    if let Some(surface) = span {
+        return surface;
+    }
+    if !lane_slot.is_finite() {
+        return RoadSurface::Smooth;
+    }
+    if lane_slot >= GRAVEL_SHOULDER_SLOT {
+        RoadSurface::Gravel
+    } else {
+        RoadSurface::Smooth
+    }
+}
+
 /// What the game asks a trainer to do.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum TrainerCommand {
@@ -110,6 +219,14 @@ pub enum TrainerCommand {
     SetVirtualGear {
         /// Requested gear, before clamping.
         gear: u8,
+    },
+    /// Shake the trainer to match the surface under the wheels.
+    ///
+    /// [`RoadSurface::Smooth`] turns the effect off. Trainers that cannot shake
+    /// ignore it. It does not change grade or target power.
+    SetRoadFeel {
+        /// Surface to simulate under the wheels.
+        surface: RoadSurface,
     },
 }
 
@@ -145,6 +262,46 @@ mod tests {
             ..Telemetry::default()
         };
         assert_eq!(telemetry.speed_kph(), 36.0);
+    }
+
+    #[test]
+    fn surface_under_defaults_to_pavement_then_gravel_shoulder() {
+        assert_eq!(surface_under(0.0, None), RoadSurface::Smooth);
+        assert_eq!(surface_under(6.0, None), RoadSurface::Smooth);
+        assert_eq!(surface_under(7.49, None), RoadSurface::Smooth);
+        assert_eq!(
+            surface_under(GRAVEL_SHOULDER_SLOT, None),
+            RoadSurface::Gravel
+        );
+        assert_eq!(surface_under(8.0, None), RoadSurface::Gravel);
+        assert_eq!(surface_under(f32::NAN, None), RoadSurface::Smooth);
+        assert_eq!(surface_under(f32::INFINITY, None), RoadSurface::Smooth);
+        assert_eq!(
+            surface_under(8.0, Some(RoadSurface::WoodenBoards)),
+            RoadSurface::WoodenBoards
+        );
+        assert_eq!(
+            surface_under(2.0, Some(RoadSurface::Gravel)),
+            RoadSurface::Gravel
+        );
+        assert_eq!(
+            surface_under(8.0, Some(RoadSurface::Smooth)),
+            RoadSurface::Smooth
+        );
+    }
+
+    #[test]
+    fn road_surface_labels_are_kebab_case() {
+        assert_eq!(RoadSurface::Smooth.label(), "smooth");
+        assert_eq!(RoadSurface::ConcretePlates.label(), "concrete-plates");
+        assert_eq!(RoadSurface::CattleGrid.label(), "cattle-grid");
+        assert_eq!(RoadSurface::CobblestonesHard.label(), "cobblestones-hard");
+        assert_eq!(RoadSurface::CobblestonesSoft.label(), "cobblestones-soft");
+        assert_eq!(RoadSurface::BrickRoad.label(), "brick-road");
+        assert_eq!(RoadSurface::OffRoad.label(), "off-road");
+        assert_eq!(RoadSurface::Gravel.label(), "gravel");
+        assert_eq!(RoadSurface::Ice.label(), "ice");
+        assert_eq!(RoadSurface::WoodenBoards.label(), "wooden-boards");
     }
 
     #[test]

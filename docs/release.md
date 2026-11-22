@@ -30,6 +30,11 @@ line and a non-zero exit.
 - The current branch is `main`.
 - The tag `v<new>` does not already exist.
 
+If those checks pass and this is not a dry run, it says that lint,
+typecheck, and the full test suite take 4+ minutes and waits for an
+answer. `y` or `yes` continues. Enter or any other answer cancels.
+The version files are still unchanged. `--dry-run` does not ask.
+
 It then sets `version` under `[workspace.package]` in the root
 `Cargo.toml` and runs `cargo update --workspace --offline`. That
 rewrites the workspace crates in `Cargo.lock` and leaves registry

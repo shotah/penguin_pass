@@ -17,7 +17,7 @@ use btleplug::api::{
 };
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures_util::StreamExt;
-use pp_core::{TrainerCommand, TrainerSample};
+use pp_core::{RoadSurface, TrainerCommand, TrainerSample};
 use pp_ftms::{
     CSC_MEASUREMENT_UUID, CYCLING_POWER_MEASUREMENT_UUID, CYCLING_POWER_SERVICE_UUID,
     FEC_NOTIFY_UUID, FEC_SERVICE_UUID, FEC_WRITE_UUID, FITNESS_MACHINE_CONTROL_POINT_UUID,
@@ -100,6 +100,7 @@ struct Shared {
     discovered: Mutex<Vec<DiscoveredTrainer>>,
     pending: Mutex<Option<TrainerCommand>>,
     pending_gear: Mutex<Option<u8>>,
+    pending_surface: Mutex<Option<RoadSurface>>,
     virtual_shifting: AtomicBool,
     staleness: Duration,
     /// Short service ids from the last GATT discovery, for the connect log line.
@@ -122,6 +123,7 @@ impl Shared {
             discovered: Mutex::new(Vec::new()),
             pending: Mutex::new(None),
             pending_gear: Mutex::new(None),
+            pending_surface: Mutex::new(None),
             virtual_shifting: AtomicBool::new(false),
             staleness,
             services: Mutex::new(String::new()),
@@ -173,7 +175,9 @@ impl Shared {
     }
 
     fn has_pending(&self) -> bool {
-        lock(&self.pending).is_some() || lock(&self.pending_gear).is_some()
+        lock(&self.pending).is_some()
+            || lock(&self.pending_gear).is_some()
+            || lock(&self.pending_surface).is_some()
     }
 
     fn set_pending(&self, command: TrainerCommand) {
@@ -190,6 +194,14 @@ impl Shared {
 
     fn take_pending_gear(&self) -> Option<u8> {
         lock(&self.pending_gear).take()
+    }
+
+    fn set_pending_surface(&self, surface: RoadSurface) {
+        *lock(&self.pending_surface) = Some(surface);
+    }
+
+    fn take_pending_surface(&self) -> Option<RoadSurface> {
+        lock(&self.pending_surface).take()
     }
 
     fn set_virtual_shifting(&self, supported: bool) {
@@ -325,10 +337,10 @@ impl Trainer for BleTrainer {
         if !matches!(self.state(), ConnectionState::Connected) {
             return Err(TrainerError::NotConnected);
         }
-        if let TrainerCommand::SetVirtualGear { gear } = command {
-            self.shared.set_pending_gear(gear);
-        } else {
-            self.shared.set_pending(command);
+        match command {
+            TrainerCommand::SetVirtualGear { gear } => self.shared.set_pending_gear(gear),
+            TrainerCommand::SetRoadFeel { surface } => self.shared.set_pending_surface(surface),
+            _ => self.shared.set_pending(command),
         }
         self.shared.set_settled(false);
         self.notify.notify_one();
@@ -742,6 +754,23 @@ async fn apply_pending(
         let actions = engine.handle(
             elapsed_ms(ctx.started),
             InEvent::Command(TrainerCommand::SetVirtualGear { gear }),
+        );
+        if let Err(err) = perform(peripheral, &actions).await {
+            fail_connect(engine, ctx, published, err);
+            return Some(OnceStop::Lost);
+        }
+        publish(engine, ctx.shared, published);
+        if actions
+            .iter()
+            .any(|action| matches!(action, OutAction::Disconnect))
+        {
+            return Some(OnceStop::Lost);
+        }
+    }
+    if let Some(surface) = ctx.shared.take_pending_surface() {
+        let actions = engine.handle(
+            elapsed_ms(ctx.started),
+            InEvent::Command(TrainerCommand::SetRoadFeel { surface }),
         );
         if let Err(err) = perform(peripheral, &actions).await {
             fail_connect(engine, ctx, published, err);
