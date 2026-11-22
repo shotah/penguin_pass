@@ -103,10 +103,11 @@ Trainer  <-- BLE / FTMS or FE-C -->  pp-trainer  -->  pp-course (physics)
 
 ## Courses
 
-Six courses, chosen in the game. Penguin Pass is the built-in 5 km loop
-(`crates/pp-course/courses/penguin_pass.json`). The other five are
+Eight courses, chosen in the game. Penguin Pass is the built-in 5 km loop
+(`crates/pp-course/courses/penguin_pass.json`). The other seven are
 generated: Rolling 5 km, Rolling 10 km, Mountain 10 km, Desert 10 km,
-and Flat 10 km. A generated route can be rerolled for a new seed.
+Flat 10 km, Rolling 20 km, and Desert 20 km. A generated route can be
+rerolled for a new seed.
 Alpine and desert are themes. The 3D world is built from the course at
 startup, so a new route does not need hand-built scenery. See
 `docs/course.md` and `docs/route-generator.md`.
@@ -236,8 +237,10 @@ Three tiers, in the order they arrive:
 - [x] M0: workspace, build container, Godot loads the Rust extension
 - [x] M1: FTMS codec, course data, bike physics, all with tests
 - [x] M2: simulated trainer
-- [x] M2: BLE trainer connection, over FTMS or Tacx FE-C. Confirmed on a
-  real Tacx Neo 2T: reads power and controls hill resistance
+- [x] M2: BLE trainer connection, over FTMS, Tacx FE-C, Wahoo proprietary
+  control (WCPS), the Zwift trainer service (`0xFC82`), or CSC cadence as a
+  fallback (see `docs/trainers.md`). Confirmed on a real Tacx Neo 2T so far:
+  reads power and controls hill resistance
 - [ ] M2: standing-start acceleration tuned from a traced ride on the
   real trainer (see `docs/trainer-trace-plan.md`)
 - [x] M3: 5 km mountain loop, HUD, ride session
@@ -248,11 +251,11 @@ Three tiers, in the order they arrive:
   art kit (`packaging/steam/assets/`, `docs/steam-assets.md`), and
   Windows/macOS cross-platform CI + SteamPipe depots (`docs/cross-platform.md`,
   untested on Windows/macOS hardware yet)
-- [ ] M5: Flatpak bundle built by GitHub Actions and attached to GitHub
-  Releases. The workflow is written (`docs/flatpak.md`, `docs/release.md`)
-  and publishes a `latest` prerelease on pushes to `main` plus numbered
-  releases on `v*` tags, but has not run on GitHub yet. A Flathub listing
-  is a separate, later step with its own rules
+- [ ] M5: Flatpak bundle built by GitHub Actions and published to GitHub
+  Releases. Export and bundle jobs run and pass on GitHub Actions
+  (`docs/flatpak.md`, `docs/release.md`); publishing the `latest` prerelease
+  and numbered `v*` releases is being finalized. A Flathub listing is a
+  separate, later step with its own rules
 - [x] M6: free CC0 art assets, textured terrain and road, a real rider
 - [x] M7: themes as data (alpine, desert) and a course picker
 - [x] M7: natural hillsides beside the road, with the road cut into them,
@@ -272,8 +275,9 @@ Three tiers, in the order they arrive:
 - [ ] M10: first ride through Steam: Game Mode, Steam Link, and Bluetooth
   from inside the Steam runtime
 - [x] M11: a second rider (Sigrid) and a rider choice in settings
-- [ ] M11: heart-rate straps over Bluetooth (Garmin HRM and others).
-  Built; not yet tried with a real strap (see `docs/trainer-trace-plan.md`)
+- [x] M11: heart-rate straps over Bluetooth (Garmin HRM and others).
+  Built and tested; first real strap ride pending (see
+  `docs/trainer-trace-plan.md`)
 - [x] M11: Zwift controllers for lanes, power, and menus (confirmed on
   real controllers)
 - [x] M11: full road-width lateral lane movement — 9 positions from the
@@ -281,9 +285,9 @@ Three tiers, in the order they arrive:
   riders stay on the paved road)
 - [x] M12: save each ride as a FIT activity file for Strava and other
   sites
-- [ ] M12: push rides to Strava with the rider's own API keys (built and
-  tested against a local mock; first real Strava upload not tried yet —
-  see `docs/strava.md` and `docs/trainer-trace-plan.md`)
+- [x] M12: push rides to Strava with the rider's own API keys (built and
+  tested against a local mock; first real Strava upload pending — see
+  `docs/strava.md` and `docs/trainer-trace-plan.md`)
 - [x] M13: fish to collect in the lanes, with a combo count
 - [x] M13: timed climb, sprint, and lap segments with a ghost of the
   best first lap
@@ -300,10 +304,10 @@ Three tiers, in the order they arrive:
   Course picker, with separate `:rev` personal bests and ghost)
 - [x] M14: TV dashboard upgraded with live workout, timed segment,
   drafting, fish/combo, powerup, and reverse status widgets
-- [ ] M14: 15 built-in structured workouts (with TSS, IF, and kJ),
+- [x] M14: 15 built-in structured workouts (with TSS, IF, and kJ),
   Zwift `.zwo` import, and ERG mode (built and tested; first real ERG
   ride on the Neo 2T pending — see `docs/trainer-trace-plan.md`)
-- [ ] M14: ambient nature, bike coasting, breathing, and UI sound effects
+- [x] M14: ambient nature, bike coasting, breathing, and UI sound effects
   (26 CC0 sounds wired with volume sliders; first real listen pending —
   see `docs/trainer-trace-plan.md`)
 - [ ] Later: Chromecast video, ANT+, Windows/macOS hardware testing

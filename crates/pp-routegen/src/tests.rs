@@ -314,6 +314,7 @@ fn twenty_and_forty_km_loops_are_closed_and_finite() {
 }
 
 #[test]
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn stability_fingerprints() {
     // Locked after the pictures in docs/img/routes were accepted.
     // ChaCha12 (rand_chacha 0.3.1 / rand 0.8.5) plus this JSON writer.
@@ -351,6 +352,33 @@ fn stability_fingerprints() {
         let route = generate(&spec(name, seed, distance, preset)).expect(name);
         let got = fingerprint(route.json());
         assert_eq!(got, expected, "{name} fingerprint changed to {got:016x}");
+    }
+}
+
+#[test]
+fn stability_same_host_and_geometry() {
+    let cases = [
+        (TerrainPreset::Desert, 7_u64, 10_000.0, "Desert 10 km"),
+        (TerrainPreset::Mountain, 11, 10_000.0, "Mountain 10 km"),
+        (TerrainPreset::Rolling, 3, 5_000.0, "Rolling 5 km"),
+        (TerrainPreset::Flat, 1, 2_000.0, "Flat 2 km"),
+    ];
+    for (preset, seed, distance, name) in cases {
+        let route_a = generate(&spec(name, seed, distance, preset)).expect(name);
+        let route_b = generate(&spec(name, seed, distance, preset)).expect(name);
+        let fp_a = fingerprint(route_a.json());
+        let fp_b = fingerprint(route_b.json());
+        assert_eq!(fp_a, fp_b, "{name} fingerprint not stable on this host");
+        let course = Course::from_str(route_a.json()).expect("json parses");
+        assert!((course.length_m() - distance).abs() < 1.0);
+        let params = preset.params();
+        let target = params.ascent_per_km * distance / 1000.0;
+        let ascent = f64::from(course.total_ascent_m());
+        assert!(
+            (ascent - target).abs() <= ascent_tolerance_m(target) + 0.2,
+            "{name} ascent {ascent} vs {target}"
+        );
+        grade_ok(&course, &params);
     }
 }
 

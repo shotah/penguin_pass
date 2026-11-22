@@ -446,6 +446,8 @@ func _end_and_course(game: Node) -> bool:
 	if str(game.debug_screen()) != "course":
 		_fail("course picker did not open: %s" % game.debug_screen())
 		return false
+	game.debug_menu_action("up")
+	game.debug_menu_action("up")
 	game.debug_menu_action("accept")
 	if abs(float(game.course_length_m()) - penguin) > 1.0:
 		_fail("picking Penguin Pass did not switch back")

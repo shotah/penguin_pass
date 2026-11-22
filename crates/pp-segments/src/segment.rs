@@ -114,8 +114,9 @@ impl Segment {
 /// whole span averages under 3%, metres are dropped from the weaker end until
 /// it qualifies or it gets shorter than 400 m.
 ///
-/// The longest climb is named after the course (`Penguin Pass climb`). Any
-/// other climb is `Climb at N m`.
+/// The longest climb is named after the course with any trailing route distance
+/// stripped (`Rolling climb`, `Penguin Pass climb`). Any other climb is numbered
+/// in lap order (`Climb 2`, `Climb 3`, …).
 ///
 /// The sprint is the flattest stretch between 200 and 300 m that does not
 /// overlap a climb. Flatness is the mean of the absolute grade. Ties go to
@@ -387,7 +388,49 @@ fn dedup_climbs(climbs: Vec<RawClimb>, lap: f64) -> Vec<RawClimb> {
     kept
 }
 
+/// Course label for the primary climb: trim a trailing `" N km"` / `"Nkm"` and
+/// optional `" (Reverse)"`.
+fn course_climb_base_name(course_name: &str) -> &str {
+    let mut end = course_name.trim_end().len();
+    let bytes = course_name.as_bytes();
+    if end > 0
+        && bytes[end - 1] == b')'
+        && let Some(open) = course_name[..end].rfind('(')
+    {
+        let inner = &course_name[open + 1..end - 1];
+        if inner.eq_ignore_ascii_case("reverse") {
+            end = open;
+            while end > 0 && bytes[end - 1] == b' ' {
+                end -= 1;
+            }
+        }
+    }
+    if end >= 2 {
+        let mut km_end = end;
+        if bytes[km_end - 2..km_end].eq_ignore_ascii_case(b"km") {
+            km_end -= 2;
+            while km_end > 0 && bytes[km_end - 1] == b' ' {
+                km_end -= 1;
+            }
+            let digit_end = km_end;
+            while km_end > 0 && bytes[km_end - 1].is_ascii_digit() {
+                km_end -= 1;
+            }
+            if km_end < digit_end && (km_end == 0 || bytes[km_end - 1] == b' ') {
+                end = km_end;
+                while end > 0 && bytes[end - 1] == b' ' {
+                    end -= 1;
+                }
+            }
+        }
+    }
+    &course_name[..end]
+}
+
 fn name_climbs(course_name: &str, climbs: &[RawClimb], lap: f64) -> Vec<Segment> {
+    if climbs.is_empty() {
+        return Vec::new();
+    }
     let Some(best) = climbs.iter().max_by(|a, b| {
         let len_a = span_len(a.start_m, a.end_m, lap);
         let len_b = span_len(b.start_m, b.end_m, lap);
@@ -398,9 +441,22 @@ fn name_climbs(course_name: &str, climbs: &[RawClimb], lap: f64) -> Vec<Segment>
         return Vec::new();
     };
     let best_start = best.start_m;
+    let primary_name = format!("{} climb", course_climb_base_name(course_name));
+    let mut order: Vec<usize> = (0..climbs.len()).collect();
+    order.sort_by(|&a, &b| climbs[a].start_m.total_cmp(&climbs[b].start_m));
+    let mut names = vec![String::new(); climbs.len()];
+    let mut secondary_num = 2u32;
+    for index in order {
+        if (climbs[index].start_m - best_start).abs() <= 1.0e-6 {
+            names[index] = primary_name.clone();
+        } else {
+            names[index] = format!("Climb {secondary_num}");
+            secondary_num += 1;
+        }
+    }
     let mut used = BTreeSet::new();
     let mut named = Vec::with_capacity(climbs.len());
-    for climb in climbs {
+    for (index, climb) in climbs.iter().enumerate() {
         let metres = round_metre(climb.start_m);
         let base = format!("climb-{metres}");
         let mut id = base.clone();
@@ -409,14 +465,9 @@ fn name_climbs(course_name: &str, climbs: &[RawClimb], lap: f64) -> Vec<Segment>
             id = format!("{base}-{suffix}");
             suffix += 1;
         }
-        let name = if (climb.start_m - best_start).abs() <= 1.0e-6 {
-            format!("{course_name} climb")
-        } else {
-            format!("Climb at {metres} m")
-        };
         named.push(Segment {
             id,
-            name,
+            name: names[index].clone(),
             kind: SegmentKind::Climb,
             start_m: climb.start_m,
             end_m: climb.end_m,
@@ -675,6 +726,87 @@ mod tests {
         assert!((sprint.end_m - 54.0).abs() < 1.0);
         assert!((sprint.length_m(course.length_m()) - 300.0).abs() < 1.0);
         assert!(sprint.average_grade_pct(&course).abs() < 0.05);
+    }
+
+    #[test]
+    fn course_climb_names_drop_distance_and_number_secondaries() {
+        assert_eq!(course_climb_base_name("Desert 10 km"), "Desert");
+        assert_eq!(course_climb_base_name("Rolling 10 km"), "Rolling");
+        assert_eq!(course_climb_base_name("Mountain 10 km"), "Mountain");
+        assert_eq!(course_climb_base_name("Rolling 20 km"), "Rolling");
+        assert_eq!(course_climb_base_name("Penguin Pass"), "Penguin Pass");
+        assert_eq!(course_climb_base_name("Rolling 10 km (Reverse)"), "Rolling");
+
+        let check_course =
+            |name: &str, seed: u64, distance_m: f64, terrain: TerrainPreset, primary: &str| {
+                let spec = RouteSpec::new(name, seed, distance_m, Terrain::Preset(terrain));
+                let route = generate(&spec).expect(name);
+                let course = route.course();
+                let segments = detect(course);
+                assert_invariants(course, &segments);
+                let climbs: Vec<_> = segments
+                    .iter()
+                    .filter(|segment| segment.kind == SegmentKind::Climb)
+                    .collect();
+                assert!(
+                    climbs.iter().any(|climb| climb.name == primary),
+                    "{name}\n{}",
+                    report(course, &segments)
+                );
+                for climb in &climbs {
+                    assert!(
+                        !climb.name.contains("10 km") && !climb.name.contains("20 km"),
+                        "{name} {climb:?}"
+                    );
+                    assert!(!climb.name.contains("at "), "{name} {climb:?}");
+                }
+                let mut secondary: Vec<_> = climbs
+                    .iter()
+                    .filter(|climb| !climb.name.ends_with(" climb"))
+                    .map(|climb| climb.name.as_str())
+                    .collect();
+                secondary.sort_by(|a, b| {
+                    let na: u32 = a.strip_prefix("Climb ").unwrap_or("0").parse().unwrap_or(0);
+                    let nb: u32 = b.strip_prefix("Climb ").unwrap_or("0").parse().unwrap_or(0);
+                    na.cmp(&nb)
+                });
+                let expected: Vec<String> =
+                    (2..=climbs.len()).map(|n| format!("Climb {n}")).collect();
+                assert_eq!(
+                    secondary,
+                    expected.iter().map(String::as_str).collect::<Vec<_>>(),
+                    "{name}"
+                );
+            };
+
+        check_course(
+            "Desert 10 km",
+            7,
+            10_000.0,
+            TerrainPreset::Desert,
+            "Desert climb",
+        );
+        check_course(
+            "Rolling 10 km",
+            3,
+            10_000.0,
+            TerrainPreset::Rolling,
+            "Rolling climb",
+        );
+        check_course(
+            "Mountain 10 km",
+            11,
+            10_000.0,
+            TerrainPreset::Mountain,
+            "Mountain climb",
+        );
+        check_course(
+            "Rolling 20 km",
+            3,
+            20_000.0,
+            TerrainPreset::Rolling,
+            "Rolling climb",
+        );
     }
 
     #[test]

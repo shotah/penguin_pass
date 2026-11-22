@@ -9,6 +9,13 @@ use godot::prelude::*;
 
 use crate::road::flat_right;
 
+/// Body mesh scale for light-yellow coin fish (~0.9 m long).
+const COIN_SCALE: f32 = 0.48;
+/// Body mesh scale for gold-orange boost fish (~1.4 m long).
+const BOOST_SCALE: f32 = 0.74;
+const EYE_WHITE_RADIUS: f32 = 0.09;
+const EYE_PUPIL_RADIUS: f32 = 0.04;
+
 /// One fish the session says is still ahead.
 pub struct FishSpot {
     /// Stable index from the field.
@@ -37,12 +44,12 @@ pub struct FishSchool {
     root: Gd<Node3D>,
     live: Vec<Live>,
     pops: Vec<Pop>,
-    orange: Gd<StandardMaterial3D>,
-    gold: Gd<StandardMaterial3D>,
+    coin: Gd<StandardMaterial3D>,
+    boost: Gd<StandardMaterial3D>,
     white: Gd<StandardMaterial3D>,
     pupil: Gd<StandardMaterial3D>,
-    body: Gd<ArrayMesh>,
-    body_gold: Gd<ArrayMesh>,
+    body_coin: Gd<ArrayMesh>,
+    body_boost: Gd<ArrayMesh>,
     eye_white: Gd<ArrayMesh>,
     eye_pupil: Gd<ArrayMesh>,
 }
@@ -53,22 +60,22 @@ impl FishSchool {
         let mut root = Node3D::new_alloc();
         root.set_name("Fish");
         parent.add_child(&root);
-        let orange = flat_color(ui_style_sun());
-        let gold = glow_color(Color::from_rgb(1.0, 0.82, 0.15));
+        let coin = flat_color(Color::from_rgb(1.0, 0.95, 0.55));
+        let boost = glow_color(Color::from_rgb(1.0, 0.56, 0.06));
         let white = flat_color(Color::from_rgb(0.98, 0.98, 1.0));
         let pupil = flat_color(Color::from_rgb(0.05, 0.05, 0.08));
         Self {
             root,
             live: Vec::new(),
             pops: Vec::new(),
-            orange,
-            gold,
+            coin,
+            boost,
             white,
             pupil,
-            body: fish_mesh(0.85),
-            body_gold: fish_mesh(1.2),
-            eye_white: disc(0.09),
-            eye_pupil: disc(0.04),
+            body_coin: fish_mesh(COIN_SCALE),
+            body_boost: fish_mesh(BOOST_SCALE),
+            eye_white: disc(EYE_WHITE_RADIUS),
+            eye_pupil: disc(EYE_PUPIL_RADIUS),
         }
     }
 
@@ -124,31 +131,34 @@ impl FishSchool {
     fn spawn(&mut self, spot: &FishSpot) -> Live {
         let mut node = Node3D::new_alloc();
         node.set_name(&format!("Fish{}", spot.index));
+        let scale = if spot.golden { BOOST_SCALE } else { COIN_SCALE };
         let mesh = if spot.golden {
-            self.body_gold.clone()
+            self.body_boost.clone()
         } else {
-            self.body.clone()
+            self.body_coin.clone()
         };
         let material = if spot.golden {
-            self.gold.clone()
+            self.boost.clone()
         } else {
-            self.orange.clone()
+            self.coin.clone()
         };
         let mut body = MeshInstance3D::new_alloc();
         body.set_name("Body");
         body.set_mesh(&mesh);
         body.set_surface_override_material(0, &material.clone().upcast::<Material>());
         node.add_child(&body);
-        let scale = if spot.golden { 1.2 } else { 0.85 };
+        let eye_scale = Vector3::ONE * scale;
         let mut eye = MeshInstance3D::new_alloc();
         eye.set_name("Eye");
         eye.set_mesh(&self.eye_white);
+        eye.set_scale(eye_scale);
         eye.set_position(Vector3::new(0.50, 0.05, -0.10) * scale);
         eye.set_surface_override_material(0, &self.white.clone().upcast::<Material>());
         node.add_child(&eye);
         let mut pupil = MeshInstance3D::new_alloc();
         pupil.set_name("Pupil");
         pupil.set_mesh(&self.eye_pupil);
+        pupil.set_scale(eye_scale);
         pupil.set_position(Vector3::new(0.54, 0.05, -0.125) * scale);
         pupil.set_surface_override_material(0, &self.pupil.clone().upcast::<Material>());
         node.add_child(&pupil);
@@ -174,7 +184,7 @@ fn place_fish(
     let tangent_v = Vector3::new(tangent[0], tangent[1], tangent[2]);
     let side = flat_right(tangent_v);
     let offset = lane.offset_for_slot(spot.slot);
-    let hover = 1.05 + bob.sin() * 0.08;
+    let hover = 0.95 + bob.sin() * 0.08;
     let origin = Vector3::new(position[0], position[1] + hover, position[2]) + side * offset;
     // The side faces the rider. Local -Z points back down the road, so the
     // profile (nose at +X, forked tail at -X) is the silhouette.
@@ -189,10 +199,6 @@ fn place_fish(
         .done();
     node.rotate_object_local(Vector3::FORWARD, bob.sin() * 0.10);
     node.rotate_object_local(Vector3::UP, bob.cos() * 0.05);
-}
-
-fn ui_style_sun() -> Color {
-    crate::ui_style::SUN
 }
 
 fn glow_color(color: Color) -> Gd<StandardMaterial3D> {

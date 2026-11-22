@@ -1014,10 +1014,7 @@ fn bind_listener() -> Option<(tiny_http::Server, u16)> {
 }
 
 pub(crate) fn server_port(server: &tiny_http::Server) -> Option<u16> {
-    match server.server_addr() {
-        tiny_http::ListenAddr::IP(addr) => Some(addr.port()),
-        tiny_http::ListenAddr::Unix(_) => None,
-    }
+    server.server_addr().to_ip().map(|addr| addr.port())
 }
 
 fn random_state() -> Option<String> {

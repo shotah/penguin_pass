@@ -231,6 +231,7 @@ jobs:
       - name: Attach the bundle to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -278,6 +279,7 @@ jobs:
       - name: Update the latest prerelease
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -319,7 +321,7 @@ jobs:
                 *.flatpak) gh release delete-asset latest "$asset" --yes ;;
               esac
             done < <(gh release view latest --json assets --jq '.assets[].name')
-            gh release upload latest "$bundle"
+            gh release upload latest "$bundle" --clobber
           else
             gh release create latest "$bundle" \
               --prerelease \

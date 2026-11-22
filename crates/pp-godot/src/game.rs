@@ -31,7 +31,15 @@ use crate::rider::Rider;
 use crate::screens::Screens;
 use crate::sim::{self, SimRider};
 use crate::world;
+use pp_session::CourseChoice;
 use pp_view::shell::{CourseCard, Screen, Shell, ShellEffect};
+
+/// Deferred course load so the title screen can paint before `rebuild_world`.
+struct PendingCourseLoad {
+    choice: CourseChoice,
+    reversed: bool,
+    frames_remaining: u8,
+}
 
 /// Root of the Penguin Pass scene. `main.tscn` is this one node.
 #[derive(GodotClass)]
@@ -96,6 +104,8 @@ pub struct Game {
     /// real time, not a handful of uncapped frames, to drop playbacks.
     quit_at_ms: u64,
     sound: Option<Gd<crate::sound::SoundPlayer>>,
+    pending_course: Option<PendingCourseLoad>,
+    loading_course_label: Option<String>,
 }
 
 #[godot_api]
@@ -160,6 +170,8 @@ impl INode3D for Game {
             ready_ms: 0,
             quit_at_ms: 0,
             sound: None,
+            pending_course: None,
+            loading_course_label: None,
         }
     }
 
@@ -349,6 +361,7 @@ impl INode3D for Game {
             self.confirm_menu_quit();
             return;
         }
+        self.advance_pending_course();
         self.advance_play_through();
         // A stalled frame should not fling the bike. Hold-to-repeat uses the same cap.
         let dt = delta.clamp(0.0, 0.1);
@@ -898,6 +911,7 @@ impl Game {
             }
         } else {
             self.shell_command(command, true);
+            self.flush_pending_course_sync();
         }
     }
 
@@ -1447,6 +1461,9 @@ impl Game {
     }
 
     fn poll_shell(&mut self, dt: f64) {
+        if self.pending_course.is_some() {
+            return;
+        }
         if self.shell.screen() == Screen::Settings {
             self.poll_menu(dt);
             if self.menu.as_ref().is_some_and(|menu| !menu.is_open()) {
@@ -1478,7 +1495,8 @@ impl Game {
     }
 
     fn shell_command(&mut self, command: Command, fresh: bool) {
-        let count = if self.shell.screen() == Screen::Course {
+        let before = self.shell.screen();
+        let count = if before == Screen::Course {
             self.session_mut().course_catalog().len()
         } else {
             1
@@ -1486,6 +1504,16 @@ impl Game {
         let snap = menu_snapshot(self.session());
         self.note_ui(command, fresh);
         let effect = self.shell.handle(command, fresh, &snap, count);
+        let after = self.shell.screen();
+        if before != Screen::Course && after == Screen::Course {
+            let index = self.active_course_index();
+            let reversed = self.session().course_reversed();
+            self.shell.open_course_picker(index, reversed);
+        }
+        if before == Screen::Course && after == Screen::Title && matches!(command, Command::Back) {
+            self.shell
+                .show_course_reversed(self.session().course_reversed());
+        }
         self.apply_shell(effect);
     }
 
@@ -1510,7 +1538,7 @@ impl Game {
                 self.keys.set_target_power(0.0);
             }
             ShellEffect::PickCourse(index) => self.pick_course(index),
-            ShellEffect::ToggleCourseDirection => self.toggle_course_direction(),
+            ShellEffect::ToggleCourseDirection => {}
             ShellEffect::Reroll(index) => {
                 self.session_mut().reroll(index);
             }
@@ -1626,13 +1654,15 @@ impl Game {
             totals.ascent_m,
             totals.average_power_w
         );
-        let reversed = self.session().course_reversed();
+        if self.shell.screen() != Screen::Course {
+            self.shell
+                .show_course_reversed(self.session().course_reversed());
+        }
         let course_label = self
             .session()
             .course_choice()
-            .label_with_direction(reversed);
-        self.shell.show_course_reversed(reversed);
-        let view = self.shell.view(
+            .label_with_direction(self.session().course_reversed());
+        let mut view = self.shell.view(
             &course_label,
             &trainer,
             &detail,
@@ -1643,6 +1673,11 @@ impl Game {
                 .as_deref()
                 .unwrap_or("Not paired"),
         );
+        if let Some(label) = self.loading_course_label.as_ref()
+            && view.screen == Screen::Title
+        {
+            view.detail = format!("Loading {label}…");
+        }
         let profiles: Vec<Vec<(f32, f32)>> =
             cards.iter().map(|card| card.profile.clone()).collect();
         let figures = if self.shell.screen() == Screen::Summary {
@@ -1662,7 +1697,7 @@ impl Game {
         if self.shell.screen() != Screen::Course {
             return Vec::new();
         }
-        let reversed = self.session().course_reversed();
+        let reversed = self.shell.course_reversed();
         self.session_mut()
             .course_catalog()
             .iter()
@@ -1688,14 +1723,13 @@ impl Game {
             .collect()
     }
 
-    fn toggle_course_direction(&mut self) {
-        let reversed = !self.session().course_reversed();
-        let theme = self.session().course_choice().theme_name().to_owned();
-        if let Err(err) = self.session_mut().set_course_reversed(reversed) {
-            godot_error!("Penguin Pass: {err}");
-            return;
-        }
-        self.rebuild_world(&theme);
+    fn active_course_index(&mut self) -> usize {
+        let choice = self.session().course_choice().clone();
+        self.session_mut()
+            .course_catalog()
+            .iter()
+            .position(|option| option.choice == choice)
+            .unwrap_or(0)
     }
 
     fn pick_course(&mut self, index: usize) {
@@ -1707,7 +1741,69 @@ impl Game {
         else {
             return;
         };
-        let _ = self.load_choice(choice);
+        let reversed = self.shell.course_reversed();
+        if self.session().course_choice() == &choice && self.session().course_reversed() == reversed
+        {
+            self.shell
+                .show_course_reversed(self.session().course_reversed());
+            return;
+        }
+        let label = choice.label_with_direction(reversed);
+        self.loading_course_label = Some(label.clone());
+        if let Some(screens) = self.screens.as_mut() {
+            screens.set_loading_banner(&format!("Loading {label}…"));
+        }
+        self.pending_course = Some(PendingCourseLoad {
+            choice,
+            reversed,
+            frames_remaining: 1,
+        });
+    }
+
+    fn advance_pending_course(&mut self) {
+        let Some(mut pending) = self.pending_course.take() else {
+            return;
+        };
+        if pending.frames_remaining > 0 {
+            pending.frames_remaining -= 1;
+            self.pending_course = Some(pending);
+            return;
+        }
+        self.finish_pending_course(pending);
+    }
+
+    /// Headless smoke and screenshot hooks finish a pick in the same call.
+    fn flush_pending_course_sync(&mut self) {
+        let Some(pending) = self.pending_course.take() else {
+            return;
+        };
+        self.finish_pending_course(pending);
+    }
+
+    fn finish_pending_course(&mut self, pending: PendingCourseLoad) {
+        self.apply_course_load(pending.choice, pending.reversed);
+        self.loading_course_label = None;
+        if let Some(screens) = self.screens.as_mut() {
+            screens.clear_loading_banner();
+        }
+    }
+
+    fn apply_course_load(&mut self, choice: CourseChoice, reversed: bool) {
+        let theme = choice.theme_name().to_owned();
+        let choice_changed = self.session().course_choice() != &choice;
+        if choice_changed && let Err(err) = self.session_mut().set_course(choice) {
+            godot_error!("Penguin Pass: {err}");
+            return;
+        }
+        if self.session().course_reversed() != reversed
+            && let Err(err) = self.session_mut().set_course_reversed(reversed)
+        {
+            godot_error!("Penguin Pass: {err}");
+            return;
+        }
+        self.shell
+            .show_course_reversed(self.session().course_reversed());
+        self.rebuild_world(&theme);
     }
 
     fn load_choice(&mut self, choice: pp_session::CourseChoice) -> bool {

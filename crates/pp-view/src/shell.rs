@@ -211,6 +211,18 @@ impl Shell {
         self.course_reversed = reversed;
     }
 
+    /// Pending ride direction while the course picker is open.
+    #[must_use]
+    pub fn course_reversed(&self) -> bool {
+        self.course_reversed
+    }
+
+    /// Focus row and direction when opening the course list.
+    pub fn open_course_picker(&mut self, index: usize, reversed: bool) {
+        self.course_index = index;
+        self.course_reversed = reversed;
+    }
+
     /// Name shown on the title's Workout row, and the picker list.
     pub fn set_workouts(&mut self, selected: &str, rows: Vec<ShellRow>, ids: Vec<Option<String>>) {
         self.workout_name = selected.to_owned();
@@ -387,7 +399,7 @@ impl Shell {
                 let detail = if courses.is_empty() {
                     "Building course…".to_owned()
                 } else if self.course_index >= direction_at {
-                    "Left, right, or accept turns the course around.".to_owned()
+                    "Left, right, or accept flips direction for your next pick.".to_owned()
                 } else if self.course_index > 0 {
                     "Left or right makes a new route. Accept starts it.".to_owned()
                 } else {
@@ -436,7 +448,6 @@ impl Shell {
                 }
                 1 => {
                     self.screen = Screen::Course;
-                    self.course_index = 0;
                 }
                 2 => {
                     self.settings_from_title = true;
@@ -667,7 +678,8 @@ impl Shell {
             Command::Accept => {
                 let index = self.course_index.min(total - 1);
                 if index == direction_at {
-                    return ShellEffect::ToggleCourseDirection;
+                    self.course_reversed = !self.course_reversed;
+                    return ShellEffect::None;
                 }
                 self.screen = Screen::Title;
                 return ShellEffect::PickCourse(index);
@@ -676,7 +688,7 @@ impl Shell {
                 let index = self.course_index.min(total - 1);
                 if index == direction_at {
                     if fresh {
-                        return ShellEffect::ToggleCourseDirection;
+                        self.course_reversed = !self.course_reversed;
                     }
                     return ShellEffect::None;
                 }
@@ -1040,7 +1052,7 @@ mod tests {
         assert_eq!(at_direction.rows[8].label, "Direction");
         assert_eq!(
             at_direction.detail,
-            "Left, right, or accept turns the course around."
+            "Left, right, or accept flips direction for your next pick."
         );
         shell.handle(Command::Down, false, &snap(), 8);
         assert_eq!(
@@ -1049,16 +1061,20 @@ mod tests {
         );
         assert!(matches!(
             shell.handle(Command::Accept, true, &snap(), 8),
-            ShellEffect::ToggleCourseDirection
+            ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Course);
+        assert_eq!(
+            shell.view("Penguin Pass", "", "", &cards, "", "").rows[8].detail,
+            "Reverse"
+        );
         assert!(matches!(
             shell.handle(Command::Right, true, &snap(), 8),
-            ShellEffect::ToggleCourseDirection
+            ShellEffect::None
         ));
         assert!(matches!(
             shell.handle(Command::Left, true, &snap(), 8),
-            ShellEffect::ToggleCourseDirection
+            ShellEffect::None
         ));
         assert!(matches!(
             shell.handle(Command::Right, false, &snap(), 8),
@@ -1079,6 +1095,9 @@ mod tests {
             shell.handle(Command::Left, true, &snap(), 8),
             ShellEffect::Reroll(1)
         ));
+        shell.open_course_picker(3, true);
+        assert_eq!(shell.course_index, 3);
+        assert!(shell.course_reversed());
     }
 
     #[test]

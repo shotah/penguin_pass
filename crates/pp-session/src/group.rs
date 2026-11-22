@@ -662,10 +662,7 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_worker = Arc::clone(&stop);
         let server = tiny_http::Server::http("127.0.0.1:0").expect("mock");
-        let port = match server.server_addr() {
-            tiny_http::ListenAddr::IP(addr) => addr.port(),
-            other => panic!("mock address {other:?}"),
-        };
+        let port = server.server_addr().to_ip().expect("mock ip").port();
         let base = format!("http://127.0.0.1:{port}");
         let worker = std::thread::spawn(move || {
             while !stop_worker.load(Ordering::SeqCst) {

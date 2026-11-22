@@ -26,7 +26,7 @@ The id is stable for a given course, so a record survives a restart.
 | `sprint` | The one sprint. |
 | `climb-273` | A climb whose start rounds to that metre. |
 
-The longest climb is named after the course (`Penguin Pass climb`). Any other climb is `Climb at 1469 m`. The sprint is `Sprint`. The lap is `Lap`.
+The longest climb is named after the course with any trailing route distance stripped (`Penguin Pass climb`, `Rolling climb`, `Desert climb`). Any other climb is numbered in lap order (`Climb 2`, `Climb 3`, …). The start arch shows the segment name and its actual length (for example `Desert climb` and `750 m` on two lines). The sprint is `Sprint`. The lap is `Lap`.
 
 ## How they are found
 

@@ -40,6 +40,7 @@ pub struct Screens {
     toast: Gd<Label>,
     toast_s: f64,
     toasts: bool,
+    loading_banner: Option<String>,
 }
 
 impl Screens {
@@ -271,7 +272,18 @@ impl Screens {
             toast,
             toast_s: 0.0,
             toasts: true,
+            loading_banner: None,
         }
+    }
+
+    /// Title-screen line while a course swap is pending.
+    pub fn set_loading_banner(&mut self, text: &str) {
+        self.loading_banner = Some(text.to_owned());
+    }
+
+    /// Clear the pending course banner after the world has rebuilt.
+    pub fn clear_loading_banner(&mut self) {
+        self.loading_banner = None;
     }
 
     /// `--no-hud` suppresses toasts.
@@ -380,7 +392,12 @@ impl Screens {
             }
             self.paint_progress(view.selected);
         }
-        self.detail.set_text(&view.detail);
+        let detail = self
+            .loading_banner
+            .as_deref()
+            .filter(|_| on_title)
+            .unwrap_or(view.detail.as_str());
+        self.detail.set_text(detail);
         let outline = if on_title { 6 } else { 0 };
         self.detail
             .add_theme_color_override("font_outline_color", ui_style::INK);

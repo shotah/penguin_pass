@@ -52,7 +52,10 @@ impl Banners {
             if matches!(segment.kind, SegmentKind::Lap) {
                 continue;
             }
-            self.arch(course, segment.start_m, Some(&segment.name), false);
+            let lap_m = course.length_m();
+            let len_m = segment_span_len(segment.start_m, segment.end_m, lap_m);
+            let banner = format!("{}\n{}", segment.name, format_banner_length_m(len_m));
+            self.arch(course, segment.start_m, Some(&banner), false);
             self.arch(course, segment.end_m, None, true);
         }
     }
@@ -130,13 +133,13 @@ impl Banners {
                 let mut label = Label3D::new_alloc();
                 label.set_name("Name");
                 label.set_text(name);
-                label.set_font_size(52);
-                label.set_pixel_size(0.016);
-                label.set_width(400.0);
-                label.set_autowrap_mode(godot::classes::text_server::AutowrapMode::WORD_SMART);
+                label.set_font_size(46);
+                label.set_pixel_size(0.015);
+                label.set_width(420.0);
+                label.set_autowrap_mode(godot::classes::text_server::AutowrapMode::OFF);
                 label.set_horizontal_alignment(godot::global::HorizontalAlignment::CENTER);
                 label.set_vertical_alignment(godot::global::VerticalAlignment::CENTER);
-                label.set_position(Vector3::new(0.0, height - 0.15, 0.25));
+                label.set_position(Vector3::new(0.0, height - 0.08, 0.25));
                 label.set_modulate(crate::ui_style::SNOW);
                 label.set_outline_modulate(crate::ui_style::INK);
                 label.set_outline_size(18);
@@ -144,5 +147,24 @@ impl Banners {
             }
         }
         self.root.add_child(&node);
+    }
+}
+
+fn segment_span_len(start_m: f64, end_m: f64, lap_m: f64) -> f64 {
+    if !start_m.is_finite() || !end_m.is_finite() || !lap_m.is_finite() || lap_m <= 0.0 {
+        return 0.0;
+    }
+    if end_m >= start_m {
+        end_m - start_m
+    } else {
+        (end_m + lap_m - start_m).max(0.0)
+    }
+}
+
+fn format_banner_length_m(len_m: f64) -> String {
+    if len_m < 1000.0 {
+        format!("{:.0} m", (len_m / 10.0).round() * 10.0)
+    } else {
+        format!("{:.1} km", len_m / 1000.0)
     }
 }
