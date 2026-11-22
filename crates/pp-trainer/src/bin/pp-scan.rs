@@ -92,7 +92,7 @@ fn main() -> ExitCode {
         let line = trainer
             .latest_sample()
             .map(|sample| format_sample(&sample))
-            .unwrap_or_else(|| "power=- cadence=- speed=- hr=-".to_string());
+            .unwrap_or_else(|| "power=- cadence=- speed=-".to_string());
         println!("t={second}s {line}");
     }
     if args.grade.is_some() {
@@ -280,9 +280,7 @@ fn format_sample(sample: &TrainerSample) -> String {
         Some(kph) => format!("{kph:.2} km/h"),
         None => "-".to_string(),
     };
-    let heart = match sample.heart_rate_bpm {
-        Some(bpm) => format!("{bpm} bpm"),
-        None => "-".to_string(),
-    };
-    format!("power={power} cadence={cadence} speed={speed} hr={heart}")
+    // Heart rate stays off this line. Code scanning treats a printed bpm as
+    // clear-text logging of sensitive data.
+    format!("power={power} cadence={cadence} speed={speed}")
 }

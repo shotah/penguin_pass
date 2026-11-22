@@ -1222,7 +1222,7 @@ dependencies = [
 
 [[package]]
 name = "pp-arcade"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pp-core",
  "pp-course",
@@ -1233,7 +1233,7 @@ dependencies = [
 
 [[package]]
 name = "pp-bots"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pp-core",
  "pp-course",
@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "pp-cast"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "axum",
  "futures-util",
@@ -1255,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "pp-controllers"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "btleplug",
  "futures-util",
@@ -1265,7 +1265,7 @@ dependencies = [
 
 [[package]]
 name = "pp-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -1273,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "pp-course"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glam 0.30.10",
  "pp-core",
@@ -1283,7 +1283,7 @@ dependencies = [
 
 [[package]]
 name = "pp-ftms"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pp-core",
  "proptest",
@@ -1293,7 +1293,7 @@ dependencies = [
 
 [[package]]
 name = "pp-godot"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "godot",
  "pp-controllers",
@@ -1311,7 +1311,7 @@ dependencies = [
 
 [[package]]
 name = "pp-record"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "embedded-io-adapters",
  "fitparser",
@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "pp-rider"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "glam 0.32.1",
  "gltf",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "pp-routegen"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pp-course",
  "rand",
@@ -1337,7 +1337,7 @@ dependencies = [
 
 [[package]]
 name = "pp-segments"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pp-course",
  "pp-routegen",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "pp-session"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "fitparser",
  "pp-arcade",
@@ -1370,7 +1370,7 @@ dependencies = [
 
 [[package]]
 name = "pp-strava"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "form_urlencoded",
  "getrandom 0.2.17",
@@ -1384,7 +1384,7 @@ dependencies = [
 
 [[package]]
 name = "pp-trainer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "btleplug",
  "futures-util",
@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "pp-view"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pp-controllers",
  "pp-core",
@@ -1409,7 +1409,7 @@ dependencies = [
 
 [[package]]
 name = "pp-workout"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "roxmltree",
  "thiserror",
@@ -1417,7 +1417,7 @@ dependencies = [
 
 [[package]]
 name = "pp-world"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pp-course",
  "pp-routegen",
