@@ -16,6 +16,7 @@ func _init() -> void:
 		return
 	settings_file.store_string("this is not toml [[[\n")
 	settings_file.close()
+	print("PENGUIN_PASS_SMOKE note: intentionally writing invalid settings.toml to verify fallback warning")
 	OS.set_environment("PENGUIN_PASS_SETTINGS", settings_path)
 	_settings_path = settings_path
 	OS.set_environment("PENGUIN_PASS_FAKE_TRAINER", "1")
@@ -74,8 +75,11 @@ func _probe() -> String:
 
 
 func _exercise(game: Node, version: String) -> void:
-	if int(game.debug_ready_ms()) > 5000:
-		_fail("ready took %s ms" % game.debug_ready_ms())
+	# Debug builds take longer to build the world than release builds, especially
+	# on shared CI VMs; allow 8 s locally and 15 s on CI.
+	var ready_budget_ms := 15000 if not OS.get_environment("CI").is_empty() else 8000
+	if int(game.debug_ready_ms()) > ready_budget_ms:
+		_fail("ready took %s ms (budget %s ms)" % [game.debug_ready_ms(), ready_budget_ms])
 		return
 	if str(game.debug_screen()) != "title":
 		_fail("launch screen is '%s', expected title" % game.debug_screen())
