@@ -5,7 +5,9 @@
 #
 #   toolbox     Build the Steam Runtime toolbox image
 #   build       Build the workspace and copy the GDExtension into godot/bin/
-#   test        cargo test (CRATE=name for one crate)
+#   test        cargo test — full suite (CRATE=name for one crate)
+#   test-unit   fast lib tests (--lib); pre-push hook
+#   test-integration  integration tests (--test '*'); CI and manual
 #   fmt         cargo fmt --check (CRATE= optional)
 #   clippy      cargo clippy -D warnings (CRATE= optional)
 #   lint        fmt and clippy (CRATE= optional)
@@ -26,7 +28,7 @@
 
 PROFILE ?= debug
 
-.PHONY: toolbox build test fmt clippy lint typecheck smoke run scan fetch play export package licenses
+.PHONY: toolbox build test test-unit test-integration fmt clippy lint typecheck smoke run scan fetch play export package licenses
 
-toolbox build test fmt clippy lint typecheck smoke run scan fetch play export package licenses:
+toolbox build test test-unit test-integration fmt clippy lint typecheck smoke run scan fetch play export package licenses:
 	PROFILE="$(PROFILE)" CRATE="$(CRATE)" ./x $@

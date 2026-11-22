@@ -195,7 +195,7 @@ jobs:
             fi
           done
           cp -a "godot/bin/$LIB" "$stage/bin/$LIB"
-          cp -a godot/assets godot/themes "$stage/"
+          cp -a godot/assets godot/themes godot/routes "$stage/"
           rm -rf "$stage/assets/third_party/_incoming"
           python3 - "$stage" <<'PY'
           import secrets, sys
@@ -207,7 +207,7 @@ jobs:
               ".mp3", ".ogg", ".wav",
           }
           count = 0
-          for folder in ("assets", "themes"):
+          for folder in ("assets", "themes", "routes"):
               for path in (stage / folder).rglob("*"):
                   if not path.is_file() or path.suffix.lower() not in exts:
                       continue

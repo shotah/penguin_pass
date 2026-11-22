@@ -53,9 +53,11 @@ pre-commit:
         - whitespace
       run: git diff --cached --check
 
-# One after the other. typecheck and test share target/ and cargo's
+# One after the other. typecheck and test-unit share target/ and cargo's
 # build lock, so two containers at once wait on each other.
-# piped skips test when typecheck fails.
+# piped skips test-unit when typecheck fails.
+# pre-push runs fast unit tests only; full integration and smoke run in
+# GitHub Actions or locally via ./x test / ./x test-integration / ./x smoke.
 pre-push:
   parallel: false
   piped: true
@@ -65,7 +67,8 @@ pre-push:
         - typecheck
       run: ./x typecheck
 
-    - name: test
+    - name: test-unit
       tags:
         - test
-      run: ./x test
+        - unit
+      run: ./x test-unit

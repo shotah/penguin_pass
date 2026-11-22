@@ -35,13 +35,22 @@ jobs:
       - uses: ./.github/actions/rust-setup
       - run: ./x typecheck
 
-  test:
-    name: test
+  unit-tests:
+    name: unit-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-setup
-      - run: ./x test
+      - run: ./x test-unit
+
+  integration-tests:
+    name: integration-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-setup
+      - run: ./x test-integration
+      - run: cargo test --workspace --doc
 
   smoke:
     name: smoke

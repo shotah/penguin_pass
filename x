@@ -48,7 +48,7 @@ run_cargo() {
 }
 
 usage() {
-    echo "usage: ./x {toolbox|build|test|fmt|clippy|lint|typecheck|smoke|run|scan|controllers|fetch|play|export|package|licenses|release}" >&2
+    echo "usage: ./x {toolbox|build|test|test-unit|test-integration|fmt|clippy|lint|typecheck|smoke|run|scan|controllers|fetch|play|export|package|licenses|release}" >&2
     echo "play:  ./x play [--windowed|--fullscreen] [--resolution WxH] [--quit-after N] [--scratch-data] [--] [game args]" >&2
     echo "release: ./x release [--dry-run|--no-push] {patch|minor|major|X.Y.Z}" >&2
     exit 1
@@ -88,6 +88,22 @@ cmd_test() {
         run_cargo test -p "$CRATE"
     else
         run_cargo test --workspace
+    fi
+}
+
+cmd_test_unit() {
+    if [[ -n "$CRATE" ]]; then
+        run_cargo test -p "$CRATE" --lib
+    else
+        run_cargo test --workspace --lib
+    fi
+}
+
+cmd_test_integration() {
+    if [[ -n "$CRATE" ]]; then
+        run_cargo test -p "$CRATE" --test '*'
+    else
+        run_cargo test --workspace --test '*'
     fi
 }
 
@@ -729,6 +745,8 @@ case "$1" in
     toolbox) cmd_toolbox ;;
     build) cmd_build ;;
     test) cmd_test ;;
+    test-unit) cmd_test_unit ;;
+    test-integration) cmd_test_integration ;;
     fmt) cmd_fmt ;;
     clippy) cmd_clippy ;;
     lint) cmd_lint ;;

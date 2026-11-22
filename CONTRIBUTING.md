@@ -68,7 +68,9 @@ Day to day:
 | --- | --- |
 | `./x build` | Build the GDExtension into `godot/bin/` |
 | `./x play` | Build if needed and run the game (`--` passes flags to the game) |
-| `./x test` | Run Rust tests |
+| `./x test-unit` | Fast unit tests (`--lib`); lefthook `pre-push` |
+| `./x test-integration` | Long-running integration / property tests (`--test '*'`); CI |
+| `./x test` | Full Rust suite (unit + integration + doc tests) |
 | `./x lint` | `fmt` + `clippy` |
 | `./x typecheck` | `cargo check` workspace |
 | `./x smoke` | Headless Godot load smoke test |
@@ -80,7 +82,7 @@ Headless or CI-safe play (no Bluetooth, no audio device):
 ./x play -- --no-bluetooth --fake-trainer --audio-driver Dummy
 ```
 
-Narrow tests to one crate: `CRATE=pp-core ./x test`. Release library: `PROFILE=release ./x build`.
+Narrow tests to one crate: `CRATE=pp-core ./x test` (or `./x test-unit` / `./x test-integration`). Release library: `PROFILE=release ./x build`.
 
 Git hooks (optional): `lefthook install` — see [`docs/dev-workflow.md`](docs/dev-workflow.md).
 
@@ -104,7 +106,7 @@ Git hooks (optional): `lefthook install` — see [`docs/dev-workflow.md`](docs/d
    ```bash
    ./x typecheck
    ./x lint
-   ./x test
+   ./x test          # or ./x test-unit + ./x test-integration before pushing
    ./x smoke
    ```
 
