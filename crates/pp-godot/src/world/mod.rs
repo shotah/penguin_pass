@@ -37,8 +37,8 @@ pub fn build_environment(parent: &mut Gd<Node3D>, theme: &Theme, catalog: &Catal
     sky_mat.set_ground_horizon_color(crate::theme::rgb(theme.sky.ground_horizon));
     sky_mat.set_ground_bottom_color(crate::theme::rgb(theme.sky.ground_bottom));
     sky_mat.set_ground_curve(0.05);
-    sky_mat.set_sun_angle_max(22.0);
-    sky_mat.set_sun_curve(0.08);
+    sky_mat.set_sun_angle_max(6.0);
+    sky_mat.set_sun_curve(0.16);
     sky_mat.set_energy_multiplier(theme.sky.energy);
     sky_mat.set_use_debanding(true);
 
@@ -83,7 +83,7 @@ pub fn build_environment(parent: &mut Gd<Node3D>, theme: &Theme, catalog: &Catal
     sun.set_rotation_degrees(Vector3::new(theme.sun.pitch, theme.sun.yaw, 0.0));
     sun.set_color(crate::theme::rgb(theme.sun.color));
     sun.set_param(LightParam::ENERGY, theme.sun.energy);
-    sun.set_param(LightParam::SPECULAR, 0.25);
+    sun.set_param(LightParam::SPECULAR, 0.15);
     sun.set_shadow(true);
     sun.set_shadow_mode(ShadowMode::PARALLEL_4_SPLITS);
     sun.set_param(LightParam::SHADOW_BIAS, 0.04);

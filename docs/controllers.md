@@ -212,8 +212,8 @@ riding. That is how the Deck d-pad already shares `power_up` with `menu_up`.
 | `Y`, Ride `Y` | `toggle_camera` | |
 | `Z`, Ride `Z` | `music_next` | |
 | `OnOff`, `OnOffLeft`, `OnOffRight` | `pause_menu` | |
-| `Plus`, `ShiftUp`, `ShiftUpRight`, `ShiftDownRight`, `PowerUpRight`, right paddle past the owner's threshold | `power_up` | |
-| `Minus`, `ShiftDown`, `ShiftDownLeft`, `ShiftUpLeft`, `PowerUpLeft`, left paddle | `power_down` | |
+| `Plus`, `ShiftUp`, `ShiftUpRight`, `ShiftDownRight`, `PowerUpRight`, right paddle past the owner's threshold | virtual gear up on trainers with Zwift `0xFC82`; otherwise `power_up` | |
+| `Minus`, `ShiftDown`, `ShiftDownLeft`, `ShiftUpLeft`, `PowerUpLeft`, left paddle | virtual gear down on `0xFC82` trainers; otherwise `power_down` | |
 
 `menu_back` currently also opens pause, so pause is the power button rather
 than `B`. The left shift row follows the owner's working gear-down map,

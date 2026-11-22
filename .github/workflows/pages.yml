@@ -1,0 +1,43 @@
+# Build site/_dist and publish to the gh-pages branch for GitHub Pages.
+name: Deploy Website to gh-pages
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    branches:
+      - main
+    paths:
+      - "site/**"
+      - "docs/img/shots/steam/**"
+      - "docs/img/world/atmosphere/**"
+      - "packaging/steam/assets/**"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the static site
+        run: ./site/build.sh
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site/_dist
+          publish_branch: gh-pages
+          force_orphan: true
+          enable_jekyll: false

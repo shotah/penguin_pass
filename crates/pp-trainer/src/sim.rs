@@ -26,6 +26,7 @@ pub struct SimTrainer {
     staleness: Duration,
     last_grade_pct: Option<f32>,
     last_target_power_w: Option<u16>,
+    last_virtual_gear: Option<u8>,
 }
 
 impl SimTrainer {
@@ -43,6 +44,7 @@ impl SimTrainer {
             staleness: SAMPLE_STALENESS,
             last_grade_pct: None,
             last_target_power_w: None,
+            last_virtual_gear: None,
         }
     }
 
@@ -113,6 +115,9 @@ impl Trainer for SimTrainer {
             }
             TrainerCommand::SetTargetPower { watts } => {
                 self.last_target_power_w = Some(watts);
+            }
+            TrainerCommand::SetVirtualGear { gear } => {
+                self.last_virtual_gear = Some(gear);
             }
         }
         Ok(())

@@ -86,11 +86,18 @@ pp-trainer: connected "<name>" services=[...] telemetry=ftms control=ftms
 
 ## Virtual gears
 
-Zwift Cog and Zwift Ride virtual shifting use 24 gear ratios. The ratios
-and the gear-ratio field are in `pp-ftms` (`ZWIFT_VIRTUAL_GEAR_RATIOS`,
-and `ZwiftPhysical::gear_ratio_x10000`). Penguin Pass does not send a gear
-during a ride. Shifting from the game is not wired yet. A Ride or Hub that
-also has FTMS still gets grade and ERG over FTMS.
+Zwift Cog and Zwift Ride virtual shifting use 24 gear ratios (`1`..=`24`,
+default `12`). Ratios come from `pp-ftms` (`ZWIFT_VIRTUAL_GEAR_RATIOS` and
+`ZwiftPhysical::gear_ratio_x10000`). Penguin Pass now sends gear changes over
+the Zwift trainer service write (`0xFC82`) when the connected bike exposes
+that characteristic. Grade and ERG on dual-protocol trainers (KICKR CORE
+Zwift One, Zwift Hub One, JetBlack Victory) still go over FTMS (`0x2AD9`);
+virtual gear is a separate write that does not wait for the FTMS
+control-point response.
+
+Shift from a Zwift Click, Play, or Ride (shift buttons and paddles) or from
+the keyboard: `,` down, `.` up. Trainers without `0xFC82` ignore gear commands;
+the same pad inputs fall back to simulated power.
 
 ## Verification status
 
@@ -115,6 +122,11 @@ These paths are exercised by `Engine` against `FakePeripheral` in
 - Zwift Hub / Ride fallback (Zwift notify and write, no FTMS, FE-C, or
   Wahoo control): `RideOn`, physical, simulation, target power, riding-data
   power, cadence, speed, and heart rate, and 0% on stop.
+- Virtual gears over `0xFC82` on pure-Zwift and FTMS+Zwift profiles:
+  `RideOn` when needed, `SetPhysical` with gear ratios, clamping, and no
+  duplicate shifts.
+- Still waiting on a real Zwift Cog / Ride ride to confirm shifting feel on
+  hardware.
 - FTMS plus CSC: indoor-bike power with CSC crank cadence filling RPM, and
   CSC staying quiet while indoor-bike cadence is fresh.
 - A trainer that exposes FTMS, Wahoo control, and `0xFC82` together stays

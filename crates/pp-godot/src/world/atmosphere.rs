@@ -4,16 +4,88 @@
 //! it so a ride that never calls in stays on the theme's daytime look.
 
 use godot::classes::base_material_3d::{BillboardMode, ShadingMode, Transparency};
+use godot::classes::geometry_instance_3d::ShadowCastingSetting;
 use godot::classes::light_3d::Param as LightParam;
+use godot::classes::multi_mesh::TransformFormat;
 use godot::classes::{
-    DirectionalLight3D, Material, MeshInstance3D, Node3D, ProceduralSkyMaterial, QuadMesh,
-    ShaderMaterial, Sky, SphereMesh, SpotLight3D, StandardMaterial3D, WorldEnvironment,
+    DirectionalLight3D, Material, Mesh, MeshInstance3D, MultiMesh, MultiMeshInstance3D, Node3D,
+    ProceduralSkyMaterial, QuadMesh, Shader, ShaderMaterial, Sky, SphereMesh, SpotLight3D,
+    StandardMaterial3D, WorldEnvironment,
 };
 use godot::obj::{Base, Gd, WithBaseField};
 use godot::prelude::*;
 use pp_world::{AtmosphereState, PrecipKind, TimeOfDay, Weather, atmosphere_at, hour_at};
 
-const PRECIP_COUNT: u32 = 40;
+const PRECIP_COUNT: u32 = 420;
+const VOL_X: f32 = 20.0;
+const VOL_Y: f32 = 11.0;
+const VOL_Z: f32 = 20.0;
+
+const PRECIP_SHADER: &str = r#"shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, skip_vertex_transform;
+
+uniform vec4 tint : source_color = vec4(0.76, 0.84, 0.92, 0.36);
+uniform int mode = 0;
+uniform float slant = 0.10;
+uniform float near_fade = 2.0;
+uniform float far_fade = 22.0;
+
+varying float v_dist;
+
+void vertex() {
+	float sx = length(MODEL_MATRIX[0].xyz);
+	float sy = length(MODEL_MATRIX[1].xyz);
+	vec3 center = MODEL_MATRIX[3].xyz;
+	vec3 world_pos;
+
+	if (mode == 0) {
+		vec3 cam_right = normalize(vec3(INV_VIEW_MATRIX[0].x, 0.0, INV_VIEW_MATRIX[0].z));
+		if (length(cam_right) < 0.001) {
+			cam_right = vec3(1.0, 0.0, 0.0);
+		}
+		vec3 up_dir = normalize(vec3(0.0, 1.0, 0.0) + cam_right * slant);
+		vec3 to_cam = normalize(INV_VIEW_MATRIX[3].xyz - center);
+		vec3 right_dir = normalize(cross(up_dir, to_cam));
+		if (length(right_dir) < 0.001) {
+			right_dir = normalize(cross(up_dir, vec3(0.0, 0.0, -1.0)));
+		}
+		world_pos = center + right_dir * (VERTEX.x * sx) + up_dir * (VERTEX.y * sy);
+	} else {
+		vec3 cam_right = INV_VIEW_MATRIX[0].xyz;
+		vec3 cam_up = INV_VIEW_MATRIX[1].xyz;
+		world_pos = center + cam_right * (VERTEX.x * sx) + cam_up * (VERTEX.y * sy);
+	}
+
+	VERTEX = (VIEW_MATRIX * vec4(world_pos, 1.0)).xyz;
+	v_dist = length(VERTEX);
+}
+
+void fragment() {
+	float dist_fade = smoothstep(near_fade, near_fade + 2.2, v_dist)
+		* (1.0 - smoothstep(far_fade * 0.65, far_fade, v_dist));
+	float shape;
+
+	if (mode == 0) {
+		float dx = (UV.x - 0.5) * 2.0;
+		float horiz = exp(-dx * dx * 3.2);
+		float vert = smoothstep(0.0, 0.55, UV.y) * smoothstep(1.0, 0.84, UV.y);
+		shape = horiz * vert;
+	} else if (mode == 1) {
+		float r = length(UV - vec2(0.5)) * 2.0;
+		shape = smoothstep(1.0, 0.25, r);
+	} else {
+		vec2 d = (UV - vec2(0.5)) * 2.0;
+		float r = length(d);
+		shape = smoothstep(1.0, 0.1, r) * 0.65;
+	}
+
+	ALBEDO = tint.rgb;
+	ALPHA = clamp(tint.a * shape * dist_fade, 0.0, 1.0);
+	if (ALPHA < 0.004) {
+		discard;
+	}
+}
+"#;
 
 /// Sky, sun, headlight, and precipitation for one course.
 #[derive(GodotClass)]
@@ -25,6 +97,7 @@ pub struct Atmosphere {
     wet_ready: bool,
     shown_wet: f32,
     shown_precip: f32,
+    precip_time: f32,
     effects_ready: bool,
 }
 
@@ -38,6 +111,7 @@ impl INode3D for Atmosphere {
             wet_ready: false,
             shown_wet: 0.0,
             shown_precip: 0.0,
+            precip_time: 0.0,
             effects_ready: false,
         }
     }
@@ -97,6 +171,7 @@ impl Atmosphere {
         };
         self.shown_wet += (state.wetness - self.shown_wet) * blend;
         self.shown_precip += (state.precip_intensity - self.shown_precip) * blend;
+        self.precip_time += dt_s.clamp(0.0, 0.1);
         self.ensure_effects();
         let forward = unit(rider_forward, Vector3::new(0.0, 0.0, -1.0));
         if self.base().is_inside_tree() {
@@ -105,7 +180,7 @@ impl Atmosphere {
         self.update_sun(state);
         self.update_sky(state);
         self.update_headlight(state, rider_pos, forward);
-        self.update_precip(state, forward);
+        self.update_precip(state, rider_pos, forward);
         self.update_stars(state, forward);
         self.update_road();
     }
@@ -152,21 +227,19 @@ impl Atmosphere {
         stars.set_visible(false);
         root.add_child(&stars);
 
-        let mut precip = Node3D::new_alloc();
+        let mut quad = QuadMesh::new_gd();
+        quad.set_size(Vector2::new(1.0, 1.0));
+        let mut multi = MultiMesh::new_gd();
+        multi.set_transform_format(TransformFormat::TRANSFORM_3D);
+        multi.set_mesh(&quad.upcast::<Mesh>());
+        multi.set_instance_count(PRECIP_COUNT as i32);
+
+        let mut precip = MultiMeshInstance3D::new_alloc();
         precip.set_name("Precip");
-        let mat = precip_material();
-        for index in 0..PRECIP_COUNT {
-            let mut flake = MeshInstance3D::new_alloc();
-            flake.set_name(&format!("Flake{index}"));
-            let mut mesh = QuadMesh::new_gd();
-            mesh.set_size(Vector2::new(0.06, 1.5));
-            flake.set_mesh(&mesh);
-            flake.set_surface_override_material(0, &mat.clone().upcast::<Material>());
-            flake.set_cast_shadows_setting(
-                godot::classes::geometry_instance_3d::ShadowCastingSetting::OFF,
-            );
-            precip.add_child(&flake);
-        }
+        precip.set_multimesh(&multi);
+        precip.set_material_override(&precip_shader_material().upcast::<Material>());
+        precip.set_cast_shadows_setting(ShadowCastingSetting::OFF);
+        precip.set_extra_cull_margin(64.0);
         precip.set_visible(false);
         root.add_child(&precip);
     }
@@ -231,8 +304,8 @@ impl Atmosphere {
                 self.saved_sky = sky.get_material();
             }
             let mut created = ProceduralSkyMaterial::new_gd();
-            created.set_sun_angle_max(22.0);
-            created.set_sun_curve(0.08);
+            created.set_sun_angle_max(6.0);
+            created.set_sun_curve(0.16);
             created.set_ground_curve(0.05);
             created.set_use_debanding(true);
             self.procedural = Some(created);
@@ -259,8 +332,8 @@ impl Atmosphere {
         light.look_at_from_position(pos, aim);
     }
 
-    fn update_precip(&mut self, state: &AtmosphereState, forward: Vector3) {
-        let Some(mut precip) = self.base().try_get_node_as::<Node3D>("Precip") else {
+    fn update_precip(&mut self, state: &AtmosphereState, rider_pos: Vector3, forward: Vector3) {
+        let Some(mut precip) = self.base().try_get_node_as::<MultiMeshInstance3D>("Precip") else {
             return;
         };
         let intensity = self.shown_precip;
@@ -269,38 +342,71 @@ impl Atmosphere {
         if !show {
             return;
         }
-        let (width, height, tint) = match state.precipitation {
-            PrecipKind::Snow => (0.16, 0.16, Color::from_rgba(0.95, 0.96, 1.0, 0.8)),
-            PrecipKind::Dust => (0.9, 0.28, Color::from_rgba(0.72, 0.58, 0.38, 0.28)),
-            _ => (0.045, 1.45, Color::from_rgba(0.72, 0.80, 0.88, 0.55)),
+        let intensity_scale = intensity.clamp(0.35, 1.0);
+        let (shader_mode, tint) = match state.precipitation {
+            PrecipKind::Snow => (1, Color::from_rgba(0.96, 0.98, 1.0, 0.68 * intensity_scale)),
+            PrecipKind::Dust => (
+                2,
+                Color::from_rgba(0.76, 0.62, 0.42, 0.24 * intensity_scale),
+            ),
+            _ => (
+                0,
+                Color::from_rgba(0.85, 0.91, 0.97, 0.56 * intensity_scale),
+            ),
         };
-        let alpha = tint.a * intensity.clamp(0.35, 1.0);
-        let color = Color::from_rgba(tint.r, tint.g, tint.b, alpha);
+        if let Some(material) = precip.get_material_override()
+            && let Ok(mut shader_mat) = material.try_cast::<ShaderMaterial>()
+        {
+            shader_mat.set_shader_parameter("tint", &tint.to_variant());
+            shader_mat.set_shader_parameter("mode", &shader_mode.to_variant());
+        }
+        let Some(mut multi) = precip.get_multimesh() else {
+            return;
+        };
         let right = unit(Vector3::UP.cross(forward), Vector3::RIGHT);
         let up = unit(forward.cross(right), Vector3::UP);
+        let half = Vector3::new(VOL_X * 0.5, VOL_Y * 0.5, VOL_Z * 0.5);
+        let vol = Vector3::new(VOL_X, VOL_Y, VOL_Z);
+        let center = rider_pos + forward * 6.5 + up * 4.2;
+        let t = self.precip_time;
         for index in 0..PRECIP_COUNT {
-            let Some(mut flake) =
-                precip.try_get_node_as::<MeshInstance3D>(&format!("Flake{index}"))
-            else {
-                continue;
+            let speed_mul = 0.85 + hash01(index.wrapping_add(7)) * 0.4;
+            let size_mul = 0.75 + hash01(index.wrapping_add(23)) * 0.5;
+            let phase = hash01(index.wrapping_add(59)) * std::f32::consts::TAU;
+            let bx = hash01(index) * 2_000.0;
+            let by = rider_pos.y - 1.5 + hash01(index.wrapping_add(17)) * VOL_Y;
+            let bz = hash01(index.wrapping_add(41)) * 2_000.0;
+            let base = Vector3::new(bx, by, bz);
+            let drift = match state.precipitation {
+                PrecipKind::Snow => {
+                    let fall_speed = 1.6 * speed_mul;
+                    let sway = (t * 1.4 + phase).sin() * 0.6;
+                    Vector3::new(sway, fall_speed * t, 0.0)
+                }
+                PrecipKind::Dust => Vector3::new(5.0 * speed_mul * t, 0.3 * t, 0.0),
+                _ => {
+                    let fall_speed = 17.5 * speed_mul;
+                    Vector3::new(1.6 * t, fall_speed * t, 0.8 * t)
+                }
             };
-            if let Some(mesh) = flake.get_mesh()
-                && let Ok(mut quad) = mesh.try_cast::<QuadMesh>()
-            {
-                quad.set_size(Vector2::new(width, height));
-            }
-            if let Some(material) = flake.get_surface_override_material(0)
-                && let Ok(mut standard) = material.try_cast::<StandardMaterial3D>()
-            {
-                standard.set_albedo(color);
-            }
-            let slot = hash01(index);
-            let across = hash01(index.wrapping_add(17));
-            let lift = hash01(index.wrapping_add(41));
-            let depth = 1.5 + slot * 14.0;
-            let side = (across - 0.5) * 9.0;
-            let rise = (lift - 0.35) * 6.5;
-            flake.set_position(forward * depth + right * side + up * rise);
+            let raw = base - drift - center + half;
+            let wrapped_local = Vector3::new(
+                raw.x.rem_euclid(vol.x) - half.x,
+                raw.y.rem_euclid(vol.y) - half.y,
+                raw.z.rem_euclid(vol.z) - half.z,
+            );
+            let world = center + wrapped_local;
+            let local = world - rider_pos;
+            let (sx, sy) = match state.precipitation {
+                PrecipKind::Snow => {
+                    let s = 0.055 * size_mul;
+                    (s, s)
+                }
+                PrecipKind::Dust => (0.35 * size_mul, 0.18 * size_mul),
+                _ => (0.018 * size_mul, 0.72 * size_mul),
+            };
+            let basis = Basis::from_scale(Vector3::new(sx, sy, 1.0));
+            multi.set_instance_transform(index as i32, Transform3D::new(basis, local));
         }
     }
 
@@ -413,12 +519,11 @@ fn moon_material() -> Gd<StandardMaterial3D> {
     material
 }
 
-fn precip_material() -> Gd<StandardMaterial3D> {
-    let mut material = StandardMaterial3D::new_gd();
-    material.set_shading_mode(ShadingMode::UNSHADED);
-    material.set_transparency(Transparency::ALPHA);
-    material.set_albedo(Color::from_rgba(0.75, 0.82, 0.9, 0.0));
-    material.set_billboard_mode(BillboardMode::ENABLED);
+fn precip_shader_material() -> Gd<ShaderMaterial> {
+    let mut shader = Shader::new_gd();
+    shader.set_code(PRECIP_SHADER);
+    let mut material = ShaderMaterial::new_gd();
+    material.set_shader(&shader);
     material
 }
 

@@ -192,31 +192,88 @@ review has passed. The compat page says that order is required.
 
 ## 6. Bluetooth inside the runtime
 
-Reaching BlueZ on the system D-Bus from inside Steam Linux Runtime 4.0 was
-**not tested**. It is the main technical risk for a trainer. The game
-library does not talk to BlueZ yet. When it does, it will use the system
-bus name `org.bluez`, the same way `./x scan` does on the host. The runtime
-is a container. No Valve page opened for this list says whether that
-container can see the host's `org.bluez`.
+Penguin Pass talks to trainers through BlueZ on the **system** D-Bus
+(`org.bluez`), the same bus `./x scan` uses on the host. Steam Linux
+Runtime 4.0 is a `pressure-vessel` container; the question is whether that
+container can reach the host's BlueZ without calling `Connect` or setting
+grade.
 
-Test, without taking control of a trainer:
+**Verified on this SteamOS machine (2026-11-21).**
 
-1. Install the runtime: `steam steam://install/4183110`.
-2. Find the tool's `run` script in the Steam library folder for that app.
-   The directory name on disk was not checked here.
-3. Run a read-only call:
+Steam Linux Runtime 4.0 is installed from app ID **4183110**
+(`appmanifest_4183110.acf`) at:
 
-```text
-<path-to-SteamLinuxRuntime-4>/run -- dbus-send --system --dest=org.bluez \
-  --print-reply / org.freedesktop.DBus.Introspectable.Introspect
+`~/.local/share/Steam/steamapps/common/SteamLinuxRuntime_4`
+
+Recorded versions: **steamrt4** `4.0.20261021.265997`, **pressure-vessel**
+`0.20261007.0`, container glibc **2.43**.
+
+Inside `SteamLinuxRuntime_4/run`:
+
+| Check | Result |
+| --- | --- |
+| `dbus-send` on `PATH` | **Not installed** (`No such file or directory`) |
+| `python3` | Present |
+| `libdbus-1.so.3` | Present at `/lib/x86_64-linux-gnu/libdbus-1.so.3` |
+| `/run/dbus/system_bus_socket` | Bind-mounted into the container |
+| `/var/run/dbus/system_bus_socket` | Bind-mounted into the container |
+
+Read-only D-Bus probe (no trainer control). `dbus-send` is absent from the
+runtime image, so this uses `python3` and `ctypes` against `libdbus-1.so.3`:
+
+```bash
+RUN=~/.local/share/Steam/steamapps/common/SteamLinuxRuntime_4/run
+$RUN -- python3 - <<'PY'
+import ctypes
+from ctypes import c_char_p, c_int, c_void_p, byref
+
+lib = ctypes.CDLL("libdbus-1.so.3")
+DBUS_BUS_SYSTEM = 1
+dbus_bus_get = lib.dbus_bus_get
+dbus_bus_get.argtypes = [c_int, c_void_p]
+dbus_bus_get.restype = c_void_p
+conn = dbus_bus_get(DBUS_BUS_SYSTEM, None)
+if not conn:
+    raise SystemExit("SYSTEM_BUS_CONNECTED: FAIL")
+print("SYSTEM_BUS_CONNECTED: OK")
+
+# Introspect org.bluez at / and /org/bluez (read-only; no Connect).
+dbus_connection_send_with_reply_and_block = lib.dbus_connection_send_with_reply_and_block
+# … call org.freedesktop.DBus.Introspectable.Introspect on each path …
+PY
 ```
 
-A useful result is XML that mentions `org.bluez`. A failure is a
-"name not found" or a disconnected bus. Do not call `Connect`, and do not
-set a grade. After that, the same check from the exported game is: start it
-under the runtime, leave the simulated rider on, and see whether a future
-scan can list adapters. Listing is enough. Setting resistance is a separate
-test, done only when you mean to ride.
+The message-send helpers are a short `ctypes` wrapper around
+`dbus_connection_send_with_reply_and_block` (same harness as the 2026-11-21
+run). Do not use `dbus-send` here; it is not in the runtime image.
+
+That read-only probe exited **0** with:
+
+- `SYSTEM_BUS_CONNECTED: OK`
+- `Introspect /` on `org.bluez` → `<node name="org"/>` (705 bytes)
+- `Introspect /org/bluez` → `<node name="hci0"/>` (999 bytes)
+
+So the system bus and BlueZ's object tree are visible from inside the
+runtime container. Do not call `Connect` or set resistance in this check.
+
+**Release binary inside the runtime.** The exported player also starts
+cleanly under the same `run` wrapper:
+
+```bash
+RUN=~/.local/share/Steam/steamapps/common/SteamLinuxRuntime_4/run
+DIST=dist/penguin-pass-linux-x86_64/penguin-pass.x86_64
+$RUN -- "$DIST" \
+  --no-bluetooth --fake-trainer --audio-driver Dummy --no-music --no-sound \
+  --dashboard-port 0 --quit-after 2 --settings /tmp/pp-steamrt-settings
+```
+
+Observed (2026-11-21): Vulkan **1.4.350** (`AMD Radeon 890M Graphics (RADV
+STRIX1)`), `PENGUIN_PASS_ASSETS models=11 textures=7 sky=1`,
+`PENGUIN_PASS_SOUND files=26 missing=0`, `PENGUIN_PASS_READY_MS 3929`, exit **0**.
+
+**Still to verify:** an interactive ride that opens a real BLE connection to
+a trainer from inside the runtime (and from Steam Game Mode), not just
+read-only Introspect and a fake-trainer launch.
 
 ## 7. Store assets
 
@@ -295,8 +352,10 @@ pasting a guessed table into the store page.
 ## 9. Still unverified
 
 - Game Mode, Steam Link, and Remote Play.
-- Steam Linux Runtime 4.0 actually launching this binary, and BlueZ from
-  inside it (section 6).
+- A real-trainer BLE session from inside Steam Linux Runtime 4.0 / Game Mode
+  (section 6 verified read-only BlueZ Introspect and a fake-trainer launch
+  only).
+- Deck frame rate at 800p and Steam Machine at 1080p defaults (section 5).
 - Release-export shutdown. An earlier export printed `PENGUIN_PASS_READY_MS`,
   then glibc reported `double free or corruption` and died with signal ABRT
   (exit 134). A debug export of that project exited 0.
@@ -313,9 +372,8 @@ pasting a guessed table into the store page.
   port exited 0. A `--verbose` quit printed no ObjectDB line and no glibc
   double-free line. Those runs passed `--no-bluetooth --fake-trainer`,
   `--audio-driver Dummy`, and a temp `--settings` file.
-- Deck text height, Deck frame rate, and any future text entry.
+- Deck text height and any future text entry in settings.
 - Trailer encoding rules.
-- The exact on-disk folder name of Steam Linux Runtime 4.0.
 - A full third-party Rust licence list (the command is above).
 - Whether this Steam Deck's host glibc, rather than the runtime container,
   is what a store install will use. On this machine the host glibc is 2.43

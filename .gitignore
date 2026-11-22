@@ -24,3 +24,6 @@ __pycache__/
 
 # Play logs, export stage, and player packages (./x play, ./x export, ./x package)
 /dist/
+
+# Static site build output (./site/build.sh)
+/site/_dist/

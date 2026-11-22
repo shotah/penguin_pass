@@ -125,6 +125,8 @@ pub fn install() {
         &[JoyButton::RIGHT_SHOULDER],
         None,
     );
+    bind_keys(&mut map, "gear_down", &[Key::COMMA], &[], None);
+    bind_keys(&mut map, "gear_up", &[Key::PERIOD], &[], None);
 }
 
 fn bind_keys(

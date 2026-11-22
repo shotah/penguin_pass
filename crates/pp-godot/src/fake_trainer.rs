@@ -172,6 +172,7 @@ impl Trainer for FakeLink {
                 inner.grade_commands = inner.grade_commands.saturating_add(1);
             }
             TrainerCommand::SetTargetPower { .. } => {}
+            TrainerCommand::SetVirtualGear { .. } => {}
         }
         Ok(())
     }

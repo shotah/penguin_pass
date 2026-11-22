@@ -27,6 +27,13 @@ use crate::settings::{LoadedSettings, Settings};
 use crate::stats::RideStats;
 use crate::trace::{RideTrace, SampleStamp, TraceTick};
 
+/// Smallest Zwift virtual gear sent over trainer service `0xFC82`.
+pub const MIN_VIRTUAL_GEAR: u8 = 1;
+/// Largest Zwift virtual gear sent over trainer service `0xFC82`.
+pub const MAX_VIRTUAL_GEAR: u8 = 24;
+/// Default virtual gear at ride start.
+pub const DEFAULT_VIRTUAL_GEAR: u8 = 12;
+
 /// Keyboard power change, in watts, applied by [`Session::nudge_sim_power`].
 pub const SIM_POWER_STEP_W: u16 = 25;
 
@@ -251,6 +258,7 @@ pub struct Session {
     utc_offset_s: i32,
     play_state: Play,
     group: Group,
+    virtual_gear: u8,
 }
 
 impl Session {
@@ -329,6 +337,7 @@ impl Session {
             utc_offset_s: 0,
             play_state: Play::new(),
             group: Group::new(),
+            virtual_gear: DEFAULT_VIRTUAL_GEAR,
         };
         if let Some(detail) = fallback {
             session.events.push(RideEvent::CourseUnavailable { detail });
@@ -636,6 +645,41 @@ impl Session {
     #[must_use]
     pub fn sim_power_w(&self) -> u16 {
         self.sim_power_w
+    }
+
+    /// Current Zwift virtual gear (`1`..=`24`).
+    #[must_use]
+    pub fn virtual_gear(&self) -> u8 {
+        self.virtual_gear
+    }
+
+    /// True when trainer control is on and the link reports Zwift `0xFC82` gear
+    /// writes.
+    #[must_use]
+    pub fn virtual_shifting_available(&self) -> bool {
+        self.settings.control_trainer
+            && self
+                .trainer
+                .as_ref()
+                .is_some_and(|trainer| trainer.supports_virtual_shifting())
+    }
+
+    /// Shift virtual gear by `delta` when [`Self::virtual_shifting_available`].
+    ///
+    /// Returns the new gear after clamping, or `None` when shifting is not
+    /// available.
+    pub fn shift_virtual_gear(&mut self, delta: i8) -> Option<u8> {
+        if !self.virtual_shifting_available() {
+            return None;
+        }
+        let next = (self.virtual_gear as i16 + i16::from(delta))
+            .clamp(i16::from(MIN_VIRTUAL_GEAR), i16::from(MAX_VIRTUAL_GEAR))
+            as u8;
+        self.virtual_gear = next;
+        if let Some(trainer) = self.trainer.as_mut() {
+            let _ = trainer.send(TrainerCommand::SetVirtualGear { gear: next });
+        }
+        Some(next)
     }
 
     /// Start scanning, creating the Bluetooth trainer if it does not exist yet.
@@ -2735,6 +2779,8 @@ mod tests {
         modes: Vec<SessionMode>,
         sends: u32,
         spawns: Vec<(SessionMode, Option<f32>, Option<f32>)>,
+        virtual_shifting: bool,
+        virtual_gears: Vec<u8>,
     }
 
     #[derive(Clone)]
@@ -2756,6 +2802,8 @@ mod tests {
                 modes: Vec::new(),
                 sends: 0,
                 spawns: Vec::new(),
+                virtual_shifting: false,
+                virtual_gears: Vec::new(),
             })))
         }
 
@@ -2818,6 +2866,14 @@ mod tests {
         fn sends(&self) -> u32 {
             lock(&self.0).sends
         }
+
+        fn set_virtual_shifting(&self, supported: bool) {
+            lock(&self.0).virtual_shifting = supported;
+        }
+
+        fn virtual_gears(&self) -> Vec<u8> {
+            lock(&self.0).virtual_gears.clone()
+        }
     }
 
     struct FakeTrainer {
@@ -2849,10 +2905,16 @@ mod tests {
             if !matches!(state.state, ConnectionState::Connected) {
                 return Err(TrainerError::NotConnected);
             }
-            if let TrainerCommand::SetGrade { grade_pct } = command {
-                state.grades.push(grade_pct);
+            match command {
+                TrainerCommand::SetGrade { grade_pct } => state.grades.push(grade_pct),
+                TrainerCommand::SetVirtualGear { gear } => state.virtual_gears.push(gear),
+                TrainerCommand::SetTargetPower { .. } => {}
             }
             Ok(())
+        }
+
+        fn supports_virtual_shifting(&self) -> bool {
+            lock(&self.inner).virtual_shifting
         }
 
         fn state(&self) -> ConnectionState {
@@ -3402,6 +3464,41 @@ mod tests {
             "Tacx Neo 2T: connected, resistance follows the road"
         );
         assert!(handle.sends() > before);
+    }
+
+    #[test]
+    fn shift_virtual_gear_sends_command_and_clamps() {
+        let handle = Handle::new();
+        handle.set_discovered(vec![neo()]);
+        handle.set_virtual_shifting(true);
+        let mut session = session_with(Settings::default(), &handle);
+        session.connect("neo-1");
+        handle.set_state(ConnectionState::Connected);
+        assert_eq!(session.virtual_gear(), DEFAULT_VIRTUAL_GEAR);
+        assert!(session.virtual_shifting_available());
+
+        for expected in (DEFAULT_VIRTUAL_GEAR + 1)..=MAX_VIRTUAL_GEAR {
+            assert_eq!(session.shift_virtual_gear(1), Some(expected));
+        }
+        assert_eq!(
+            handle.virtual_gears(),
+            (DEFAULT_VIRTUAL_GEAR + 1..=MAX_VIRTUAL_GEAR).collect::<Vec<_>>()
+        );
+        assert_eq!(session.virtual_gear(), MAX_VIRTUAL_GEAR);
+        assert_eq!(*handle.virtual_gears().last().unwrap(), MAX_VIRTUAL_GEAR);
+
+        handle.set_virtual_shifting(false);
+        assert!(!session.virtual_shifting_available());
+        let sent = handle.virtual_gears().len();
+        assert_eq!(session.shift_virtual_gear(-1), None);
+        assert_eq!(handle.virtual_gears().len(), sent);
+
+        let mut settings = session.settings().clone();
+        settings.control_trainer = false;
+        session.apply_settings(settings);
+        handle.set_virtual_shifting(true);
+        assert!(!session.virtual_shifting_available());
+        assert_eq!(session.shift_virtual_gear(1), None);
     }
 
     #[test]

@@ -381,6 +381,12 @@ impl INode3D for Game {
             if Input::singleton().is_action_just_pressed("activate_powerup") {
                 self.activate_powerup();
             }
+            if Input::singleton().is_action_just_pressed("gear_down") {
+                self.shift_virtual_gear(-1);
+            }
+            if Input::singleton().is_action_just_pressed("gear_up") {
+                self.shift_virtual_gear(1);
+            }
             if self.session().play().workout.is_some() {
                 if Input::singleton().is_action_just_pressed("workout_easier") {
                     self.nudge_workout(-5);
@@ -2010,6 +2016,15 @@ impl Game {
         }
     }
 
+    fn shift_virtual_gear(&mut self, delta: i8) {
+        let Some(gear) = self.session_mut().shift_virtual_gear(delta) else {
+            return;
+        };
+        if let Some(screens) = self.screens.as_mut() {
+            screens.toast(&format!("Gear {gear} / 24"), 1.8);
+        }
+    }
+
     fn apply_pad(&mut self, action: pp_view::controllers::PadAction) {
         use pp_view::controllers::PadAction;
         match action {
@@ -2020,6 +2035,20 @@ impl Game {
             PadAction::LaneRight => {
                 self.lane.nudge(true);
                 self.lane_moved = true;
+            }
+            PadAction::ShiftUp => {
+                if self.session().virtual_shifting_available() {
+                    self.shift_virtual_gear(1);
+                } else {
+                    self.pad_up = true;
+                }
+            }
+            PadAction::ShiftDown => {
+                if self.session().virtual_shifting_available() {
+                    self.shift_virtual_gear(-1);
+                } else {
+                    self.pad_down = true;
+                }
             }
             PadAction::PowerUp => self.pad_up = true,
             PadAction::PowerDown => self.pad_down = true,

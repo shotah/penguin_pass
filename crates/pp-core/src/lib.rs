@@ -102,6 +102,15 @@ pub enum TrainerCommand {
         /// Power target, in watts.
         watts: u16,
     },
+    /// Set the Zwift virtual gear over trainer service `0xFC82`.
+    ///
+    /// Valid gears are `1`..=`24` (`1` is easiest, `24` is hardest). Values
+    /// outside that range are clamped by the trainer layer before they hit the
+    /// radio.
+    SetVirtualGear {
+        /// Requested gear, before clamping.
+        gear: u8,
+    },
 }
 
 #[cfg(test)]

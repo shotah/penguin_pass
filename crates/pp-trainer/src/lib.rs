@@ -87,6 +87,12 @@ pub trait Trainer: Send {
     /// newest command wins. `Err` means it was not queued.
     fn send(&mut self, command: TrainerCommand) -> Result<(), TrainerError>;
 
+    /// True when the connected trainer exposes the Zwift `0xFC82` write
+    /// characteristic for virtual gear-ratio updates.
+    fn supports_virtual_shifting(&self) -> bool {
+        false
+    }
+
     /// The current lifecycle state.
     fn state(&self) -> ConnectionState;
 

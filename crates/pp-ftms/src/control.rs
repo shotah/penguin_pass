@@ -102,18 +102,24 @@ impl ControlPointRequest {
     /// [`TrainerCommand::SetGrade`] keeps `simulation`'s wind, `crr`, and `cw`,
     /// and replaces the grade. [`TrainerCommand::SetTargetPower`] saturates
     /// into `sint16` watts (the wire type); values above 32767 become 32767.
+    /// [`TrainerCommand::SetVirtualGear`] is not an FTMS control-point opcode;
+    /// it returns `None`.
     #[must_use]
-    pub fn from_trainer_command(command: TrainerCommand, simulation: IndoorBikeSimulation) -> Self {
+    pub fn from_trainer_command(
+        command: TrainerCommand,
+        simulation: IndoorBikeSimulation,
+    ) -> Option<Self> {
         match command {
             TrainerCommand::SetGrade { grade_pct } => {
-                Self::SetIndoorBikeSimulation(IndoorBikeSimulation {
+                Some(Self::SetIndoorBikeSimulation(IndoorBikeSimulation {
                     grade_pct,
                     ..simulation
-                })
+                }))
             }
-            TrainerCommand::SetTargetPower { watts } => Self::SetTargetPower {
+            TrainerCommand::SetTargetPower { watts } => Some(Self::SetTargetPower {
                 watts: i16::try_from(watts).unwrap_or(i16::MAX),
-            },
+            }),
+            TrainerCommand::SetVirtualGear { .. } => None,
         }
     }
 
@@ -268,7 +274,8 @@ mod tests {
         let wide = ControlPointRequest::from_trainer_command(
             TrainerCommand::SetTargetPower { watts: 40_000 },
             IndoorBikeSimulation::standard(0.0),
-        );
+        )
+        .unwrap();
         assert_eq!(wide.encode().unwrap(), vec![0x05, 0xFF, 0x7F]);
     }
 
@@ -320,11 +327,23 @@ mod tests {
         let request = ControlPointRequest::from_trainer_command(
             TrainerCommand::SetGrade { grade_pct: 5.0 },
             IndoorBikeSimulation::standard(0.0),
-        );
+        )
+        .unwrap();
         // 5.00% = 500 = 0x01F4.
         assert_eq!(
             request.encode().unwrap(),
             vec![0x11, 0x00, 0x00, 0xF4, 0x01, 0x28, 0x33]
+        );
+    }
+
+    #[test]
+    fn virtual_gear_does_not_map_to_control_point() {
+        assert_eq!(
+            ControlPointRequest::from_trainer_command(
+                TrainerCommand::SetVirtualGear { gear: 12 },
+                IndoorBikeSimulation::standard(0.0),
+            ),
+            None,
         );
     }
 

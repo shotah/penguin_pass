@@ -20,8 +20,8 @@ use pp_ftms::{
     TargetPower, TrackResistance, UserConfiguration, WAHOO_OP_SET_ERG_POWER,
     WAHOO_OP_SET_SIM_GRADE, WAHOO_OP_SET_SIM_PARAMETERS, WAHOO_OP_UNLOCK,
     WAHOO_TRAINER_CONTROL_UUID, WahooCommand, WahooResponse, WahooSimParameters, ZWIFT_HANDSHAKE,
-    ZWIFT_TRAINER_NOTIFY_UUID, ZWIFT_TRAINER_RESPONSE_UUID, ZwiftHubCommand, ZwiftPhysical,
-    ZwiftRidingData, ZwiftSimulation, crank_cadence_rpm,
+    ZWIFT_TRAINER_NOTIFY_UUID, ZWIFT_TRAINER_RESPONSE_UUID, ZWIFT_VIRTUAL_GEAR_RATIOS,
+    ZwiftHubCommand, ZwiftPhysical, ZwiftRidingData, ZwiftSimulation, crank_cadence_rpm,
 };
 use uuid::Uuid;
 
@@ -211,6 +211,9 @@ pub(crate) struct Engine {
     /// Short service ids for the connected-state trace row.
     services: String,
     mono_ms: u64,
+    zwift_handshaked: bool,
+    pending_gear: Option<u8>,
+    last_sent_gear: Option<u8>,
 }
 
 impl Engine {
@@ -251,7 +254,19 @@ impl Engine {
             trace: BleTrace::off(),
             services: String::new(),
             mono_ms: 0,
+            zwift_handshaked: false,
+            pending_gear: None,
+            last_sent_gear: None,
         }
+    }
+
+    /// Zwift `0xFC82` virtual gear writes are available on this link.
+    pub(crate) fn supports_virtual_shifting(&self) -> bool {
+        self.phase == Phase::Ready
+            && self
+                .profile
+                .as_ref()
+                .is_some_and(|profile| profile.zwift_write)
     }
 
     /// Install a log opened by the caller.
@@ -298,7 +313,7 @@ impl Engine {
 
     /// No control-point write is waiting and no command is queued.
     pub(crate) fn control_settled(&self) -> bool {
-        self.awaiting.is_none() && self.pending.is_none()
+        self.awaiting.is_none() && self.pending.is_none() && self.pending_gear.is_none()
     }
 
     /// The most recent non-fatal control-point problem, if any.
@@ -343,6 +358,9 @@ impl Engine {
         self.fec_hold_until_ms = None;
         self.fec_checksum_noted = false;
         self.fec_bad_noted = false;
+        self.zwift_handshaked = false;
+        self.pending_gear = None;
+        self.last_sent_gear = None;
         if !resumed {
             self.trace_state("connecting");
         }
@@ -590,6 +608,7 @@ impl Engine {
             }
             Err(_) => self.note("zwift physical: non-finite"),
         }
+        self.zwift_handshaked = true;
         self.mark_connected();
         actions.extend(self.flush(now_ms));
         actions
@@ -963,21 +982,40 @@ impl Engine {
         if self.config.mode != SessionMode::Control || self.phase != Phase::Ready {
             return Vec::new();
         }
-        self.pending = Some(match command {
-            TrainerCommand::SetGrade { grade_pct } => Pending::Grade(grade_pct),
-            TrainerCommand::SetTargetPower { watts } => Pending::Power(watts),
-        });
+        match command {
+            TrainerCommand::SetVirtualGear { gear } => {
+                if self
+                    .profile
+                    .as_ref()
+                    .is_some_and(|profile| profile.zwift_write)
+                {
+                    let clamped = gear.clamp(1, 24);
+                    self.pending_gear = Some(clamped);
+                }
+                return self.flush(now_ms);
+            }
+            TrainerCommand::SetGrade { grade_pct } => {
+                self.pending = Some(Pending::Grade(grade_pct));
+            }
+            TrainerCommand::SetTargetPower { watts } => {
+                self.pending = Some(Pending::Power(watts));
+            }
+        }
         self.flush(now_ms)
     }
 
     fn flush(&mut self, now_ms: u64) -> Vec<OutAction> {
+        let mut actions = Vec::new();
+        if self.phase == Phase::Ready {
+            actions.extend(self.flush_virtual_gear());
+        }
         if self.phase != Phase::Ready || self.awaiting.is_some() {
-            return Vec::new();
+            return actions;
         }
         if self.fec_held(now_ms) {
-            return Vec::new();
+            return actions;
         }
-        let mut actions = self.take_user_config();
+        actions.extend(self.take_user_config());
         if self.wire == ControlWire::None {
             self.pending = None;
             return actions;
@@ -992,6 +1030,52 @@ impl Engine {
             Pending::Grade(grade) => self.flush_grade(now_ms, grade),
             Pending::Power(watts) => self.flush_power(now_ms, watts),
         });
+        actions
+    }
+
+    fn flush_virtual_gear(&mut self) -> Vec<OutAction> {
+        let Some(gear) = self.pending_gear else {
+            return Vec::new();
+        };
+        if !self
+            .profile
+            .as_ref()
+            .is_some_and(|profile| profile.zwift_write)
+        {
+            self.pending_gear = None;
+            return Vec::new();
+        }
+        self.pending_gear = None;
+        if self.last_sent_gear == Some(gear) {
+            return Vec::new();
+        }
+        let mut actions = Vec::new();
+        if !self.zwift_handshaked {
+            if self
+                .profile
+                .as_ref()
+                .is_some_and(|profile| profile.zwift_response)
+            {
+                actions.push(OutAction::Subscribe(ZWIFT_TRAINER_RESPONSE_UUID));
+            }
+            let handshake = ZWIFT_HANDSHAKE.to_vec();
+            self.trace_zwift_tx(&handshake, "RideOn");
+            actions.push(OutAction::WriteZwift(handshake));
+            self.zwift_handshaked = true;
+        }
+        let ratio = ZWIFT_VIRTUAL_GEAR_RATIOS[(gear - 1) as usize];
+        let physical = ZwiftHubCommand::SetPhysical(ZwiftPhysical {
+            gear_ratio_x10000: Some(ratio),
+            bike_weight_kg: finite_kg(self.config.bike_mass_kg),
+            rider_weight_kg: finite_kg(self.config.rider_mass_kg),
+        });
+        let Ok(bytes) = physical.encode() else {
+            self.note("zwift physical: non-finite");
+            return actions;
+        };
+        self.trace_zwift_tx(&bytes, &format!("gear={gear} ratio={ratio}"));
+        actions.push(OutAction::WriteZwift(bytes));
+        self.last_sent_gear = Some(gear);
         actions
     }
 
@@ -1105,10 +1189,13 @@ impl Engine {
             self.pending = None;
             return Vec::new();
         }
-        let request = ControlPointRequest::from_trainer_command(
+        let Some(request) = ControlPointRequest::from_trainer_command(
             TrainerCommand::SetTargetPower { watts },
             IndoorBikeSimulation::standard(0.0),
-        );
+        ) else {
+            self.pending = None;
+            return Vec::new();
+        };
         let Ok(bytes) = request.encode() else {
             self.pending = None;
             return Vec::new();
@@ -2853,5 +2940,116 @@ mod tests {
         assert_eq!(sample.cadence_rpm, None);
         assert_eq!(sample.speed_kph, None);
         assert_eq!(sample.heart_rate_bpm, None);
+    }
+
+    fn ftms_zwift_profile() -> DeviceProfile {
+        DeviceProfile {
+            indoor_bike: true,
+            control_point: true,
+            zwift_write: true,
+            zwift_response: true,
+            ..DeviceProfile::default()
+        }
+    }
+
+    fn encoded_gear(gear: u8, config: &TrainerConfig) -> Vec<u8> {
+        let ratio = ZWIFT_VIRTUAL_GEAR_RATIOS[(gear - 1) as usize];
+        ZwiftHubCommand::SetPhysical(ZwiftPhysical {
+            gear_ratio_x10000: Some(ratio),
+            bike_weight_kg: finite_kg(config.bike_mass_kg),
+            rider_weight_kg: finite_kg(config.rider_mass_kg),
+        })
+        .encode()
+        .unwrap()
+    }
+
+    #[test]
+    fn virtual_gear_on_ftms_plus_zwift_writes_fc82_without_blocking_grade() {
+        let mut harness = Harness::control();
+        set_masses(&mut harness);
+        harness.connect(ftms_zwift_profile());
+        assert!(harness.engine.supports_virtual_shifting());
+        assert_eq!(harness.engine.control_label(), "ftms");
+        assert!(harness.fake.zwift.is_empty());
+
+        harness.command(TrainerCommand::SetVirtualGear { gear: 12 });
+        let gear12 = encoded_gear(12, &harness.engine.config);
+        assert_eq!(
+            harness.fake.zwift,
+            vec![ZWIFT_HANDSHAKE.to_vec(), gear12.clone()]
+        );
+
+        harness.command(TrainerCommand::SetVirtualGear { gear: 15 });
+        let gear15 = encoded_gear(15, &harness.engine.config);
+        assert_eq!(
+            harness.fake.zwift,
+            vec![ZWIFT_HANDSHAKE.to_vec(), gear12, gear15]
+        );
+
+        harness.command(TrainerCommand::SetVirtualGear { gear: 15 });
+        assert_eq!(harness.fake.zwift.len(), 3);
+
+        harness.command(TrainerCommand::SetGrade { grade_pct: 4.0 });
+        assert_eq!(harness.fake.writes.len(), 3);
+        assert!(
+            harness
+                .fake
+                .writes
+                .last()
+                .unwrap()
+                .first()
+                .copied()
+                .unwrap()
+                == OPCODE_SET_INDOOR_BIKE_SIMULATION
+        );
+    }
+
+    #[test]
+    fn pure_zwift_hub_skips_second_ride_on_for_first_gear_shift() {
+        let mut harness = Harness::control();
+        set_masses(&mut harness);
+        harness.connect(zwift_profile());
+        assert!(harness.engine.supports_virtual_shifting());
+        let initial = harness.fake.zwift.len();
+        assert_eq!(initial, 2);
+
+        harness.command(TrainerCommand::SetVirtualGear { gear: 1 });
+        let gear1 = encoded_gear(1, &harness.engine.config);
+        assert_eq!(*harness.fake.zwift.last().unwrap(), gear1);
+        assert_eq!(harness.fake.zwift.len(), initial + 1);
+        assert_eq!(harness.fake.zwift[0], ZWIFT_HANDSHAKE.to_vec());
+    }
+
+    #[test]
+    fn virtual_gear_clamps_to_one_and_twenty_four() {
+        let mut harness = Harness::control();
+        harness.connect(zwift_profile());
+        harness.command(TrainerCommand::SetVirtualGear { gear: 0 });
+        assert_eq!(
+            harness.fake.zwift.last().unwrap(),
+            &encoded_gear(1, &harness.engine.config)
+        );
+        harness.command(TrainerCommand::SetVirtualGear { gear: 99 });
+        assert_eq!(
+            harness.fake.zwift.last().unwrap(),
+            &encoded_gear(24, &harness.engine.config)
+        );
+    }
+
+    #[test]
+    fn virtual_gear_without_zwift_write_emits_nothing() {
+        let mut harness = Harness::control();
+        harness.connect(full_profile());
+        assert!(!harness.engine.supports_virtual_shifting());
+        harness.command(TrainerCommand::SetVirtualGear { gear: 10 });
+        assert!(harness.fake.zwift.is_empty());
+    }
+
+    #[test]
+    fn read_only_virtual_gear_emits_nothing() {
+        let mut harness = Harness::with_result(SessionMode::ReadOnly, 0x01);
+        harness.connect(ftms_zwift_profile());
+        harness.command(TrainerCommand::SetVirtualGear { gear: 10 });
+        assert!(harness.fake.zwift.is_empty());
     }
 }

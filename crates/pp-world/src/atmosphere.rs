@@ -123,9 +123,9 @@ pub struct AtmosphereState {
 pub fn hour_at(time: TimeOfDay, ride_s: f32) -> f32 {
     let hour = match time {
         TimeOfDay::Auto => AUTO_START_HOUR + (ride_s / AUTO_DAY_SECONDS) * 24.0,
-        TimeOfDay::Dawn => 6.7,
+        TimeOfDay::Dawn => 7.1,
         TimeOfDay::Day => DAY_HOUR,
-        TimeOfDay::Sunset => 17.2,
+        TimeOfDay::Sunset => 16.9,
         TimeOfDay::Night => 22.5,
     };
     wrap_hour(hour)
@@ -180,13 +180,13 @@ pub fn atmosphere_at(theme_name: &str, hour: f32, weather: Weather) -> Atmospher
     let warm_t = smoothstep(-1.0, 7.0, elevation) * (1.0 - smoothstep(12.0, 28.0, elevation));
     let night_sun = [0.35, 0.42, 0.62];
     let warm_sun = if hour < 12.0 {
-        [1.0, 0.62, 0.42]
+        [1.0, 0.74, 0.52]
     } else {
-        [1.0, 0.48, 0.28]
+        [1.0, 0.60, 0.38]
     };
     let sun_color = lerp3(lerp3(night_sun, look.sun_color, day_t), warm_sun, warm_t);
-    let sun_energy = look.sun_energy * smoothstep(-5.0, 14.0, elevation);
-    let sky_t = smoothstep(-8.0, 22.0, elevation);
+    let sun_energy = look.sun_energy * smoothstep(-4.0, 18.0, elevation);
+    let sky_t = smoothstep(-6.0, 14.0, elevation);
     let night_zenith = [0.015, 0.02, 0.05];
     let night_horizon = [0.04, 0.045, 0.08];
     let warm_horizon = if hour < 12.0 {
@@ -194,13 +194,27 @@ pub fn atmosphere_at(theme_name: &str, hour: f32, weather: Weather) -> Atmospher
     } else {
         [0.98, 0.46, 0.26]
     };
+    let warm_ground = if hour < 12.0 {
+        [0.78, 0.62, 0.48]
+    } else {
+        [0.82, 0.54, 0.38]
+    };
+    let warm_fog = if hour < 12.0 {
+        [0.88, 0.68, 0.52]
+    } else {
+        [0.92, 0.58, 0.40]
+    };
     let zenith = lerp3(night_zenith, look.zenith, sky_t);
     let horizon = lerp3(
         lerp3(night_horizon, look.horizon, sky_t),
         warm_horizon,
         warm_t * 0.9,
     );
-    let ground = lerp3([0.03, 0.03, 0.045], look.ground, sky_t);
+    let ground = lerp3(
+        lerp3([0.03, 0.03, 0.045], look.ground, sky_t),
+        warm_ground,
+        warm_t * 0.55,
+    );
     let ground_bottom = lerp3([0.01, 0.012, 0.02], look.ground_bottom, sky_t);
     let mut state = AtmosphereState {
         hour,
@@ -214,7 +228,11 @@ pub fn atmosphere_at(theme_name: &str, hour: f32, weather: Weather) -> Atmospher
         ground_bottom,
         sky_curve: look.sky_curve,
         fog_density: look.fog_density * (1.0 + (1.0 - sky_t) * 1.5),
-        fog_color: lerp3([0.05, 0.06, 0.09], look.fog_color, sky_t),
+        fog_color: lerp3(
+            lerp3([0.05, 0.06, 0.09], look.fog_color, sky_t),
+            warm_fog,
+            warm_t * 0.5,
+        ),
         fog_energy: look.fog_energy,
         fog_aerial: look.fog_aerial,
         ambient_energy: lerp(0.16, look.ambient, sky_t),

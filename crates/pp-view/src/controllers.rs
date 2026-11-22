@@ -16,6 +16,10 @@ pub enum PadAction {
     PowerUp,
     /// Simulated power down, or a repeat while held.
     PowerDown,
+    /// Virtual gear up on a Zwift `0xFC82` trainer.
+    ShiftUp,
+    /// Virtual gear down on a Zwift `0xFC82` trainer.
+    ShiftDown,
     /// Chase camera or handlebars.
     Camera,
     /// Next music track.
@@ -58,9 +62,9 @@ pub fn map_event(event: &ControllerEvent, riding: bool, skip_shift: bool) -> Opt
                 return None;
             }
             Some(if *side == Side::Right {
-                PadAction::PowerUp
+                PadAction::ShiftUp
             } else {
-                PadAction::PowerDown
+                PadAction::ShiftDown
             })
         }
         _ => None,
@@ -112,12 +116,12 @@ fn map_button(button: Button, riding: bool) -> Option<PadAction> {
             | Button::ShiftUp
             | Button::ShiftUpRight
             | Button::ShiftDownRight
-            | Button::PowerUpRight => PadAction::PowerUp,
+            | Button::PowerUpRight => PadAction::ShiftUp,
             Button::Minus
             | Button::ShiftDown
             | Button::ShiftDownLeft
             | Button::ShiftUpLeft
-            | Button::PowerUpLeft => PadAction::PowerDown,
+            | Button::PowerUpLeft => PadAction::ShiftDown,
             Button::A => PadAction::Activate,
             Button::B => return None,
         });
@@ -185,11 +189,19 @@ mod tests {
         };
         let batch = [paddle.clone(), press(Button::ShiftUp)];
         assert!(batch_has_paddle(&batch));
-        assert_eq!(map_event(&paddle, true, false), Some(PadAction::PowerUp));
+        assert_eq!(map_event(&paddle, true, false), Some(PadAction::ShiftUp));
         assert_eq!(map_event(&press(Button::ShiftUp), true, true), None);
         assert_eq!(
             map_event(&press(Button::ShiftUp), true, false),
+            Some(PadAction::ShiftUp)
+        );
+        assert_eq!(
+            map_event(&press(Button::Up), true, false),
             Some(PadAction::PowerUp)
+        );
+        assert_eq!(
+            map_event(&press(Button::Down), true, false),
+            Some(PadAction::PowerDown)
         );
     }
 }

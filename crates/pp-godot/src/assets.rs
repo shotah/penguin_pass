@@ -6,7 +6,11 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-use godot::classes::{GltfDocument, GltfState, Image, ImageTexture, Mesh, MeshInstance3D, Node};
+use godot::classes::base_material_3d::{DiffuseMode, SpecularMode, Transparency};
+use godot::classes::{
+    GltfDocument, GltfState, Image, ImageTexture, Material, Mesh, MeshInstance3D, Node,
+    StandardMaterial3D,
+};
 use godot::global::Error;
 use godot::obj::Gd;
 use godot::prelude::*;
@@ -350,9 +354,44 @@ fn load_gltf(path: &str) -> Option<Gd<Mesh>> {
     // with "double free or corruption". Take the mesh ref, then free the graph
     // while the engine is still up.
     let scene = document.generate_scene(&state)?;
-    let mesh = find_mesh(&scene);
+    let mut mesh = find_mesh(&scene)?;
     scene.free();
-    mesh
+    tune_prop_materials(&mut mesh);
+    Some(mesh)
+}
+
+fn tune_prop_materials(mesh: &mut Gd<Mesh>) {
+    let count = mesh.get_surface_count();
+    for surface in 0..count {
+        let Some(material) = mesh.surface_get_material(surface) else {
+            continue;
+        };
+        let Ok(mut mat) = material.try_cast::<StandardMaterial3D>() else {
+            continue;
+        };
+        mat.set_specular_mode(SpecularMode::DISABLED);
+        mat.set_metallic(0.0);
+        mat.set_specular(0.0);
+        let roughness = mat.get_roughness().max(0.96);
+        mat.set_roughness(roughness);
+        if is_foliage_material(&mat) {
+            mat.set_diffuse_mode(DiffuseMode::LAMBERT_WRAP);
+        }
+        mesh.surface_set_material(surface, &mat.upcast::<Material>());
+    }
+}
+
+fn is_foliage_material(mat: &Gd<StandardMaterial3D>) -> bool {
+    let transparency = mat.get_transparency();
+    if transparency == Transparency::ALPHA_SCISSOR || transparency == Transparency::ALPHA_HASH {
+        return true;
+    }
+    const FOLIAGE: &[&str] = &[
+        "leaf", "leaves", "grass", "flower", "foliage", "bush", "fern",
+    ];
+    let label = mat.get("resource_name").to_string();
+    let name = label.to_ascii_lowercase();
+    FOLIAGE.iter().any(|token| name.contains(token))
 }
 
 fn find_mesh(node: &Gd<Node>) -> Option<Gd<Mesh>> {

@@ -5,6 +5,7 @@
 //! reads the latest sample out of shared state.
 
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -98,6 +99,8 @@ struct Shared {
     settled: Mutex<bool>,
     discovered: Mutex<Vec<DiscoveredTrainer>>,
     pending: Mutex<Option<TrainerCommand>>,
+    pending_gear: Mutex<Option<u8>>,
+    virtual_shifting: AtomicBool,
     staleness: Duration,
     /// Short service ids from the last GATT discovery, for the connect log line.
     services: Mutex<String>,
@@ -118,6 +121,8 @@ impl Shared {
             settled: Mutex::new(true),
             discovered: Mutex::new(Vec::new()),
             pending: Mutex::new(None),
+            pending_gear: Mutex::new(None),
+            virtual_shifting: AtomicBool::new(false),
             staleness,
             services: Mutex::new(String::new()),
         }
@@ -168,7 +173,7 @@ impl Shared {
     }
 
     fn has_pending(&self) -> bool {
-        lock(&self.pending).is_some()
+        lock(&self.pending).is_some() || lock(&self.pending_gear).is_some()
     }
 
     fn set_pending(&self, command: TrainerCommand) {
@@ -177,6 +182,22 @@ impl Shared {
 
     fn take_pending(&self) -> Option<TrainerCommand> {
         lock(&self.pending).take()
+    }
+
+    fn set_pending_gear(&self, gear: u8) {
+        *lock(&self.pending_gear) = Some(gear);
+    }
+
+    fn take_pending_gear(&self) -> Option<u8> {
+        lock(&self.pending_gear).take()
+    }
+
+    fn set_virtual_shifting(&self, supported: bool) {
+        self.virtual_shifting.store(supported, Ordering::Release);
+    }
+
+    fn virtual_shifting(&self) -> bool {
+        self.virtual_shifting.load(Ordering::Acquire)
     }
 
     fn set_services(&self, services: String) {
@@ -304,10 +325,18 @@ impl Trainer for BleTrainer {
         if !matches!(self.state(), ConnectionState::Connected) {
             return Err(TrainerError::NotConnected);
         }
-        self.shared.set_pending(command);
+        if let TrainerCommand::SetVirtualGear { gear } = command {
+            self.shared.set_pending_gear(gear);
+        } else {
+            self.shared.set_pending(command);
+        }
         self.shared.set_settled(false);
         self.notify.notify_one();
         Ok(())
+    }
+
+    fn supports_virtual_shifting(&self) -> bool {
+        self.shared.virtual_shifting()
     }
 
     fn state(&self) -> ConnectionState {
@@ -695,18 +724,36 @@ async fn apply_pending(
     ctx: &SessionCtx<'_>,
     published: &mut FieldClocks,
 ) -> Option<OnceStop> {
-    let command = ctx.shared.take_pending()?;
-    let actions = engine.handle(elapsed_ms(ctx.started), InEvent::Command(command));
-    if let Err(err) = perform(peripheral, &actions).await {
-        fail_connect(engine, ctx, published, err);
-        return Some(OnceStop::Lost);
+    if let Some(command) = ctx.shared.take_pending() {
+        let actions = engine.handle(elapsed_ms(ctx.started), InEvent::Command(command));
+        if let Err(err) = perform(peripheral, &actions).await {
+            fail_connect(engine, ctx, published, err);
+            return Some(OnceStop::Lost);
+        }
+        publish(engine, ctx.shared, published);
+        if actions
+            .iter()
+            .any(|action| matches!(action, OutAction::Disconnect))
+        {
+            return Some(OnceStop::Lost);
+        }
     }
-    publish(engine, ctx.shared, published);
-    if actions
-        .iter()
-        .any(|action| matches!(action, OutAction::Disconnect))
-    {
-        return Some(OnceStop::Lost);
+    if let Some(gear) = ctx.shared.take_pending_gear() {
+        let actions = engine.handle(
+            elapsed_ms(ctx.started),
+            InEvent::Command(TrainerCommand::SetVirtualGear { gear }),
+        );
+        if let Err(err) = perform(peripheral, &actions).await {
+            fail_connect(engine, ctx, published, err);
+            return Some(OnceStop::Lost);
+        }
+        publish(engine, ctx.shared, published);
+        if actions
+            .iter()
+            .any(|action| matches!(action, OutAction::Disconnect))
+        {
+            return Some(OnceStop::Lost);
+        }
     }
     None
 }
@@ -828,6 +875,7 @@ fn publish(engine: &Engine, shared: &Shared, published: &mut FieldClocks) {
         shared.set_name(name.to_string());
     }
     shared.set_warning(engine.warning().map(ToString::to_string));
+    shared.set_virtual_shifting(engine.supports_virtual_shifting());
     shared.set_settled(engine.control_settled() && !shared.has_pending());
     let fields = engine.fields();
     let mut live = lock(&shared.live);
