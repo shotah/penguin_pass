@@ -1,4 +1,4 @@
-//! Generate `courses/penguin_pass.json`.
+//! Generate `godot/routes/penguin_pass/route.json`.
 //!
 //! The loop is built from straights and circular arcs so the turn radius is
 //! known exactly, then scaled so the 3D centerline is 5000 m. Grades change
@@ -968,7 +968,8 @@ fn publish(text: &str) -> Result<(), Box<dyn std::error::Error>> {
         climb_start, climb_end, descent_start, descent_end
     );
     lap_report(&course, climb_start, climb_end);
-    let dest = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("courses/penguin_pass.json");
+    let dest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../godot/routes/penguin_pass/route.json");
     let staging = dest.with_extension("json.staging");
     fs::write(&staging, text)?;
     fs::rename(&staging, &dest)?;

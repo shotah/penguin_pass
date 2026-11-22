@@ -16,7 +16,7 @@ use pp_trainer::{
 };
 
 use crate::connection::{self, ConnectionStatus, LinkPhase, ResistanceMode};
-use crate::course_sel::{self, CourseChoice, CourseOption, RidePhase};
+use crate::course_sel::{self, CourseChoice, CourseOption, RidePhase, RouteEntry};
 use crate::events::{EventQueue, RideEvent};
 use crate::group::{ErgSend, Group};
 use crate::heart::{self, HeartRateFactory, SensorEntry};
@@ -243,6 +243,7 @@ pub struct Session {
     last_dashboard_error: Option<String>,
     phase: RidePhase,
     choice: CourseChoice,
+    custom_routes: Vec<RouteEntry>,
     catalog: Option<Vec<CourseOption>>,
     trace: RideTrace,
     last_grade_sent: Option<f32>,
@@ -281,8 +282,10 @@ impl Session {
         course_sel::warm_catalog();
         let mut settings = settings.normalized();
         let (course, choice, fallback) =
-            course_sel::open_course(&settings.course, settings.course_reversed);
-        settings.course = choice.clone();
+            course_sel::open_course(&settings.course, settings.course_reversed, &[]);
+        if fallback.is_none() || !matches!(settings.course, CourseChoice::Custom { .. }) {
+            settings.course = choice.clone();
+        }
         let mut sim = SimTrainer::new("Simulated rider");
         sim.set_power(0);
         sim.set_cadence(0.0);
@@ -322,6 +325,7 @@ impl Session {
             last_dashboard_error: None,
             phase: RidePhase::Riding,
             choice,
+            custom_routes: Vec::new(),
             catalog: None,
             trace: RideTrace::from_env(),
             last_grade_sent: None,
@@ -935,9 +939,92 @@ impl Session {
     #[must_use]
     pub fn course_catalog(&mut self) -> &[CourseOption] {
         if self.catalog.is_none() {
-            self.catalog = Some(course_sel::shared_catalog());
+            let mut catalog = course_sel::shared_catalog();
+            for entry in &self.custom_routes {
+                catalog.push(course_sel::option_from_course(
+                    CourseChoice::Custom {
+                        id: entry.id.clone(),
+                    },
+                    &entry.course,
+                ));
+            }
+            self.catalog = Some(catalog);
         }
         self.catalog.as_deref().unwrap_or(&[])
+    }
+
+    /// Register JSON routes from Godot (`res://routes/` and `user://routes/`).
+    ///
+    /// Built-in ids `penguin_pass` and `lonely_road` are ignored. Duplicate ids
+    /// keep the first entry. The course catalog is rebuilt. When the saved
+    /// course is a custom route that was not loaded yet, it is activated here.
+    pub fn register_routes(&mut self, routes: Vec<RouteEntry>) {
+        let mut seen = std::collections::HashSet::new();
+        self.custom_routes.clear();
+        for route in routes {
+            if !pp_course::is_route_id(&route.id) {
+                continue;
+            }
+            if route.id == "penguin_pass" || route.id == "lonely_road" {
+                continue;
+            }
+            if !seen.insert(route.id.clone()) {
+                continue;
+            }
+            self.custom_routes.push(route);
+        }
+        self.custom_routes
+            .sort_by(|left, right| left.id.cmp(&right.id));
+        self.catalog = None;
+        if let CourseChoice::Custom { id } = &self.settings.course
+            && self.custom_routes.iter().any(|entry| entry.id == *id)
+        {
+            let _ = self.set_course(self.settings.course.clone());
+        }
+    }
+
+    /// Theme file stem for the loaded course.
+    #[must_use]
+    pub fn active_theme_name(&self) -> &str {
+        self.ride.course().theme()
+    }
+
+    /// Ride-music mood id for the loaded course.
+    #[must_use]
+    pub fn active_mood_name(&self) -> &str {
+        self.ride.course().mood()
+    }
+
+    /// True when the loaded course rides without pacing bots.
+    #[must_use]
+    pub fn active_is_solitary(&self) -> bool {
+        !self.ride.course().bots()
+    }
+
+    /// Display name of the loaded course.
+    #[must_use]
+    pub fn active_course_label(&self) -> String {
+        self.ride.course().name().to_owned()
+    }
+
+    /// Display name with ` (Reverse)` when the course is ridden backward.
+    #[must_use]
+    pub fn active_course_label_with_direction(&self) -> String {
+        let name = self.active_course_label();
+        if self.settings.course_reversed {
+            format!("{name} (Reverse)")
+        } else {
+            name
+        }
+    }
+
+    /// Ids of custom routes currently registered on this session.
+    #[must_use]
+    pub fn custom_route_ids(&self) -> Vec<&str> {
+        self.custom_routes
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect()
     }
 
     /// Replace one generated catalog row with the next seed.
@@ -962,7 +1049,7 @@ impl Session {
             distance_km,
             seed: seed.wrapping_add(1),
         };
-        let option = course_sel::course_option(&choice).ok()?;
+        let option = course_sel::course_option(&choice, &self.custom_routes).ok()?;
         self.catalog.as_mut()?[index] = option;
         self.catalog.as_ref()?.get(index)
     }
@@ -982,7 +1069,11 @@ impl Session {
     /// Returns a sentence when the route cannot be generated. Penguin Pass
     /// does not fail.
     pub fn set_course(&mut self, choice: CourseChoice) -> Result<(), String> {
-        let course = course_sel::build_course_dir(&choice, self.settings.course_reversed)?;
+        let course = course_sel::build_course_dir(
+            &choice,
+            self.settings.course_reversed,
+            &self.custom_routes,
+        )?;
         self.commit_course(course, choice);
         Ok(())
     }
@@ -1012,7 +1103,7 @@ impl Session {
             return Ok(());
         }
         let choice = self.choice.clone();
-        let course = course_sel::build_course_dir(&choice, reversed)?;
+        let course = course_sel::build_course_dir(&choice, reversed, &self.custom_routes)?;
         self.settings.course_reversed = reversed;
         self.commit_course(course, choice);
         if let Some(path) = self.settings_path.clone() {
@@ -1023,7 +1114,11 @@ impl Session {
 
     fn reload_course_direction(&mut self) -> Result<(), String> {
         let choice = self.choice.clone();
-        let course = course_sel::build_course_dir(&choice, self.settings.course_reversed)?;
+        let course = course_sel::build_course_dir(
+            &choice,
+            self.settings.course_reversed,
+            &self.custom_routes,
+        )?;
         self.commit_course(course, choice);
         Ok(())
     }
@@ -2744,6 +2839,8 @@ fn cast_profile(course: &Course) -> CourseProfile {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
     use crate::connection::{LinkPhase, ResistanceMode};
     use crate::events::RideEvent;
@@ -4370,9 +4467,89 @@ mod tests {
             }
             CourseChoice::PenguinPass => panic!("flat row should stay generated"),
             CourseChoice::LonelyRoad => panic!("flat row should stay generated"),
+            CourseChoice::Custom { .. } => panic!("flat row should stay generated"),
         }
         assert_eq!(session.course_catalog()[5].name, "Flat 10 km");
         assert_eq!(session.course_choice(), &CourseChoice::PenguinPass);
+    }
+
+    fn custom_test_loop() -> Course {
+        let length = 50.0 * std::f64::consts::TAU;
+        let json = format!(
+            r#"{{"name":"Desert Test","description":"A short custom desert loop.","theme":"desert","mood":"solitary","bots":false,"start":{{"x":0.0,"z":0.0,"heading_rad":0.0}},"segments":[{{"type":"arc","radius_m":50.0,"angle_rad":{angle}}}],"grade":[{{"type":"hold","length_m":{length},"grade_pct":0.0}}]}}"#,
+            angle = std::f64::consts::TAU,
+            length = length
+        );
+        Course::from_str(&json).expect("custom loop")
+    }
+
+    #[test]
+    fn custom_routes_register_catalog_select_and_reverse() {
+        const CUSTOM_ID: &str = "desert_test";
+        let course = custom_test_loop();
+        let mut settings = offline();
+        settings.course = CourseChoice::Custom {
+            id: CUSTOM_ID.to_owned(),
+        };
+        settings.bots_count = 8;
+        let mut session = Session::new(settings);
+        assert!(matches!(
+            session.course_choice(),
+            CourseChoice::Custom { .. }
+        ));
+        assert_eq!(session.course_catalog().len(), 9);
+
+        session.register_routes(vec![RouteEntry {
+            id: CUSTOM_ID.to_owned(),
+            course,
+            user_route: true,
+        }]);
+        let catalog = session.course_catalog();
+        assert_eq!(catalog.len(), 10);
+        let row = catalog.last().expect("custom row");
+        assert_eq!(row.theme, "desert");
+        assert_eq!(row.mood, "solitary");
+        assert!(!row.bots);
+        assert_eq!(row.description, "A short custom desert loop.");
+        assert_eq!(session.active_theme_name(), "desert");
+        assert_eq!(session.active_mood_name(), "solitary");
+        assert!(session.active_is_solitary());
+
+        session
+            .set_course(CourseChoice::Custom {
+                id: CUSTOM_ID.to_owned(),
+            })
+            .expect("select custom");
+        session.set_sim_power(200);
+        session.tick(1.0);
+        assert!(session.play().bots.is_empty());
+
+        session.set_course_reversed(true).expect("reverse");
+        assert_eq!(session.active_mood_name(), "solitary");
+        assert!(session.active_is_solitary());
+        assert!(session.ride.course().is_reversed());
+    }
+
+    #[test]
+    fn custom_course_in_settings_loads_after_register_routes() {
+        const CUSTOM_ID: &str = "desert_test";
+        let course = custom_test_loop();
+        let mut settings = offline();
+        settings.course = CourseChoice::Custom {
+            id: CUSTOM_ID.to_owned(),
+        };
+        let value = toml::Value::try_from(&settings.course).expect("serialize course");
+        assert_eq!(value.as_str(), Some(CUSTOM_ID));
+
+        let mut session = Session::new(settings);
+        assert!(session.active_theme_name() == "alpine");
+        session.register_routes(vec![RouteEntry {
+            id: CUSTOM_ID.to_owned(),
+            course,
+            user_route: false,
+        }]);
+        assert_eq!(session.active_theme_name(), "desert");
+        assert_eq!(session.custom_route_ids(), vec![CUSTOM_ID]);
     }
 
     #[test]

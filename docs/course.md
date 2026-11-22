@@ -125,11 +125,39 @@ and distances past the lap.
 
 ## Data file
 
-`crates/pp-course/courses/penguin_pass.json` is embedded with
-`include_str!` and parsed with serde. `Course::penguin_pass` returns
-that loop. Any other text goes through `FromStr` (`str::parse` or
-`Course::from_str` with the trait in scope). Invalid data is a
-`CourseError`, not a panic.
+`godot/routes/penguin_pass/route.json` is embedded with `include_str!`
+and parsed with serde. `Course::penguin_pass` returns that loop. Any
+other text goes through `FromStr` (`str::parse` or `Course::from_str`
+with the trait in scope). Invalid data is a `CourseError`, not a panic.
+
+## Modular and custom routes
+
+Built-in handcrafted routes ship as one subfolder per id under
+`godot/routes/<id>/route.json` (for example `penguin_pass` and
+`lonely_road`). At runtime the Godot extension also scans
+`res://routes/` and `user://routes/` for more closed loops.
+
+Custom routes can use either layout:
+
+- Subfolder: `user://routes/<id>/route.json`
+- Flat file: `user://routes/<id>.json`
+
+The route id must be a lowercase slug (`[a-z][a-z0-9_-]*`). On Linux,
+Godot maps `user://` to
+`~/.local/share/godot/app_userdata/Penguin Pass/routes/`.
+
+Each JSON file may include four optional metadata fields on the root
+object (alongside `name`, `start`, `segments`, and `grade`):
+
+| Field | Default | Valid values |
+| --- | --- | --- |
+| `description` | `""` | Any string (course-picker blurb) |
+| `theme` | `"alpine"` | Theme file stem under `godot/themes/` (e.g. `alpine`, `desert`, `farmland`) |
+| `mood` | `"energetic"` | `energetic`, `cruising`, or `solitary` (ride music) |
+| `bots` | `true` | `true` or `false` — when `false`, the route rides without pacing bots |
+
+Invalid JSON, open (non-closed) geometry, or ids that fail slug
+validation are skipped with a log line; the game keeps running.
 
 The file is a horizontal path plus a grade profile along horizontal
 distance. Segment lengths and arc radii are meters. Arc angles are

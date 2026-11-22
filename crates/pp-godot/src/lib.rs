@@ -20,6 +20,7 @@ mod mesh_util;
 mod music;
 mod rider;
 mod road;
+mod routes;
 mod screens;
 mod sim;
 mod sound;

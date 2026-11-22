@@ -8,7 +8,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::{Mutex, OnceLock};
 use std::thread::JoinHandle;
 
-use pp_course::Course;
+use pp_course::{Course, CourseMeta, is_route_id};
 use pp_routegen::{RouteSpec, Terrain, TerrainPreset, generate};
 use serde::de::{self, Deserializer};
 use serde::ser::{SerializeMap, Serializer};
@@ -28,7 +28,18 @@ pub enum RidePhase {
     Ended,
 }
 
-/// Built-in loop or a generated route.
+/// A route loaded from a JSON file (`res://routes/` or `user://routes/`).
+#[derive(Clone, Debug)]
+pub struct RouteEntry {
+    /// Stable slug derived from folder or file stem (e.g. `"valley_loop"`).
+    pub id: String,
+    /// Validated course geometry and metadata.
+    pub course: Course,
+    /// True when loaded from the user's custom routes directory.
+    pub user_route: bool,
+}
+
+/// Built-in loop, a custom JSON route, or a generated route.
 ///
 /// Stored in the settings file. A missing key loads as [`Self::PenguinPass`].
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -38,6 +49,11 @@ pub enum CourseChoice {
     PenguinPass,
     /// The built-in Lonely Road loop.
     LonelyRoad,
+    /// A JSON route registered at runtime (folder name under `routes/`).
+    Custom {
+        /// Route id (e.g. `valley_loop`).
+        id: String,
+    },
     /// A route from `pp-routegen`.
     Generated {
         /// Terrain preset.
@@ -59,6 +75,7 @@ impl CourseChoice {
                 terrain: TerrainPreset::Desert,
                 ..
             } => "desert",
+            Self::Custom { .. } => "alpine",
             _ => "alpine",
         }
     }
@@ -67,8 +84,9 @@ impl CourseChoice {
     #[must_use]
     pub fn label(&self) -> String {
         match self {
-            Self::PenguinPass => "Penguin Pass".to_owned(),
-            Self::LonelyRoad => "Lonely Road".to_owned(),
+            Self::PenguinPass => Course::penguin_pass().name().to_owned(),
+            Self::LonelyRoad => Course::lonely_road().name().to_owned(),
+            Self::Custom { id } => id.replace('_', " ").to_owned(),
             Self::Generated {
                 terrain,
                 distance_km,
@@ -97,6 +115,17 @@ impl CourseChoice {
         matches!(self, Self::LonelyRoad)
     }
 
+    /// Stable route id when this choice refers to a JSON route.
+    #[must_use]
+    pub fn route_id(&self) -> Option<&str> {
+        match self {
+            Self::PenguinPass => Some("penguin_pass"),
+            Self::LonelyRoad => Some("lonely_road"),
+            Self::Custom { id } => Some(id),
+            Self::Generated { .. } => None,
+        }
+    }
+
     /// Bundled ride-music mood id (`energetic`, `cruising`, or `solitary`).
     #[must_use]
     pub fn mood_name(&self) -> &'static str {
@@ -111,6 +140,7 @@ impl CourseChoice {
                 terrain: TerrainPreset::Flat | TerrainPreset::Rolling | TerrainPreset::Desert,
                 ..
             } => "cruising",
+            Self::Custom { .. } => "energetic",
         }
     }
 
@@ -154,6 +184,7 @@ impl CourseChoice {
             } => {
                 "Sun-baked red rock straights, wide canyon bends, and long desert drags beneath open skies."
             }
+            Self::Custom { .. } => "",
         }
     }
 
@@ -162,6 +193,9 @@ impl CourseChoice {
             return match text {
                 "penguin_pass" => Some(Self::PenguinPass),
                 "lonely_road" => Some(Self::LonelyRoad),
+                _ if is_route_id(text) => Some(Self::Custom {
+                    id: text.to_owned(),
+                }),
                 _ => None,
             };
         }
@@ -185,6 +219,7 @@ impl Serialize for CourseChoice {
         match self {
             Self::PenguinPass => serializer.serialize_str("penguin_pass"),
             Self::LonelyRoad => serializer.serialize_str("lonely_road"),
+            Self::Custom { id } => serializer.serialize_str(id),
             Self::Generated {
                 terrain,
                 distance_km,
@@ -225,10 +260,12 @@ pub struct CourseOption {
     pub min_grade_pct: f32,
     /// Steepest uphill grade, in percent.
     pub max_grade_pct: f32,
-    /// [`CourseChoice::theme_name`].
-    pub theme: &'static str,
-    /// [`CourseChoice::mood_name`].
-    pub mood: &'static str,
+    /// Theme file stem from the route JSON or generator preset.
+    pub theme: String,
+    /// Ride-music mood id from the route JSON or generator preset.
+    pub mood: String,
+    /// Whether pacing bots ride this course.
+    pub bots: bool,
     /// Thumbnail samples, `(distance_m, elevation_m)`, at most 64 points.
     pub profile: Vec<(f32, f32)>,
     /// Course picker blurb.
@@ -263,15 +300,24 @@ fn positive_int(value: &toml::Value) -> Option<u64> {
     u64::try_from(number).ok()
 }
 
-pub(crate) fn build_course_dir(choice: &CourseChoice, reversed: bool) -> Result<Course, String> {
-    let course = build_course(choice)?;
+pub(crate) fn build_course_dir(
+    choice: &CourseChoice,
+    reversed: bool,
+    custom: &[RouteEntry],
+) -> Result<Course, String> {
+    let course = build_course(choice, custom)?;
     Ok(if reversed { course.reversed() } else { course })
 }
 
-pub(crate) fn build_course(choice: &CourseChoice) -> Result<Course, String> {
+pub(crate) fn build_course(choice: &CourseChoice, custom: &[RouteEntry]) -> Result<Course, String> {
     match choice {
         CourseChoice::PenguinPass => Ok(Course::penguin_pass()),
         CourseChoice::LonelyRoad => Ok(Course::lonely_road()),
+        CourseChoice::Custom { id } => custom
+            .iter()
+            .find(|entry| entry.id == *id)
+            .map(|entry| entry.course.clone())
+            .ok_or_else(|| format!("unknown route '{id}'")),
         CourseChoice::Generated {
             terrain,
             distance_km,
@@ -282,6 +328,14 @@ pub(crate) fn build_course(choice: &CourseChoice) -> Result<Course, String> {
             generate(&spec)
                 .map(|route| route.course().clone())
                 .map_err(|err| format!("could not build {}: {err}", choice.label()))
+                .map(|course| {
+                    course.with_meta(CourseMeta {
+                        theme: choice.theme_name().to_owned(),
+                        mood: choice.mood_name().to_owned(),
+                        description: choice.description().to_owned(),
+                        bots: true,
+                    })
+                })
         }
     }
 }
@@ -289,33 +343,46 @@ pub(crate) fn build_course(choice: &CourseChoice) -> Result<Course, String> {
 pub(crate) fn open_course(
     choice: &CourseChoice,
     reversed: bool,
+    custom: &[RouteEntry],
 ) -> (Course, CourseChoice, Option<String>) {
-    match build_course_dir(choice, reversed) {
+    match build_course_dir(choice, reversed, custom) {
         Ok(course) => (course, choice.clone(), None),
         Err(detail) => {
             let course = Course::penguin_pass();
             let course = if reversed { course.reversed() } else { course };
-            (course, CourseChoice::PenguinPass, Some(detail))
+            if matches!(choice, CourseChoice::Custom { .. }) {
+                (course, choice.clone(), Some(detail))
+            } else {
+                (course, CourseChoice::PenguinPass, Some(detail))
+            }
         }
     }
 }
 
-pub(crate) fn course_option(choice: &CourseChoice) -> Result<CourseOption, String> {
-    let course = build_course(choice)?;
-    let (min_grade_pct, max_grade_pct) = grade_span(&course);
-    Ok(CourseOption {
+pub(crate) fn option_from_course(choice: CourseChoice, course: &Course) -> CourseOption {
+    let (min_grade_pct, max_grade_pct) = grade_span(course);
+    CourseOption {
         choice: choice.clone(),
-        name: choice.label(),
+        name: course.name().to_owned(),
         length_m: course.length_m(),
         ascent_m: f64::from(course.total_ascent_m()),
         min_grade_pct,
         max_grade_pct,
-        theme: choice.theme_name(),
-        mood: choice.mood_name(),
-        profile: thumbnail(&course),
-        description: choice.description().to_owned(),
-        map_points: route_map(&course),
-    })
+        theme: course.theme().to_owned(),
+        mood: course.mood().to_owned(),
+        bots: course.bots(),
+        profile: thumbnail(course),
+        description: course.description().to_owned(),
+        map_points: route_map(course),
+    }
+}
+
+pub(crate) fn course_option(
+    choice: &CourseChoice,
+    custom: &[RouteEntry],
+) -> Result<CourseOption, String> {
+    let course = build_course(choice, custom)?;
+    Ok(option_from_course(choice.clone(), &course))
 }
 
 fn default_choices() -> [CourseChoice; 9] {
@@ -364,7 +431,8 @@ fn build_default_catalog() -> Vec<CourseOption> {
     default_choices()
         .into_iter()
         .map(|choice| {
-            course_option(&choice).unwrap_or_else(|err| panic!("proof-of-concept route: {err}"))
+            course_option(&choice, &[])
+                .unwrap_or_else(|err| panic!("proof-of-concept route: {err}"))
         })
         .collect()
 }
@@ -501,8 +569,8 @@ mod tests {
         assert_eq!(choice.label(), "Penguin Pass");
         assert_eq!(choice.label_with_direction(false), "Penguin Pass");
         assert_eq!(choice.label_with_direction(true), "Penguin Pass (Reverse)");
-        let forward = build_course_dir(&choice, false).expect("forward");
-        let backward = build_course_dir(&choice, true).expect("reverse");
+        let forward = build_course_dir(&choice, false, &[]).expect("forward");
+        let backward = build_course_dir(&choice, true, &[]).expect("reverse");
         assert!(!forward.is_reversed());
         assert!(backward.is_reversed());
         let length = forward.length_m();
@@ -580,6 +648,18 @@ mod tests {
                 "cruising"
             );
         }
+    }
+
+    #[test]
+    fn custom_route_serializes_as_plain_id() {
+        let custom = CourseChoice::Custom {
+            id: "valley_loop".to_owned(),
+        };
+        let value = toml::Value::try_from(&custom).expect("serialize");
+        assert_eq!(value.as_str(), Some("valley_loop"));
+        let back = CourseChoice::from_toml(&value).expect("parse");
+        assert_eq!(back, custom);
+        assert!(CourseChoice::from_toml(&toml::Value::String("bad id".to_owned())).is_none());
     }
 
     #[test]

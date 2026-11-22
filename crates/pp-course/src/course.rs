@@ -2,13 +2,47 @@
 //!
 //! A course is a horizontal path of straight segments and circular arcs, plus
 //! a grade profile along horizontal distance. Sampling takes 3D arc length.
-//! The built-in loop is embedded from `courses/penguin_pass.json`.
+//! Built-in loops are embedded from `godot/routes/<id>/route.json`.
 
 use std::fmt;
 use std::sync::OnceLock;
 
 use glam::DVec3;
 use serde::Deserialize;
+
+/// Course-picker and world metadata carried in route JSON.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CourseMeta {
+    /// Theme file stem under `godot/themes/<theme>.json` (default `"alpine"`).
+    pub theme: String,
+    /// Music mood (`"energetic"`, `"cruising"`, or `"solitary"`; default `"energetic"`).
+    pub mood: String,
+    /// Short course-picker description (default empty).
+    pub description: String,
+    /// Whether pacing bots ride this course (default `true`).
+    pub bots: bool,
+}
+
+impl Default for CourseMeta {
+    fn default() -> Self {
+        Self {
+            theme: "alpine".to_owned(),
+            mood: "energetic".to_owned(),
+            description: String::new(),
+            bots: true,
+        }
+    }
+}
+
+/// Whether `id` is safe to use as a route folder or settings slug.
+#[must_use]
+pub fn is_route_id(id: &str) -> bool {
+    if id.is_empty() || id.len() > 64 || id.starts_with('-') {
+        return false;
+    }
+    id.bytes()
+        .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-'))
+}
 
 /// One sample of the elevation chart used by the HUD and the TV dashboard.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -65,6 +99,7 @@ impl std::error::Error for CourseError {}
 #[derive(Clone)]
 pub struct Course {
     name: String,
+    meta: CourseMeta,
     /// Travel runs against the stored centerline when this is set.
     reversed: bool,
     length_m: f64,
@@ -101,8 +136,10 @@ impl Course {
         static COURSE: OnceLock<Course> = OnceLock::new();
         COURSE
             .get_or_init(|| {
-                parse_course(include_str!("../courses/penguin_pass.json"))
-                    .expect("built-in Penguin Pass course is valid")
+                parse_course(include_str!(
+                    "../../../godot/routes/penguin_pass/route.json"
+                ))
+                .expect("built-in Penguin Pass course is valid")
             })
             .clone()
     }
@@ -113,7 +150,7 @@ impl Course {
         static COURSE: OnceLock<Course> = OnceLock::new();
         COURSE
             .get_or_init(|| {
-                parse_course(include_str!("../courses/lonely_road.json"))
+                parse_course(include_str!("../../../godot/routes/lonely_road/route.json"))
                     .expect("built-in Lonely Road course is valid")
             })
             .clone()
@@ -126,6 +163,43 @@ impl Course {
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Metadata from the route JSON (theme, mood, picker copy, bots).
+    #[must_use]
+    pub fn meta(&self) -> &CourseMeta {
+        &self.meta
+    }
+
+    /// Replace metadata, for generated routes built outside JSON.
+    #[must_use]
+    pub fn with_meta(mut self, meta: CourseMeta) -> Self {
+        self.meta = meta;
+        self
+    }
+
+    /// Theme file stem under `godot/themes/`.
+    #[must_use]
+    pub fn theme(&self) -> &str {
+        &self.meta.theme
+    }
+
+    /// Bundled ride-music mood id.
+    #[must_use]
+    pub fn mood(&self) -> &str {
+        &self.meta.mood
+    }
+
+    /// Course-picker description.
+    #[must_use]
+    pub fn description(&self) -> &str {
+        &self.meta.description
+    }
+
+    /// Whether pacing bots should ride this course.
+    #[must_use]
+    pub fn bots(&self) -> bool {
+        self.meta.bots
     }
 
     /// A copy that travels the loop in the opposite direction.
@@ -623,6 +697,14 @@ const SPAN_SUM_TOL_M: f64 = 1.0e-4;
 #[serde(deny_unknown_fields)]
 struct CourseFile {
     name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    theme: Option<String>,
+    #[serde(default)]
+    mood: Option<String>,
+    #[serde(default)]
+    bots: Option<bool>,
     start: StartFile,
     segments: Vec<SegmentFile>,
     grade: Vec<GradeFile>,
@@ -667,6 +749,24 @@ fn parse_course(data: &str) -> Result<Course, CourseError> {
     if file.name.trim().is_empty() {
         return Err(CourseError::new("name must not be empty"));
     }
+    let theme = file.theme.as_deref().unwrap_or("alpine").trim();
+    if theme.is_empty() || !is_route_id(theme) {
+        return Err(CourseError::new(format!(
+            "theme '{theme}' is not a valid theme name"
+        )));
+    }
+    let mood = file.mood.as_deref().unwrap_or("energetic").trim();
+    if !matches!(mood, "energetic" | "cruising" | "solitary") {
+        return Err(CourseError::new(format!("mood '{mood}' is not valid")));
+    }
+    let description = file.description.as_deref().unwrap_or("").trim().to_owned();
+    let bots = file.bots.unwrap_or(true);
+    let meta = CourseMeta {
+        theme: theme.to_owned(),
+        mood: mood.to_owned(),
+        description,
+        bots,
+    };
     if !file.start.x.is_finite() || !file.start.z.is_finite() || !file.start.heading_rad.is_finite()
     {
         return Err(CourseError::new("start pose is not finite"));
@@ -717,6 +817,7 @@ fn parse_course(data: &str) -> Result<Course, CourseError> {
 
     let draft = Course {
         name: file.name,
+        meta,
         reversed: false,
         length_m: 0.0,
         horizontal_m,
@@ -1787,5 +1888,83 @@ mod tests {
             (ascent - up).abs() < 0.5,
             "analytic ascent {ascent} vs sampled {up}"
         );
+    }
+
+    #[test]
+    fn route_metadata_defaults_and_validation() {
+        let radius = 40.0;
+        let length = radius * std::f64::consts::TAU;
+        let minimal = serde_json::json!({
+            "name": "Tiny",
+            "start": {"x": 0.0, "z": 0.0, "heading_rad": 0.0},
+            "segments": [{"type": "arc", "radius_m": radius, "angle_rad": std::f64::consts::TAU}],
+            "grade": [{"type": "hold", "length_m": length, "grade_pct": 0.0}]
+        });
+        let course = Course::from_str(&minimal.to_string()).expect("minimal");
+        assert_eq!(course.theme(), "alpine");
+        assert_eq!(course.mood(), "energetic");
+        assert_eq!(course.description(), "");
+        assert!(course.bots());
+
+        let full = serde_json::json!({
+            "name": "Custom",
+            "description": " A desert loop ",
+            "theme": "desert",
+            "mood": "solitary",
+            "bots": false,
+            "start": {"x": 0.0, "z": 0.0, "heading_rad": 0.0},
+            "segments": [{"type": "arc", "radius_m": radius, "angle_rad": std::f64::consts::TAU}],
+            "grade": [{"type": "hold", "length_m": length, "grade_pct": 0.0}]
+        });
+        let course = Course::from_str(&full.to_string()).expect("full");
+        assert_eq!(course.theme(), "desert");
+        assert_eq!(course.mood(), "solitary");
+        assert_eq!(course.description(), "A desert loop");
+        assert!(!course.bots());
+        let reversed = course.reversed();
+        assert_eq!(reversed.theme(), "desert");
+        assert_eq!(reversed.mood(), "solitary");
+        assert_eq!(reversed.description(), "A desert loop");
+        assert!(!reversed.bots());
+
+        let mut bad_mood = minimal.clone();
+        bad_mood.as_object_mut().unwrap().insert(
+            "mood".to_owned(),
+            serde_json::Value::String("jazz".to_owned()),
+        );
+        assert!(Course::from_str(&bad_mood.to_string()).is_err());
+
+        let mut bad_theme = minimal.clone();
+        let bad = bad_theme.as_object_mut().unwrap();
+        bad.insert(
+            "theme".to_owned(),
+            serde_json::Value::String("../bad".to_owned()),
+        );
+        assert!(Course::from_str(&bad_theme.to_string()).is_err());
+    }
+
+    #[test]
+    fn built_in_routes_expose_json_metadata() {
+        let pass = Course::penguin_pass();
+        assert_eq!(pass.theme(), "alpine");
+        assert_eq!(pass.mood(), "energetic");
+        assert!(!pass.description().is_empty());
+        assert!(pass.bots());
+
+        let lonely = Course::lonely_road();
+        assert_eq!(lonely.theme(), "farmland");
+        assert_eq!(lonely.mood(), "solitary");
+        assert!(!lonely.description().is_empty());
+        assert!(!lonely.bots());
+    }
+
+    #[test]
+    fn is_route_id_rejects_bad_slugs() {
+        assert!(is_route_id("valley_loop"));
+        assert!(is_route_id("route-2"));
+        assert!(!is_route_id(""));
+        assert!(!is_route_id("-bad"));
+        assert!(!is_route_id("../bad"));
+        assert!(!is_route_id("UPPER"));
     }
 }

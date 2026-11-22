@@ -13,11 +13,6 @@ pub use pp_view::theme::{ROAD_KEEP_OUT_M, ScatterLayer, Theme};
 /// looking at a theme before the course picker can choose it.
 pub const THEME_OVERRIDE_ENV: &str = "PENGUIN_PASS_THEME";
 
-/// Read `res://themes/alpine.json`. On failure, log and use the built-in copy.
-pub fn load_or_builtin() -> (Theme, bool) {
-    load_named("alpine")
-}
-
 /// Read `res://themes/<name>.json`. The flag is `true` when the built-in
 /// alpine theme was used instead: the name is not a plain file stem, the
 /// file is missing, or the theme was rejected.

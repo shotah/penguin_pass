@@ -214,8 +214,10 @@ impl INode3D for Game {
             warning: load_warning,
         });
         session.auto_connect();
+        session.register_routes(crate::routes::load_all());
         menu::apply_window_mode(session.settings().fullscreen);
         let course = session.course().clone();
+        let theme_stem = session.active_theme_name().to_owned();
         self.hub = hub;
         if let Some(mode) = launch.input_mode {
             self.input_mode = mode;
@@ -234,7 +236,7 @@ impl INode3D for Game {
         let catalog = crate::assets::Catalog::load();
         let assets_ms = stamp(assets_mark);
         let world_mark = Time::singleton().get_ticks_msec();
-        let (theme, fallback) = crate::theme::load_or_builtin();
+        let (theme, fallback) = crate::theme::load_named(&theme_stem);
         self.unknown_kind_empty = !catalog.has_models("not-a-real-kind", &[]);
         self.theme_name = theme.name.clone();
         self.theme_fallback = fallback;
@@ -884,6 +886,16 @@ impl Game {
         let terrain_name = terrain.to_string();
         if terrain_name == "lonely_road" {
             return self.load_choice(CourseChoice::LonelyRoad);
+        }
+        if terrain_name == "penguin_pass" {
+            return self.load_choice(CourseChoice::PenguinPass);
+        }
+        if self
+            .session()
+            .custom_route_ids()
+            .contains(&terrain_name.as_str())
+        {
+            return self.load_choice(CourseChoice::Custom { id: terrain_name });
         }
         let Some(preset) = pp_session::TerrainPreset::parse(terrain_name.as_str()) else {
             return false;
@@ -1668,10 +1680,7 @@ impl Game {
             self.shell
                 .show_course_reversed(self.session().course_reversed());
         }
-        let course_label = self
-            .session()
-            .course_choice()
-            .label_with_direction(self.session().course_reversed());
+        let course_label = self.session().active_course_label_with_direction();
         let mut view = self.shell.view(
             &course_label,
             &trainer,
@@ -1713,19 +1722,11 @@ impl Game {
             .course_catalog()
             .iter()
             .map(|option| {
-                let theme_label = match option.theme {
-                    "farmland" => "Farmland",
-                    "desert" => "Desert",
-                    _ => "Alpine",
-                };
-                let mood_label = CourseMood::parse(option.mood)
-                    .map(CourseMood::label)
-                    .unwrap_or("Energetic");
-                let bots = if option.choice.is_solitary() {
-                    " · No bots"
-                } else {
-                    ""
-                };
+                let theme_label = theme_display_label(option.theme.as_str());
+                let mood_label = CourseMood::parse(option.mood.as_str())
+                    .unwrap_or_default()
+                    .label();
+                let bots = if !option.bots { " · No bots" } else { "" };
                 let meta = format!(
                     "{theme_label} · {mood_label}{bots} · +{:.0} m · {:.1}% to {:.1}%",
                     option.ascent_m, option.min_grade_pct, option.max_grade_pct,
@@ -1838,7 +1839,6 @@ impl Game {
     }
 
     fn apply_course_load(&mut self, choice: CourseChoice, reversed: bool) {
-        let theme = choice.theme_name().to_owned();
         let choice_changed = self.session().course_choice() != &choice;
         if choice_changed && let Err(err) = self.session_mut().set_course(choice) {
             godot_error!("Penguin Pass: {err}");
@@ -1852,15 +1852,16 @@ impl Game {
         }
         self.shell
             .show_course_reversed(self.session().course_reversed());
+        let theme = self.session().active_theme_name().to_owned();
         self.rebuild_world(&theme);
     }
 
     fn load_choice(&mut self, choice: pp_session::CourseChoice) -> bool {
-        let theme = choice.theme_name().to_owned();
         if let Err(err) = self.session_mut().set_course(choice) {
             godot_error!("Penguin Pass: {err}");
             return false;
         }
+        let theme = self.session().active_theme_name().to_owned();
         self.rebuild_world(&theme);
         true
     }
@@ -2401,7 +2402,7 @@ impl Game {
     }
 
     fn course_mood(&self) -> CourseMood {
-        CourseMood::parse(self.session().course_choice().mood_name()).unwrap_or_default()
+        CourseMood::parse(self.session().active_mood_name()).unwrap_or_default()
     }
 
     fn sync_music_mood(&mut self) {
@@ -2798,6 +2799,29 @@ fn workout_detail(
         workout.intensity_factor(),
         workout.estimated_kj(ftp_w),
     )
+}
+
+fn theme_display_label(theme: &str) -> String {
+    match theme {
+        "alpine" => "Alpine".to_owned(),
+        "desert" => "Desert".to_owned(),
+        "farmland" => "Farmland".to_owned(),
+        other => other
+            .split('_')
+            .filter(|part| !part.is_empty())
+            .map(|part| {
+                let mut chars = part.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => first
+                        .to_uppercase()
+                        .chain(chars.flat_map(char::to_lowercase))
+                        .collect(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    }
 }
 
 /// Forward thumbnail, flipped along the lap, matching a reversed course profile.

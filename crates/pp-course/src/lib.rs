@@ -27,6 +27,6 @@ mod course;
 mod physics;
 mod ride;
 
-pub use course::{Course, CourseError, ProfilePoint};
+pub use course::{Course, CourseError, CourseMeta, ProfilePoint, is_route_id};
 pub use physics::{AIR_DENSITY_KG_PER_M3, GRAVITY_MPS2, LOW_SPEED_FLOOR_MPS, acceleration_mps2};
 pub use ride::{MAX_DT_S, MAX_SPEED_MPS, MAX_STEP_S, Ride};

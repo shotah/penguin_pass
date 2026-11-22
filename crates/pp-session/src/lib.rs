@@ -37,7 +37,7 @@ mod trace;
 mod zones;
 
 pub use connection::{ConnectionStatus, LinkPhase, ResistanceMode, plain_failure};
-pub use course_sel::{CourseChoice, CourseOption, RidePhase};
+pub use course_sel::{CourseChoice, CourseOption, RidePhase, RouteEntry};
 pub use events::{EVENT_QUEUE_CAP, RideEvent};
 pub use heart::{BleHeartRateFactory, HeartRateFactory, SensorEntry};
 pub use link::{BleTrainerFactory, TrainerFactory, TrainerLink};

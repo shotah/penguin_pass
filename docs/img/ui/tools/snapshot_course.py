@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sample the Penguin Pass course into a small JSON the mockups draw from.
 
-Reads crates/pp-course/courses/penguin_pass.json (never written) and writes
+Reads godot/routes/penguin_pass/route.json (never written) and writes
 docs/img/ui/tools/course_penguin_pass.json: elevation and grade every 5 m and
 the road centreline every 10 m. The mockup generator reads only the snapshot,
 so a later course edit does not silently change the pictures.
@@ -14,7 +14,7 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", "..", "..", ".."))
-SOURCE = os.path.join(ROOT, "crates", "pp-course", "courses", "penguin_pass.json")
+SOURCE = os.path.join(ROOT, "godot", "routes", "penguin_pass", "route.json")
 OUT = os.path.join(HERE, "course_penguin_pass.json")
 STEP = 5.0
 

@@ -774,6 +774,7 @@ fn records_key(choice: &CourseChoice, reversed: bool) -> String {
     let key = match choice {
         CourseChoice::PenguinPass => "penguin_pass".to_owned(),
         CourseChoice::LonelyRoad => "lonely_road".to_owned(),
+        CourseChoice::Custom { id } => format!("route:{id}"),
         CourseChoice::Generated {
             terrain,
             distance_km,
@@ -787,6 +788,7 @@ fn badge_course(choice: &CourseChoice) -> String {
     match choice {
         CourseChoice::PenguinPass => "penguin_pass".to_owned(),
         CourseChoice::LonelyRoad => "farmland".to_owned(),
+        CourseChoice::Custom { id } => id.clone(),
         CourseChoice::Generated { terrain, .. } => terrain.as_str().to_owned(),
     }
 }
@@ -795,8 +797,18 @@ fn layout_seed(choice: &CourseChoice) -> u64 {
     match choice {
         CourseChoice::PenguinPass => 1,
         CourseChoice::LonelyRoad => 2,
+        CourseChoice::Custom { id } => fnv1a(id),
         CourseChoice::Generated { seed, .. } => *seed,
     }
+}
+
+fn fnv1a(text: &str) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }
 
 fn local_date(offset_s: i32) -> LocalDate {

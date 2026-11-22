@@ -1,4 +1,100 @@
 {
+  "name": "Penguin Pass",
+  "description": "Hand-built 5 km alpine climb with steady hairpins to the pass, a rolling ridge, and a fast plunge back to the valley.",
+  "theme": "alpine",
+  "mood": "energetic",
+  "bots": true,
+  "start": {
+    "heading_rad": 3.141592653589793,
+    "x": -187.0733184814453,
+    "z": -221.53440856933594
+  },
+  "segments": [
+    {
+      "length_m": 246.14934044959168,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 44.306881280926504,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.6866755619896,
+      "type": "line"
+    },
+    {
+      "angle_rad": 3.141592653589793,
+      "radius_m": 44.306881280926504,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.6866755619896,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 44.306881280926504,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.6866755619896,
+      "type": "line"
+    },
+    {
+      "angle_rad": 3.141592653589793,
+      "radius_m": 44.306881280926504,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.6866755619896,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 44.306881280926504,
+      "type": "arc"
+    },
+    {
+      "length_m": 307.6866755619896,
+      "type": "line"
+    },
+    {
+      "length_m": 529.221081966622,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 73.8448021348775,
+      "type": "arc"
+    },
+    {
+      "length_m": 344.60907662942833,
+      "type": "line"
+    },
+    {
+      "angle_rad": 3.141592653589793,
+      "radius_m": 73.8448021348775,
+      "type": "arc"
+    },
+    {
+      "length_m": 344.60907662942833,
+      "type": "line"
+    },
+    {
+      "angle_rad": -3.141592653589793,
+      "radius_m": 73.8448021348775,
+      "type": "arc"
+    },
+    {
+      "length_m": 344.60907662942833,
+      "type": "line"
+    },
+    {
+      "length_m": 246.14934044959168,
+      "type": "line"
+    }
+  ],
   "grade": [
     {
       "grade_pct": 0.0,
@@ -191,97 +287,5 @@
       "length_m": 246.14934044959136,
       "type": "hold"
     }
-  ],
-  "name": "Penguin Pass",
-  "segments": [
-    {
-      "length_m": 246.14934044959168,
-      "type": "line"
-    },
-    {
-      "angle_rad": -3.141592653589793,
-      "radius_m": 44.306881280926504,
-      "type": "arc"
-    },
-    {
-      "length_m": 307.6866755619896,
-      "type": "line"
-    },
-    {
-      "angle_rad": 3.141592653589793,
-      "radius_m": 44.306881280926504,
-      "type": "arc"
-    },
-    {
-      "length_m": 307.6866755619896,
-      "type": "line"
-    },
-    {
-      "angle_rad": -3.141592653589793,
-      "radius_m": 44.306881280926504,
-      "type": "arc"
-    },
-    {
-      "length_m": 307.6866755619896,
-      "type": "line"
-    },
-    {
-      "angle_rad": 3.141592653589793,
-      "radius_m": 44.306881280926504,
-      "type": "arc"
-    },
-    {
-      "length_m": 307.6866755619896,
-      "type": "line"
-    },
-    {
-      "angle_rad": -3.141592653589793,
-      "radius_m": 44.306881280926504,
-      "type": "arc"
-    },
-    {
-      "length_m": 307.6866755619896,
-      "type": "line"
-    },
-    {
-      "length_m": 529.221081966622,
-      "type": "line"
-    },
-    {
-      "angle_rad": -3.141592653589793,
-      "radius_m": 73.8448021348775,
-      "type": "arc"
-    },
-    {
-      "length_m": 344.60907662942833,
-      "type": "line"
-    },
-    {
-      "angle_rad": 3.141592653589793,
-      "radius_m": 73.8448021348775,
-      "type": "arc"
-    },
-    {
-      "length_m": 344.60907662942833,
-      "type": "line"
-    },
-    {
-      "angle_rad": -3.141592653589793,
-      "radius_m": 73.8448021348775,
-      "type": "arc"
-    },
-    {
-      "length_m": 344.60907662942833,
-      "type": "line"
-    },
-    {
-      "length_m": 246.14934044959168,
-      "type": "line"
-    }
-  ],
-  "start": {
-    "heading_rad": 3.141592653589793,
-    "x": -187.0733184814453,
-    "z": -221.53440856933594
-  }
+  ]
 }

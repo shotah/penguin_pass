@@ -81,11 +81,7 @@ impl Group {
     }
 
     pub(crate) fn sync_count(&mut self, course: &Course, choice: &CourseChoice, count: u8) {
-        let count = if choice.is_solitary() {
-            0
-        } else {
-            count.min(24)
-        };
+        let count = if !course.bots() { 0 } else { count.min(24) };
         let seed = seed_of(choice);
         let len = course.length_m();
         if self.peloton_count == count
@@ -471,8 +467,18 @@ fn seed_of(choice: &CourseChoice) -> u64 {
     match choice {
         CourseChoice::PenguinPass => 1,
         CourseChoice::LonelyRoad => 2,
+        CourseChoice::Custom { id } => fnv1a(id),
         CourseChoice::Generated { seed, .. } => *seed,
     }
+}
+
+fn fnv1a(text: &str) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }
 
 #[cfg(test)]
