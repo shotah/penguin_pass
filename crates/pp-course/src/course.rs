@@ -107,6 +107,18 @@ impl Course {
             .clone()
     }
 
+    /// The built-in Lonely Road loop.
+    #[must_use]
+    pub fn lonely_road() -> Self {
+        static COURSE: OnceLock<Course> = OnceLock::new();
+        COURSE
+            .get_or_init(|| {
+                parse_course(include_str!("../courses/lonely_road.json"))
+                    .expect("built-in Lonely Road course is valid")
+            })
+            .clone()
+    }
+
     /// Course name, as given in the description.
     ///
     /// Reversing the course does not change the name. Direction is
@@ -1022,6 +1034,66 @@ mod tests {
         assert!((up - expected).abs() < 1e-9, "{up} vs {expected}");
         assert!((down - expected).abs() < 1e-9);
         assert!(span.elev_gain(length).abs() < 1e-9);
+    }
+
+    #[test]
+    fn lonely_road_loads_closes_and_reverses() {
+        let course = Course::lonely_road();
+        assert_eq!(course.name(), "Lonely Road");
+        let length = course.length_m();
+        assert!((length - 18_000.0).abs() <= 100.0, "lap length {length} m");
+
+        let p0 = course.position_at(0.0);
+        let p_end = course.position_at(length);
+        assert!(pos_dist(p0, p_end) < 1e-2, "seam {p0:?} vs {p_end:?}");
+        assert!(course.elevation_at(0.0).abs() < 1e-2);
+        assert!(course.elevation_at(length).abs() < 1e-2);
+
+        let mut min_g = f32::MAX;
+        let mut max_g = f32::MIN;
+        let mut d = 0.0;
+        while d <= length {
+            let g = course.grade_pct_at(d);
+            min_g = min_g.min(g);
+            max_g = max_g.max(g);
+            d += 10.0;
+        }
+        assert!(max_g <= 2.5, "max grade {max_g}%");
+        assert!(min_g >= -2.5, "min grade {min_g}%");
+        assert!(f64::from(course.total_ascent_m()) >= 80.0);
+        assert!(f64::from(course.total_ascent_m()) <= 125.0);
+
+        let mut longest_straight = 0.0_f64;
+        let mut run = 0.0_f64;
+        let mut prev = heading_of(course.tangent_at(0.0));
+        let step = 5.0;
+        let mut dist = 0.0;
+        while dist < length {
+            dist += step;
+            let h = heading_of(course.tangent_at(dist));
+            let dh = angle_diff(h, prev).abs();
+            if dh < 1.0e-4 {
+                run += step;
+            } else {
+                longest_straight = longest_straight.max(run);
+                run = 0.0;
+            }
+            prev = h;
+        }
+        longest_straight = longest_straight.max(run);
+        assert!(
+            longest_straight > 4_000.0,
+            "longest near-straight run {longest_straight} m"
+        );
+
+        let backward = course.reversed();
+        assert!(backward.is_reversed());
+        let mirrored = (length - length * 0.42).rem_euclid(length);
+        let gap = (backward.elevation_at(length * 0.42) - course.elevation_at(mirrored)).abs();
+        assert!(gap < 1.0e-2_f32, "{gap}");
+        let back = backward.reversed();
+        assert!(!back.is_reversed());
+        assert!((back.length_m() - length).abs() < 1e-6);
     }
 
     #[test]

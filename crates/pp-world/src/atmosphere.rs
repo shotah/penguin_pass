@@ -406,6 +406,24 @@ fn look_for(theme: &str) -> Look {
             fog_aerial: 0.16,
             ambient: 0.85,
         }
+    } else if theme == "farmland" {
+        Look {
+            zenith: [0.22, 0.45, 0.84],
+            horizon: [0.95, 0.85, 0.68],
+            ground: [0.68, 0.60, 0.36],
+            ground_bottom: [0.36, 0.32, 0.18],
+            sky_energy: 1.10,
+            sky_curve: 0.16,
+            sun_color: [1.0, 0.93, 0.78],
+            sun_energy: 1.28,
+            azimuth: -54.0,
+            elevation: 29.0,
+            fog_color: [0.76, 0.80, 0.84],
+            fog_density: 0.000028,
+            fog_energy: 0.58,
+            fog_aerial: 0.14,
+            ambient: 0.88,
+        }
     } else {
         Look {
             zenith: [0.16, 0.34, 0.78],
@@ -504,6 +522,15 @@ mod tests {
         assert!(close(desert.sun_azimuth_deg, -48.0));
         assert!(close(desert.sun_energy, 1.32));
         assert!(close(desert.sky_horizon[0], 0.96));
+
+        let farmland = atmosphere_at("farmland", DAY_HOUR, Weather::Clear);
+        assert!(close(farmland.sun_elevation_deg, 29.0));
+        assert!(close(farmland.sun_azimuth_deg, -54.0));
+        assert!(close(farmland.sun_energy, 1.28));
+        assert!(close(farmland.sky_zenith[0], 0.22));
+        assert!(close(farmland.fog_density, 0.000028));
+        assert!(close(farmland.ambient_energy, 0.88));
+        assert_eq!(farmland.precipitation, PrecipKind::None);
     }
 
     #[test]

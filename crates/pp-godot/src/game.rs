@@ -26,7 +26,7 @@ use crate::hud::Hud;
 use crate::input_map;
 use crate::launch::{self, Launch, TrainerMode};
 use crate::menu::{self, Command, Effect, RideMenu};
-use crate::music::{MusicPlayer, MusicScene};
+use crate::music::{CourseMood, MusicPlayer, MusicScene};
 use crate::rider::Rider;
 use crate::screens::Screens;
 use crate::sim::{self, SimRider};
@@ -881,7 +881,11 @@ impl Game {
     /// Load a generated course. Returns false until the session can swap courses.
     #[func]
     pub fn debug_load_course(&mut self, terrain: GString, distance_km: i64, seed: i64) -> bool {
-        let Some(preset) = pp_session::TerrainPreset::parse(terrain.to_string().as_str()) else {
+        let terrain_name = terrain.to_string();
+        if terrain_name == "lonely_road" {
+            return self.load_choice(CourseChoice::LonelyRoad);
+        }
+        let Some(preset) = pp_session::TerrainPreset::parse(terrain_name.as_str()) else {
             return false;
         };
         let Ok(distance_km) = u16::try_from(distance_km) else {
@@ -1502,14 +1506,14 @@ impl Game {
 
     fn shell_command(&mut self, command: Command, fresh: bool) {
         let before = self.shell.screen();
-        let count = if before == Screen::Course {
-            self.session_mut().course_catalog().len()
+        let courses = if before == Screen::Course {
+            self.course_cards()
         } else {
-            1
+            Vec::new()
         };
         let snap = menu_snapshot(self.session());
         self.note_ui(command, fresh);
-        let effect = self.shell.handle(command, fresh, &snap, count);
+        let effect = self.shell.handle(command, fresh, &snap, &courses);
         let after = self.shell.screen();
         if before != Screen::Course && after == Screen::Course {
             let index = self.active_course_index();
@@ -1691,12 +1695,50 @@ impl Game {
         } else {
             Vec::new()
         };
+        let course_previews = self.course_previews();
         let ride_file = self.ride_file.clone();
         if let Some(screens) = self.screens.as_mut() {
-            screens.show(&view, &profiles, &figures);
+            screens.show(&view, &profiles, &figures, &course_previews);
             let note = (self.shell.screen() == Screen::Summary).then_some(ride_file.as_ref());
             screens.set_ride_file(note.flatten());
         }
+    }
+
+    fn course_previews(&mut self) -> Vec<crate::screens::CoursePreview> {
+        if self.shell.screen() != Screen::Course {
+            return Vec::new();
+        }
+        let reversed = self.shell.course_reversed();
+        self.session_mut()
+            .course_catalog()
+            .iter()
+            .map(|option| {
+                let theme_label = match option.theme {
+                    "farmland" => "Farmland",
+                    "desert" => "Desert",
+                    _ => "Alpine",
+                };
+                let mood_label = CourseMood::parse(option.mood)
+                    .map(CourseMood::label)
+                    .unwrap_or("Energetic");
+                let bots = if option.choice.is_solitary() {
+                    " · No bots"
+                } else {
+                    ""
+                };
+                let meta = format!(
+                    "{theme_label} · {mood_label}{bots} · +{:.0} m · {:.1}% to {:.1}%",
+                    option.ascent_m, option.min_grade_pct, option.max_grade_pct,
+                );
+                crate::screens::CoursePreview {
+                    map_points: option.map_points.clone(),
+                    description: option.description.clone(),
+                    meta,
+                    theme: option.theme.to_owned(),
+                    reversed,
+                }
+            })
+            .collect()
     }
 
     fn course_cards(&mut self) -> Vec<CourseCard> {
@@ -1724,6 +1766,7 @@ impl Game {
                     ascent_m: option.ascent_m as f32,
                     max_grade_pct,
                     profile,
+                    rerollable: option.choice.is_rerollable(),
                 }
             })
             .collect()
@@ -1840,6 +1883,7 @@ impl Game {
         self.scatter_violations = report.violations;
         self.atmosphere = world_root.try_get_node_as::<crate::world::Atmosphere>("Atmosphere");
         self.base_mut().add_child(&world_root);
+        self.sync_music_mood();
         let profile: Vec<(f64, f32)> = course
             .profile(20.0)
             .iter()
@@ -2305,6 +2349,7 @@ impl Game {
             player.set_scene(scene);
             let report = player.set_user_folder(settings.music_folder.as_deref());
             self.music_report = report.summary();
+            player.set_mood(self.course_mood());
         }
         self.music = Some(music);
         self.push_music_report();
@@ -2351,6 +2396,18 @@ impl Game {
         }
         if let Some(music) = &mut self.music {
             music.bind_mut().set_ducked(duck);
+        }
+        self.sync_music_mood();
+    }
+
+    fn course_mood(&self) -> CourseMood {
+        CourseMood::parse(self.session().course_choice().mood_name()).unwrap_or_default()
+    }
+
+    fn sync_music_mood(&mut self) {
+        let mood = self.course_mood();
+        if let Some(music) = &mut self.music {
+            music.bind_mut().set_mood(mood);
         }
     }
 

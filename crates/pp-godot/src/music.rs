@@ -16,7 +16,7 @@ use godot::classes::{
 use godot::obj::{Base, Gd, WithBaseField};
 use godot::prelude::*;
 use pp_view::music::{self, Decision, Director, PlayRequest, TrackInfo};
-pub use pp_view::music::{FolderReport, MusicScene};
+pub use pp_view::music::{CourseMood, FolderReport, MusicScene};
 
 /// Crossfade state. Plain numbers, so a frame does not allocate.
 struct Fade {
@@ -157,6 +157,14 @@ impl MusicPlayer {
         self.apply(decision);
     }
 
+    /// Course mood for bundled ride playlists.
+    pub fn set_mood(&mut self, mood: CourseMood) {
+        let decision = self.director.set_mood(mood);
+        if self.started {
+            self.apply(decision);
+        }
+    }
+
     /// Pull the bus down while the pause menu is open. The stream keeps going.
     pub fn set_ducked(&mut self, ducked: bool) {
         self.director.set_ducked(ducked);
@@ -197,6 +205,7 @@ impl MusicPlayer {
                                 id: text.clone(),
                                 path: text,
                                 display_name: music::display_name_from_file(&name),
+                                moods: Vec::new(),
                             }
                         })
                         .collect();

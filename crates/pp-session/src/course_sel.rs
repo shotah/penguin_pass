@@ -36,6 +36,8 @@ pub enum CourseChoice {
     /// The built-in Penguin Pass loop.
     #[default]
     PenguinPass,
+    /// The built-in Lonely Road loop.
+    LonelyRoad,
     /// A route from `pp-routegen`.
     Generated {
         /// Terrain preset.
@@ -52,6 +54,7 @@ impl CourseChoice {
     #[must_use]
     pub fn theme_name(&self) -> &'static str {
         match self {
+            Self::LonelyRoad => "farmland",
             Self::Generated {
                 terrain: TerrainPreset::Desert,
                 ..
@@ -65,6 +68,7 @@ impl CourseChoice {
     pub fn label(&self) -> String {
         match self {
             Self::PenguinPass => "Penguin Pass".to_owned(),
+            Self::LonelyRoad => "Lonely Road".to_owned(),
             Self::Generated {
                 terrain,
                 distance_km,
@@ -87,10 +91,77 @@ impl CourseChoice {
         }
     }
 
+    /// True when the course is ridden without pacing bots.
+    #[must_use]
+    pub fn is_solitary(&self) -> bool {
+        matches!(self, Self::LonelyRoad)
+    }
+
+    /// Bundled ride-music mood id (`energetic`, `cruising`, or `solitary`).
+    #[must_use]
+    pub fn mood_name(&self) -> &'static str {
+        match self {
+            Self::LonelyRoad => "solitary",
+            Self::PenguinPass => "energetic",
+            Self::Generated {
+                terrain: TerrainPreset::Mountain,
+                ..
+            } => "energetic",
+            Self::Generated {
+                terrain: TerrainPreset::Flat | TerrainPreset::Rolling | TerrainPreset::Desert,
+                ..
+            } => "cruising",
+        }
+    }
+
+    /// True when the catalog row can be rerolled from the course picker.
+    #[must_use]
+    pub fn is_rerollable(&self) -> bool {
+        matches!(self, Self::Generated { .. })
+    }
+
+    /// One sentence for the course picker overview.
+    #[must_use]
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::PenguinPass => {
+                "Hand-built 5 km alpine climb with steady hairpins to the pass, a rolling ridge, and a fast plunge back to the valley."
+            }
+            Self::LonelyRoad => {
+                "An 18 km solitary highway across open wheatfields, red barns, and vast flat horizons — no bots, just you and the road."
+            }
+            Self::Generated {
+                terrain: TerrainPreset::Flat,
+                ..
+            } => {
+                "Fast, level roads with sweeping bends built for steady tempo cruises, sprints, and big-ring spins."
+            }
+            Self::Generated {
+                terrain: TerrainPreset::Rolling,
+                ..
+            } => {
+                "Undulating country hills and punchy short climbs winding through green meadows and pine valleys."
+            }
+            Self::Generated {
+                terrain: TerrainPreset::Mountain,
+                ..
+            } => {
+                "Sustained alpine climbing, tight switchbacks, and high mountain ridges with sweeping descents."
+            }
+            Self::Generated {
+                terrain: TerrainPreset::Desert,
+                ..
+            } => {
+                "Sun-baked red rock straights, wide canyon bends, and long desert drags beneath open skies."
+            }
+        }
+    }
+
     pub(crate) fn from_toml(value: &toml::Value) -> Option<Self> {
         if let Some(text) = value.as_str() {
             return match text {
                 "penguin_pass" => Some(Self::PenguinPass),
+                "lonely_road" => Some(Self::LonelyRoad),
                 _ => None,
             };
         }
@@ -113,6 +184,7 @@ impl Serialize for CourseChoice {
     {
         match self {
             Self::PenguinPass => serializer.serialize_str("penguin_pass"),
+            Self::LonelyRoad => serializer.serialize_str("lonely_road"),
             Self::Generated {
                 terrain,
                 distance_km,
@@ -155,8 +227,14 @@ pub struct CourseOption {
     pub max_grade_pct: f32,
     /// [`CourseChoice::theme_name`].
     pub theme: &'static str,
+    /// [`CourseChoice::mood_name`].
+    pub mood: &'static str,
     /// Thumbnail samples, `(distance_m, elevation_m)`, at most 64 points.
     pub profile: Vec<(f32, f32)>,
+    /// Course picker blurb.
+    pub description: String,
+    /// Top-down route samples in `[0, 1] × [0, 1]`, `(x, z)`.
+    pub map_points: Vec<(f32, f32)>,
 }
 
 /// Documented rolling seed. See `docs/route-generator.md`.
@@ -169,6 +247,7 @@ const DESERT_SEED: u64 = 7;
 const FLAT_SEED: u64 = 1;
 
 const THUMBNAIL_POINTS: usize = 64;
+const MAP_POINTS: usize = 96;
 
 fn terrain_title(terrain: TerrainPreset) -> &'static str {
     match terrain {
@@ -192,6 +271,7 @@ pub(crate) fn build_course_dir(choice: &CourseChoice, reversed: bool) -> Result<
 pub(crate) fn build_course(choice: &CourseChoice) -> Result<Course, String> {
     match choice {
         CourseChoice::PenguinPass => Ok(Course::penguin_pass()),
+        CourseChoice::LonelyRoad => Ok(Course::lonely_road()),
         CourseChoice::Generated {
             terrain,
             distance_km,
@@ -231,11 +311,14 @@ pub(crate) fn course_option(choice: &CourseChoice) -> Result<CourseOption, Strin
         min_grade_pct,
         max_grade_pct,
         theme: choice.theme_name(),
+        mood: choice.mood_name(),
         profile: thumbnail(&course),
+        description: choice.description().to_owned(),
+        map_points: route_map(&course),
     })
 }
 
-fn default_choices() -> [CourseChoice; 8] {
+fn default_choices() -> [CourseChoice; 9] {
     [
         CourseChoice::PenguinPass,
         CourseChoice::Generated {
@@ -273,6 +356,7 @@ fn default_choices() -> [CourseChoice; 8] {
             distance_km: 20,
             seed: DESERT_SEED,
         },
+        CourseChoice::LonelyRoad,
     ]
 }
 
@@ -347,6 +431,47 @@ fn grade_span(course: &Course) -> (f32, f32) {
     (min_grade, max_grade)
 }
 
+fn route_map(course: &Course) -> Vec<(f32, f32)> {
+    let length = course.length_m();
+    if !length.is_finite() || length <= 0.0 {
+        return vec![(0.5, 0.5)];
+    }
+    let steps = MAP_POINTS.saturating_sub(1).max(1);
+    let raw: Vec<(f32, f32)> = (0..MAP_POINTS)
+        .map(|index| {
+            let distance = length * index as f64 / steps as f64;
+            let position = course.position_at(distance);
+            (position[0], position[2])
+        })
+        .collect();
+    let min_x = raw
+        .iter()
+        .map(|point| point.0)
+        .fold(f32::INFINITY, f32::min);
+    let max_x = raw
+        .iter()
+        .map(|point| point.0)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let min_z = raw
+        .iter()
+        .map(|point| point.1)
+        .fold(f32::INFINITY, f32::min);
+    let max_z = raw
+        .iter()
+        .map(|point| point.1)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let span = (max_x - min_x).max(max_z - min_z).max(1.0);
+    let center_x = (min_x + max_x) * 0.5;
+    let center_z = (min_z + max_z) * 0.5;
+    raw.into_iter()
+        .map(|(x, z)| {
+            let nx = 0.5 + (x - center_x) / span;
+            let nz = 0.5 + (z - center_z) / span;
+            (nx.clamp(0.0, 1.0), nz.clamp(0.0, 1.0))
+        })
+        .collect()
+}
+
 fn thumbnail(course: &Course) -> Vec<(f32, f32)> {
     let length = course.length_m();
     if !length.is_finite() || length <= 0.0 {
@@ -393,10 +518,12 @@ mod tests {
         let catalog = build_default_catalog();
         let elapsed = started.elapsed();
         eprintln!("CATALOG_BUILD {elapsed:?}");
-        assert_eq!(catalog.len(), 8);
+        assert_eq!(catalog.len(), 9);
         assert_eq!(catalog[6].name, "Rolling 20 km");
         assert_eq!(catalog[7].name, "Desert 20 km");
         assert_eq!(catalog[7].theme, "desert");
+        assert_eq!(catalog[8].name, "Lonely Road");
+        assert_eq!(catalog[8].theme, "farmland");
         for option in &catalog {
             eprintln!(
                 "CATALOG_ROW {} len {:.1} ascent {:.1} grade {:.2}..{:.2} theme {} points {}",
@@ -410,5 +537,70 @@ mod tests {
             );
             assert!(option.profile.len() <= 64);
         }
+    }
+
+    #[test]
+    fn catalog_descriptions_and_maps() {
+        let catalog = build_default_catalog();
+        for option in &catalog {
+            assert!(!option.description.is_empty());
+            assert!(option.map_points.len() >= 16);
+            for &(x, z) in &option.map_points {
+                assert!((0.0..=1.0).contains(&x), "{x}");
+                assert!((0.0..=1.0).contains(&z), "{z}");
+            }
+        }
+    }
+
+    #[test]
+    fn course_mood_names_match_playlists() {
+        assert_eq!(CourseChoice::LonelyRoad.mood_name(), "solitary");
+        assert_eq!(CourseChoice::PenguinPass.mood_name(), "energetic");
+        assert_eq!(
+            CourseChoice::Generated {
+                terrain: TerrainPreset::Mountain,
+                distance_km: 10,
+                seed: MOUNTAIN_SEED,
+            }
+            .mood_name(),
+            "energetic"
+        );
+        for terrain in [
+            TerrainPreset::Desert,
+            TerrainPreset::Flat,
+            TerrainPreset::Rolling,
+        ] {
+            assert_eq!(
+                CourseChoice::Generated {
+                    terrain,
+                    distance_km: 10,
+                    seed: 1,
+                }
+                .mood_name(),
+                "cruising"
+            );
+        }
+    }
+
+    #[test]
+    fn lonely_road_serializes_and_flags() {
+        let lonely = CourseChoice::LonelyRoad;
+        assert!(lonely.is_solitary());
+        assert!(!lonely.is_rerollable());
+        assert!(!CourseChoice::PenguinPass.is_solitary());
+        assert!(
+            CourseChoice::Generated {
+                terrain: TerrainPreset::Flat,
+                distance_km: 10,
+                seed: 1,
+            }
+            .is_rerollable()
+        );
+
+        let value = toml::Value::try_from(&lonely).expect("serialize");
+        assert_eq!(value.as_str(), Some("lonely_road"));
+        let back = CourseChoice::from_toml(&value).expect("parse");
+        assert_eq!(back, lonely);
+        assert_eq!(back.theme_name(), "farmland");
     }
 }

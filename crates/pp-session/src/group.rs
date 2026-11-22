@@ -81,7 +81,11 @@ impl Group {
     }
 
     pub(crate) fn sync_count(&mut self, course: &Course, choice: &CourseChoice, count: u8) {
-        let count = count.min(24);
+        let count = if choice.is_solitary() {
+            0
+        } else {
+            count.min(24)
+        };
         let seed = seed_of(choice);
         let len = course.length_m();
         if self.peloton_count == count
@@ -466,6 +470,7 @@ fn rounded_ftp(watts: Option<f32>) -> Option<u16> {
 fn seed_of(choice: &CourseChoice) -> u64 {
     match choice {
         CourseChoice::PenguinPass => 1,
+        CourseChoice::LonelyRoad => 2,
         CourseChoice::Generated { seed, .. } => *seed,
     }
 }
@@ -788,5 +793,31 @@ athlete = \"Ada Lovelace\"
         drop(off);
         stop.store(true, Ordering::SeqCst);
         let _ = worker.join();
+    }
+
+    #[test]
+    fn lonely_road_spawns_no_bots_penguin_pass_keeps_bots() {
+        let mut lonely = Session::new(Settings {
+            bots_count: 8,
+            tv_dashboard_enabled: false,
+            ..Settings::default()
+        });
+        lonely
+            .set_course(CourseChoice::LonelyRoad)
+            .expect("lonely road");
+        lonely.set_sim_power(200);
+        lonely.tick(1.0);
+        assert!(lonely.play().bots.is_empty());
+
+        let mut pass = Session::new(Settings {
+            bots_count: 8,
+            tv_dashboard_enabled: false,
+            ..Settings::default()
+        });
+        pass.set_course(CourseChoice::PenguinPass)
+            .expect("penguin pass");
+        pass.set_sim_power(200);
+        pass.tick(1.0);
+        assert!(!pass.play().bots.is_empty());
     }
 }

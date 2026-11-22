@@ -9,7 +9,8 @@ use godot::classes::geometry_instance_3d::{ShadowCastingSetting, VisibilityRange
 use godot::classes::mesh::PrimitiveType;
 use godot::classes::multi_mesh::TransformFormat;
 use godot::classes::{
-    ArrayMesh, MeshInstance3D, MultiMesh, MultiMeshInstance3D, StandardMaterial3D, SurfaceTool,
+    ArrayMesh, MeshInstance3D, MultiMesh, MultiMeshInstance3D, Shader, ShaderMaterial,
+    StandardMaterial3D, SurfaceTool,
 };
 use godot::obj::Gd;
 use godot::prelude::*;
@@ -444,6 +445,20 @@ fn add_posts(parent: &mut Gd<Node3D>, course: &Course) {
     parent.add_child(&posts);
 }
 
+const WHEAT_SHADER: &str = r#"shader_type spatial;
+render_mode cull_disabled, diffuse_lambert_wrap, specular_disabled;
+void vertex() {
+    vec3 world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+    float sway = VERTEX.y * 0.09;
+    VERTEX.x += sin(TIME * 1.4 + world_pos.x * 0.07 + world_pos.z * 0.05) * sway;
+    VERTEX.z += cos(TIME * 1.15 + world_pos.x * 0.05 + world_pos.z * 0.08) * sway * 0.65;
+}
+void fragment() {
+    ALBEDO = COLOR.rgb;
+    ROUGHNESS = 0.88;
+}
+"#;
+
 fn placeholder_meshes() -> HashMapKind {
     let mut meshes = HashMapKind::default();
     meshes.insert("tree", tree_mesh());
@@ -451,6 +466,7 @@ fn placeholder_meshes() -> HashMapKind {
     meshes.insert("grass", tuft_mesh(Color::from_rgb(0.35, 0.58, 0.22)));
     meshes.insert("flower", tuft_mesh(Color::from_rgb(0.86, 0.72, 0.28)));
     meshes.insert("rock", rock_mesh());
+    meshes.insert("wheat", wheat_mesh());
     meshes
 }
 
@@ -538,6 +554,56 @@ fn rock_mesh() -> Gd<ArrayMesh> {
         5,
     );
     finish_mesh(tool)
+}
+
+fn wheat_mesh() -> Gd<ArrayMesh> {
+    let mut tool = SurfaceTool::new_gd();
+    tool.begin(PrimitiveType::TRIANGLES);
+    let base = Color::from_rgb(0.42, 0.38, 0.18);
+    let stalk = Color::from_rgb(0.62, 0.52, 0.22);
+    let head = Color::from_rgb(0.84, 0.68, 0.28);
+    for index in 0..9 {
+        let angle = index as f32 / 9.0 * std::f32::consts::TAU + index as f32 * 0.11;
+        let spread = 0.22 + (index % 3) as f32 * 0.14;
+        let ox = angle.cos() * spread;
+        let oz = angle.sin() * spread;
+        let tall = 1.05 + (index % 4) as f32 * 0.12;
+        wheat_stalk(&mut tool, Vector3::new(ox, 0.0, oz), tall, stalk, head);
+    }
+    cone(&mut tool, 0.0, 0.06, 0.32, base, 5);
+    finish_wheat_mesh(tool)
+}
+
+fn wheat_stalk(
+    tool: &mut Gd<SurfaceTool>,
+    offset: Vector3,
+    height: f32,
+    stalk: Color,
+    head: Color,
+) {
+    let lean = Vector3::new(offset.x * 0.12, 0.0, offset.z * 0.12);
+    box_tri(
+        tool,
+        offset + Vector3::new(lean.x * 0.5, height * 0.48, lean.z * 0.5),
+        Vector3::new(0.035, height * 0.94, 0.035),
+        stalk,
+    );
+    box_tri(
+        tool,
+        offset + Vector3::new(lean.x, height * 0.92, lean.z),
+        Vector3::new(0.11, 0.16, 0.09),
+        head,
+    );
+}
+
+fn finish_wheat_mesh(mut tool: Gd<SurfaceTool>) -> Gd<ArrayMesh> {
+    let mut mesh = tool.commit().unwrap_or_else(ArrayMesh::new_gd);
+    let mut shader = Shader::new_gd();
+    shader.set_code(WHEAT_SHADER);
+    let mut material = ShaderMaterial::new_gd();
+    material.set_shader(&shader);
+    mesh.surface_set_material(0, &material);
+    mesh
 }
 
 fn finish_mesh(mut tool: Gd<SurfaceTool>) -> Gd<ArrayMesh> {

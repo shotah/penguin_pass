@@ -49,6 +49,7 @@ uniform float tile1 = 4.0;
 uniform float tile2 = 6.0;
 uniform float tile3 = 8.0;
 uniform float textured = 0.0;
+uniform float farmland = 0.0;
 uniform vec3 haze_color = vec3(0.62, 0.74, 0.86);
 uniform float haze_start = 600.0;
 uniform float haze_end = 7000.0;
@@ -75,6 +76,30 @@ void fragment() {
         + triplanar(layer2, tile2) * w.b
         + snow * w.a;
     ALBEDO = mix(procedural, sampled * tint, textured);
+    if (farmland > 0.5) {
+        float cell_x = 260.0;
+        float cell_z = 340.0;
+        vec2 xz = world_pos.xz;
+        float col = floor((xz.x + 17.3) / cell_x);
+        float row = floor((xz.y + 23.7) / cell_z);
+        float off_x = hash(vec2(row, 19.0)) * 14.0;
+        float off_z = hash(vec2(col, 31.0)) * 14.0;
+        vec2 cell = vec2(xz.x - col * cell_x - off_x, xz.y - row * cell_z - off_z);
+        float pid = floor(hash(vec2(col, row)) * 4.0);
+        vec3 plot = vec3(0.74, 0.58, 0.24);
+        if (pid > 0.5) plot = vec3(0.68, 0.59, 0.36);
+        if (pid > 1.5) plot = vec3(0.36, 0.27, 0.18);
+        if (pid > 2.5) plot = vec3(0.35, 0.48, 0.21);
+        float ns = mod(col + row, 2.0);
+        float coord = ns < 1.0 ? cell.x : cell.y;
+        plot += sin(coord * 0.55) * 0.045;
+        float edge = min(min(cell.x, cell_x - cell.x), min(cell.y, cell_z - cell.y));
+        float border = smoothstep(3.0, 0.8, edge);
+        plot = mix(plot * 0.82, plot, border);
+        vec3 grain = mix(vec3(1.0), sampled, textured * 0.65);
+        vec3 patch = plot * grain * tint;
+        ALBEDO = mix(ALBEDO, patch, 0.70);
+    }
     float away = smoothstep(haze_start, haze_end, length(VERTEX));
     ALBEDO = mix(ALBEDO, haze_color, away);
     ROUGHNESS = mix(0.94, 0.78, w.a * textured);
@@ -105,6 +130,15 @@ pub fn build(
     material.set_shader_parameter("haze_start", &(radius * 0.45).to_variant());
     material.set_shader_parameter("haze_end", &(radius * 0.80).to_variant());
     let textured = catalog.bind_ground(&mut material, theme);
+    material.set_shader_parameter(
+        "farmland",
+        &(if theme.name == "farmland" {
+            1.0_f32
+        } else {
+            0.0_f32
+        })
+        .to_variant(),
+    );
     let mut group = Node3D::new_alloc();
     group.set_name("Terrain");
     let mut chunks = 0_i32;
@@ -114,7 +148,9 @@ pub fn build(
         chunks += 1;
     }
     let backdrop_tris = emit_far(&mut group, &field, theme, &material, &plan.far, textured);
-    emit_horizon(&mut group, course, &field, theme, &material);
+    if theme.name != "farmland" {
+        emit_horizon(&mut group, course, &field, theme, &material);
+    }
     let fill_tris = 0;
     parent.add_child(&group);
     crate::world::landmarks::spawn(parent, course, &field, theme, &placed);

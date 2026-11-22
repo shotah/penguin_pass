@@ -110,6 +110,8 @@ pub struct CourseCard {
     pub max_grade_pct: f32,
     /// Thumbnail samples, `(distance_m, elevation_m)`.
     pub profile: Vec<(f32, f32)>,
+    /// Left and right can reroll this row in the course picker.
+    pub rerollable: bool,
 }
 
 /// The screen stack.
@@ -293,13 +295,13 @@ impl Shell {
         command: Command,
         fresh: bool,
         snap: &Snapshot,
-        courses: usize,
+        courses: &[CourseCard],
     ) -> ShellEffect {
         if command == Command::Back && matches!(self.screen, Screen::Title) {
             return ShellEffect::None;
         }
         match self.screen {
-            Screen::Title => self.title_command(command, fresh, courses),
+            Screen::Title => self.title_command(command, fresh, courses.len()),
             Screen::Riding => {
                 if matches!(command, Command::Back) {
                     self.screen = Screen::Pause;
@@ -400,10 +402,13 @@ impl Shell {
                     "Building course…".to_owned()
                 } else if self.course_index >= direction_at {
                     "Left, right, or accept flips direction for your next pick.".to_owned()
-                } else if self.course_index > 0 {
+                } else if courses
+                    .get(self.course_index)
+                    .is_some_and(|card| card.rerollable)
+                {
                     "Left or right makes a new route. Accept starts it.".to_owned()
                 } else {
-                    "Choose a course. The rider waits at its start.".to_owned()
+                    "Accept starts the course.".to_owned()
                 };
                 list_view(Screen::Course, "Course", &rows, self.course_index, &detail)
             }
@@ -665,8 +670,14 @@ impl Shell {
         ShellEffect::None
     }
 
-    fn course_command(&mut self, command: Command, fresh: bool, count: usize) -> ShellEffect {
-        // `count` is the catalog. The last row is Direction, not a course.
+    fn course_command(
+        &mut self,
+        command: Command,
+        fresh: bool,
+        courses: &[CourseCard],
+    ) -> ShellEffect {
+        // `courses` is the catalog. The last row is Direction, not a course.
+        let count = courses.len();
         let direction_at = count;
         let total = count + 1;
         match command {
@@ -692,7 +703,7 @@ impl Shell {
                     }
                     return ShellEffect::None;
                 }
-                if index > 0 {
+                if index > 0 && courses.get(index).is_some_and(|card| card.rerollable) {
                     return ShellEffect::Reroll(index);
                 }
             }
@@ -805,33 +816,33 @@ mod tests {
         assert_eq!(shell.screen(), Screen::Title);
         assert!(!shell.shows_hud());
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::BeginRide
         ));
         assert!(shell.shows_hud());
-        shell.handle(Command::Back, true, &snap(), 1);
+        shell.handle(Command::Back, true, &snap(), &[]);
         assert_eq!(shell.screen(), Screen::Pause);
         let view = shell.view("Penguin Pass", "Not paired", "", &[], "", "");
         assert_eq!(view.rows[0].label, "Resume");
         assert_eq!(view.rows[4].label, "End ride");
-        shell.handle(Command::Down, true, &snap(), 1);
-        shell.handle(Command::Down, true, &snap(), 1);
-        shell.handle(Command::Down, true, &snap(), 1);
-        shell.handle(Command::Down, true, &snap(), 1);
+        shell.handle(Command::Down, true, &snap(), &[]);
+        shell.handle(Command::Down, true, &snap(), &[]);
+        shell.handle(Command::Down, true, &snap(), &[]);
+        shell.handle(Command::Down, true, &snap(), &[]);
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::ConfirmEnd);
-        shell.handle(Command::Right, true, &snap(), 1);
+        shell.handle(Command::Right, true, &snap(), &[]);
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::EndRide
         ));
         assert_eq!(shell.screen(), Screen::Summary);
-        shell.handle(Command::Down, true, &snap(), 1);
+        shell.handle(Command::Down, true, &snap(), &[]);
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::BackToTitle
         ));
         assert_eq!(shell.screen(), Screen::Title);
@@ -842,10 +853,10 @@ mod tests {
     fn a_fresh_press_wraps_and_a_hold_stops() {
         let mut shell = Shell::new(false);
         shell.title_index = 7;
-        shell.handle(Command::Down, true, &snap(), 1);
+        shell.handle(Command::Down, true, &snap(), &[]);
         assert_eq!(shell.title_index, 0);
         shell.title_index = 7;
-        shell.handle(Command::Down, false, &snap(), 1);
+        shell.handle(Command::Down, false, &snap(), &[]);
         assert_eq!(shell.title_index, 7);
     }
 
@@ -855,7 +866,7 @@ mod tests {
         assert_eq!(shell.screen(), Screen::Riding);
         let mut shell = Shell::new(false);
         assert!(matches!(
-            shell.handle(Command::Back, true, &snap(), 1),
+            shell.handle(Command::Back, true, &snap(), &[]),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Title);
@@ -873,33 +884,33 @@ mod tests {
             vec![None, Some("easy".to_owned())],
         );
         for _ in 0..5 {
-            shell.handle(Command::Down, true, &snap(), 1);
+            shell.handle(Command::Down, true, &snap(), &[]);
         }
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Workout);
-        shell.handle(Command::Down, true, &snap(), 1);
+        shell.handle(Command::Down, true, &snap(), &[]);
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::PickWorkout(Some(id)) if id == "easy"
         ));
         assert_eq!(shell.screen(), Screen::Title);
         assert_eq!(shell.title_index, 0);
         for _ in 0..5 {
-            shell.handle(Command::Down, true, &snap(), 1);
+            shell.handle(Command::Down, true, &snap(), &[]);
         }
-        shell.handle(Command::Accept, true, &snap(), 1);
+        shell.handle(Command::Accept, true, &snap(), &[]);
         assert_eq!(shell.screen(), Screen::Workout);
         assert!(matches!(
-            shell.handle(Command::Back, true, &snap(), 1),
+            shell.handle(Command::Back, true, &snap(), &[]),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Title);
         shell.title_index = 7;
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Progress);
@@ -907,48 +918,48 @@ mod tests {
             vec![row("Rides", "1"), row("First splash", "Earned")],
             vec![String::new(), "Finish a ride.".to_owned()],
         );
-        shell.handle(Command::Down, true, &snap(), 1);
+        shell.handle(Command::Down, true, &snap(), &[]);
         assert_eq!(shell.view("", "", "", &[], "", "").selected, 1);
-        shell.handle(Command::Up, true, &snap(), 1);
+        shell.handle(Command::Up, true, &snap(), &[]);
         assert_eq!(shell.view("", "", "", &[], "", "").selected, 0);
-        shell.handle(Command::Back, true, &snap(), 1);
+        shell.handle(Command::Back, true, &snap(), &[]);
         assert_eq!(shell.screen(), Screen::Title);
         shell.title_index = 0;
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::BeginRide
         ));
         assert!(shell.shows_hud());
-        shell.handle(Command::Back, true, &snap(), 1);
+        shell.handle(Command::Back, true, &snap(), &[]);
         assert_eq!(shell.screen(), Screen::Pause);
         shell.pause_index = 5;
-        shell.handle(Command::Accept, true, &snap(), 1);
+        shell.handle(Command::Accept, true, &snap(), &[]);
         assert_eq!(shell.screen(), Screen::Progress);
-        shell.handle(Command::Back, true, &snap(), 1);
+        shell.handle(Command::Back, true, &snap(), &[]);
         assert_eq!(shell.screen(), Screen::Pause);
         shell.pause_index = 6;
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::WorkoutBias(-5)
         ));
         shell.pause_index = 7;
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::WorkoutBias(5)
         ));
         shell.pause_index = 8;
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::SkipWorkout
         ));
         assert!(matches!(
-            shell.handle(Command::Back, true, &snap(), 1),
+            shell.handle(Command::Back, true, &snap(), &[]),
             ShellEffect::Resume
         ));
         assert_eq!(shell.screen(), Screen::Riding);
         shell.screen = Screen::Summary;
         assert!(matches!(
-            shell.handle(Command::Back, true, &snap(), 1),
+            shell.handle(Command::Back, true, &snap(), &[]),
             ShellEffect::BackToTitle
         ));
         assert_eq!(shell.screen(), Screen::Title);
@@ -959,48 +970,48 @@ mod tests {
     fn settings_from_the_title_cycles_the_new_rows_and_back_returns() {
         let mut shell = Shell::new(false);
         for _ in 0..4 {
-            shell.handle(Command::Down, true, &snap(), 1);
+            shell.handle(Command::Down, true, &snap(), &[]);
         }
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Settings);
         for _ in 0..21 {
-            shell.handle(Command::Down, true, &snap(), 1);
+            shell.handle(Command::Down, true, &snap(), &[]);
         }
         let ShellEffect::Menu(Action::Apply(settings)) =
-            shell.handle(Command::Right, true, &snap(), 1)
+            shell.handle(Command::Right, true, &snap(), &[])
         else {
             panic!("time of day");
         };
         assert_eq!(settings.time_of_day, "auto");
-        shell.handle(Command::Down, true, &snap(), 1);
+        shell.handle(Command::Down, true, &snap(), &[]);
         let ShellEffect::Menu(Action::Apply(settings)) =
-            shell.handle(Command::Right, true, &snap(), 1)
+            shell.handle(Command::Right, true, &snap(), &[])
         else {
             panic!("weather");
         };
         assert_eq!(settings.weather, "auto");
-        shell.handle(Command::Down, true, &snap(), 1);
+        shell.handle(Command::Down, true, &snap(), &[]);
         let ShellEffect::Menu(Action::Apply(settings)) =
-            shell.handle(Command::Left, true, &snap(), 1)
+            shell.handle(Command::Left, true, &snap(), &[])
         else {
             panic!("riders");
         };
         assert_eq!(settings.bots_count, 4);
-        shell.handle(Command::Down, true, &snap(), 1);
+        shell.handle(Command::Down, true, &snap(), &[]);
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::Menu(Action::Strava)
         ));
-        shell.handle(Command::Down, true, &snap(), 1);
+        shell.handle(Command::Down, true, &snap(), &[]);
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::Menu(Action::Apply(_))
         ));
         assert!(matches!(
-            shell.handle(Command::Back, true, &snap(), 1),
+            shell.handle(Command::Back, true, &snap(), &[]),
             ShellEffect::Menu(Action::None)
         ));
         assert_eq!(shell.screen(), Screen::Title);
@@ -1021,9 +1032,9 @@ mod tests {
         assert_eq!(titled.rows[1].label, "Course");
         assert_eq!(titled.rows[1].detail, "Penguin Pass (Reverse)");
 
-        shell.handle(Command::Down, true, &snap(), 8);
+        shell.handle(Command::Down, true, &snap(), &course_cards(8));
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 8),
+            shell.handle(Command::Accept, true, &snap(), &course_cards(8)),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Course);
@@ -1034,18 +1045,18 @@ mod tests {
         assert_eq!(opened.rows[8].label, "Direction");
         assert_eq!(opened.rows[8].detail, "Forward");
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 8),
+            shell.handle(Command::Accept, true, &snap(), &course_cards(8)),
             ShellEffect::PickCourse(0)
         ));
         assert_eq!(shell.screen(), Screen::Title);
 
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 8),
+            shell.handle(Command::Accept, true, &snap(), &course_cards(8)),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Course);
         for _ in 0..8 {
-            shell.handle(Command::Down, true, &snap(), 8);
+            shell.handle(Command::Down, true, &snap(), &course_cards(8));
         }
         let at_direction = shell.view("Penguin Pass", "", "", &cards, "", "");
         assert_eq!(at_direction.selected, 8);
@@ -1054,13 +1065,13 @@ mod tests {
             at_direction.detail,
             "Left, right, or accept flips direction for your next pick."
         );
-        shell.handle(Command::Down, false, &snap(), 8);
+        shell.handle(Command::Down, false, &snap(), &course_cards(8));
         assert_eq!(
             shell.view("Penguin Pass", "", "", &cards, "", "").selected,
             8
         );
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 8),
+            shell.handle(Command::Accept, true, &snap(), &course_cards(8)),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Course);
@@ -1069,15 +1080,15 @@ mod tests {
             "Reverse"
         );
         assert!(matches!(
-            shell.handle(Command::Right, true, &snap(), 8),
+            shell.handle(Command::Right, true, &snap(), &course_cards(8)),
             ShellEffect::None
         ));
         assert!(matches!(
-            shell.handle(Command::Left, true, &snap(), 8),
+            shell.handle(Command::Left, true, &snap(), &course_cards(8)),
             ShellEffect::None
         ));
         assert!(matches!(
-            shell.handle(Command::Right, false, &snap(), 8),
+            shell.handle(Command::Right, false, &snap(), &course_cards(8)),
             ShellEffect::None
         ));
         shell.show_course_reversed(true);
@@ -1085,14 +1096,14 @@ mod tests {
         assert_eq!(reversed.rows[8].detail, "Reverse");
 
         shell.course_index = 0;
-        shell.handle(Command::Up, true, &snap(), 8);
+        shell.handle(Command::Up, true, &snap(), &course_cards(8));
         assert_eq!(
             shell.view("Penguin Pass", "", "", &cards, "", "").selected,
             8
         );
         shell.course_index = 1;
         assert!(matches!(
-            shell.handle(Command::Left, true, &snap(), 8),
+            shell.handle(Command::Left, true, &snap(), &course_cards(8)),
             ShellEffect::Reroll(1)
         ));
         shell.open_course_picker(3, true);
@@ -1114,15 +1125,15 @@ mod tests {
         }
         shell.set_workouts("Free ride", rows, ids);
         for _ in 0..5 {
-            shell.handle(Command::Down, true, &snap(), 1);
+            shell.handle(Command::Down, true, &snap(), &[]);
         }
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::None
         ));
         assert_eq!(shell.screen(), Screen::Workout);
         for _ in 0..15 {
-            shell.handle(Command::Down, true, &snap(), 1);
+            shell.handle(Command::Down, true, &snap(), &[]);
         }
         let view = shell.view("", "", "", &[], "", "");
         assert_eq!(view.rows.len(), 16);
@@ -1131,7 +1142,7 @@ mod tests {
         assert!(view.rows[15].detail.contains("IF"));
         assert!(view.rows[15].detail.contains("kJ"));
         assert!(matches!(
-            shell.handle(Command::Accept, true, &snap(), 1),
+            shell.handle(Command::Accept, true, &snap(), &[]),
             ShellEffect::PickWorkout(Some(id)) if id == "w14"
         ));
     }
@@ -1144,6 +1155,7 @@ mod tests {
                 ascent_m: 120.0,
                 max_grade_pct: 8.0,
                 profile: vec![(0.0, 0.0), (5_000.0, 40.0)],
+                rerollable: index > 0,
             })
             .collect()
     }

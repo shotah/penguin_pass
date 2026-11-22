@@ -3,16 +3,32 @@
 //! Colours are the `docs/ui.md` tokens. When `ui_style` is present the
 //! drawing goes through it.
 
-use godot::classes::control::{LayoutPreset, MouseFilter};
+use godot::classes::control::{LayoutPreset, MouseFilter, SizeFlags};
+use godot::classes::text_server::AutowrapMode;
 use godot::classes::{
-    CanvasLayer, ColorRect, HBoxContainer, Image, ImageTexture, Label, Node3D, PanelContainer,
-    ScrollContainer, StyleBoxEmpty, TextureRect, VBoxContainer,
+    CanvasLayer, ColorRect, Control, HBoxContainer, IControl, Image, ImageTexture, Label, Node3D,
+    PanelContainer, ScrollContainer, StyleBoxEmpty, TextureRect, VBoxContainer,
 };
-use godot::obj::Gd;
+use godot::obj::{Base, Gd, WithBaseField};
 use godot::prelude::*;
 use pp_view::shell::{Screen, ShellView};
 
 use crate::ui_style::{self, Role, Surface};
+
+/// Expanded course row: map, meta, and description.
+#[derive(Clone, Debug, Default)]
+pub struct CoursePreview {
+    /// Normalized top-down route polyline.
+    pub map_points: Vec<(f32, f32)>,
+    /// Evocative one-liner.
+    pub description: String,
+    /// Terrain, ascent, and grade span.
+    pub meta: String,
+    /// `alpine`, `desert`, or `farmland`.
+    pub theme: String,
+    /// Direction row toggles the arrow on the map.
+    pub reversed: bool,
+}
 
 /// Overlay for every screen that is not the settings list.
 pub struct Screens {
@@ -31,6 +47,10 @@ pub struct Screens {
     saved: Gd<Label>,
     saved_folder: Gd<Label>,
     sparks: Vec<[Gd<ColorRect>; 12]>,
+    course_overviews: Vec<Gd<HBoxContainer>>,
+    route_maps: Vec<Gd<RouteMap>>,
+    course_meta: Vec<Gd<Label>>,
+    course_desc: Vec<Gd<Label>>,
     progress_scroll: Gd<ScrollContainer>,
     progress_totals: Gd<Label>,
     progress_badges: Vec<BadgeBlock>,
@@ -126,29 +146,76 @@ impl Screens {
         let mut rows = Vec::new();
         let mut row_panels = Vec::new();
         let mut sparks = Vec::new();
+        let mut course_overviews = Vec::new();
+        let mut route_maps = Vec::new();
+        let mut course_meta = Vec::new();
+        let mut course_desc = Vec::new();
         for index in 0..16 {
             let mut row_panel = PanelContainer::new_alloc();
             row_panel.set_name(&format!("ScreenPanel{index}"));
             row_panel.set_custom_minimum_size(Vector2::new(400.0, 40.0));
             row_panel.add_theme_stylebox_override("panel", &StyleBoxEmpty::new_gd());
-            let mut row_box = HBoxContainer::new_alloc();
+            let mut row_box = VBoxContainer::new_alloc();
+            row_box.add_theme_constant_override("separation", 6);
+
+            let mut row_header = HBoxContainer::new_alloc();
+            row_header.set_name(&format!("ScreenRowHeader{index}"));
             let mut label = ui_style::label("", Role::MenuItem);
             label.set_name(&format!("ScreenRow{index}"));
-            label.set_h_size_flags(godot::classes::control::SizeFlags::EXPAND_FILL);
-            row_box.add_child(&label);
+            label.set_h_size_flags(SizeFlags::EXPAND_FILL);
+            row_header.add_child(&label);
+
+            let mut spark_box = HBoxContainer::new_alloc();
+            spark_box.set_name(&format!("ScreenSparks{index}"));
+            spark_box.set_custom_minimum_size(Vector2::new(68.0, 32.0));
+            spark_box.set_v_size_flags(SizeFlags::SHRINK_CENTER);
+            spark_box.add_theme_constant_override("separation", 2);
             let spark: [Gd<ColorRect>; 12] = std::array::from_fn(|_| {
                 let mut mark = ColorRect::new_alloc();
                 mark.set_custom_minimum_size(Vector2::new(4.0, 8.0));
                 mark.set_color(ui_style::SNOW);
+                mark.set_v_size_flags(SizeFlags::SHRINK_END);
                 mark.set_visible(false);
                 mark
             });
             for mark in &spark {
-                row_box.add_child(mark);
+                spark_box.add_child(mark);
             }
+            row_header.add_child(&spark_box);
+            row_box.add_child(&row_header);
+
+            let mut overview = HBoxContainer::new_alloc();
+            overview.set_name(&format!("ScreenOverview{index}"));
+            overview.add_theme_constant_override("separation", 14);
+            overview.set_visible(false);
+            let mut route_map = RouteMap::new_alloc();
+            route_map.set_name(&format!("ScreenRouteMap{index}"));
+            overview.add_child(&route_map);
+
+            let mut overview_text = VBoxContainer::new_alloc();
+            overview_text.set_h_size_flags(SizeFlags::EXPAND_FILL);
+            overview_text.add_theme_constant_override("separation", 4);
+            let mut meta_label = ui_style::label("", Role::Unit);
+            meta_label.set_name(&format!("ScreenMeta{index}"));
+            meta_label
+                .add_theme_color_override("font_color", ui_style::with_alpha(ui_style::INK, 0.78));
+            let mut desc_label = ui_style::label("", Role::Caption);
+            desc_label.set_name(&format!("ScreenDesc{index}"));
+            desc_label.add_theme_color_override("font_color", ui_style::INK);
+            desc_label.set_autowrap_mode(AutowrapMode::WORD_SMART);
+            desc_label.set_custom_minimum_size(Vector2::new(260.0, 0.0));
+            overview_text.add_child(&meta_label);
+            overview_text.add_child(&desc_label);
+            overview.add_child(&overview_text);
+            row_box.add_child(&overview);
+
             row_panel.add_child(&row_box);
             row_list.add_child(&row_panel);
             sparks.push(spark);
+            course_overviews.push(overview);
+            route_maps.push(route_map);
+            course_meta.push(meta_label);
+            course_desc.push(desc_label);
             rows.push(label);
             row_panels.push(row_panel);
         }
@@ -263,6 +330,10 @@ impl Screens {
             saved,
             saved_folder,
             sparks,
+            course_overviews,
+            route_maps,
+            course_meta,
+            course_desc,
             progress_scroll,
             progress_totals,
             progress_badges,
@@ -311,6 +382,7 @@ impl Screens {
         view: &ShellView,
         profiles: &[Vec<(f32, f32)>],
         figures: &[(String, String)],
+        course_previews: &[CoursePreview],
     ) {
         let visible = !matches!(view.screen, Screen::Riding | Screen::Settings);
         self.layer.set_visible(visible);
@@ -410,6 +482,7 @@ impl Screens {
         self.hints
             .set_visible(!matches!(view.screen, Screen::Riding | Screen::Settings));
         self.paint_profiles(view, profiles);
+        self.paint_course_overviews(view, course_previews);
         self.paint_workout_bars(view.screen);
         self.paint_figures(view.screen, figures);
         if view.screen != Screen::Summary {
@@ -431,7 +504,11 @@ impl Screens {
         let budget = self.list_budget(view.screen);
         let viewport = self.viewport_size();
         let max_width = (viewport.x - 96.0).max(440.0);
-        let width = content.x.max(440.0).min(max_width);
+        let width = if view.screen == Screen::Course {
+            content.x.clamp(560.0, 640.0).min(max_width)
+        } else {
+            content.x.max(440.0).min(max_width)
+        };
         let height = content.y.min(budget).max(0.0);
         self.row_scroll
             .set_custom_minimum_size(Vector2::new(width, height));
@@ -597,6 +674,12 @@ impl Screens {
         for (index, group) in self.sparks.iter_mut().enumerate() {
             let profile = if show { profiles.get(index) } else { None };
             let heights = profile.map(|profile| spark_heights(profile));
+            let focused = index == view.selected;
+            let bar_color = if focused {
+                ui_style::with_alpha(ui_style::INK, 0.78)
+            } else {
+                ui_style::with_alpha(ui_style::SNOW, 0.78)
+            };
             for (bar, mark) in group.iter_mut().enumerate() {
                 let Some(heights) = heights else {
                     mark.set_visible(false);
@@ -605,8 +688,29 @@ impl Screens {
                 mark.set_visible(true);
                 let height = 6.0 + heights[bar] * 28.0;
                 mark.set_custom_minimum_size(Vector2::new(4.0, height));
-                mark.set_color(ui_style::SNOW);
+                mark.set_color(bar_color);
             }
+        }
+    }
+
+    fn paint_course_overviews(&mut self, view: &ShellView, course_previews: &[CoursePreview]) {
+        let on_course = view.screen == Screen::Course;
+        for index in 0..self.course_overviews.len() {
+            let show = on_course && index == view.selected && course_previews.get(index).is_some();
+            self.course_overviews[index].set_visible(show);
+            if !show {
+                continue;
+            }
+            let Some(preview) = course_previews.get(index) else {
+                continue;
+            };
+            self.route_maps[index].bind_mut().set_route(
+                &preview.map_points,
+                &preview.theme,
+                preview.reversed,
+            );
+            self.course_meta[index].set_text(&preview.meta);
+            self.course_desc[index].set_text(&preview.description);
         }
     }
 
@@ -681,6 +785,132 @@ impl Screens {
     }
 }
 
+/// GPU-drawn top-down route preview for one course row.
+#[derive(GodotClass)]
+#[class(base = Control)]
+struct RouteMap {
+    base: Base<Control>,
+    points: Vec<Vector2>,
+    theme: String,
+    reversed: bool,
+}
+
+#[godot_api]
+impl IControl for RouteMap {
+    fn init(base: Base<Control>) -> Self {
+        Self {
+            base,
+            points: Vec::new(),
+            theme: String::new(),
+            reversed: false,
+        }
+    }
+
+    fn ready(&mut self) {
+        self.base_mut()
+            .set_custom_minimum_size(Vector2::new(168.0, 102.0));
+        self.base_mut().set_mouse_filter(MouseFilter::IGNORE);
+    }
+
+    fn draw(&mut self) {
+        let size = self.base().get_size();
+        if size.x < 8.0 || size.y < 8.0 {
+            return;
+        }
+        self.base_mut().draw_rect(
+            Rect2::new(Vector2::ZERO, size),
+            ui_style::with_alpha(ui_style::INK, 0.88),
+        );
+        self.base_mut()
+            .draw_rect_ex(
+                Rect2::new(Vector2::ZERO, size),
+                ui_style::with_alpha(ui_style::SNOW, 0.18),
+            )
+            .filled(false)
+            .width(1.0)
+            .done();
+        if self.points.len() < 2 {
+            return;
+        }
+        let pad = 12.0;
+        let inner = Rect2::new(
+            Vector2::new(pad, pad),
+            Vector2::new((size.x - pad * 2.0).max(1.0), (size.y - pad * 2.0).max(1.0)),
+        );
+        let mut line = PackedVector2Array::new();
+        for point in &self.points {
+            line.push(Vector2::new(
+                inner.position.x + point.x * inner.size.x,
+                inner.position.y + point.y * inner.size.y,
+            ));
+        }
+        if line.is_empty() {
+            return;
+        }
+        line.push(line[0]);
+        let accent = route_accent(&self.theme);
+        self.base_mut()
+            .draw_polyline_ex(&line, ui_style::with_alpha(accent, 0.25))
+            .width(5.5)
+            .antialiased(true)
+            .done();
+        self.base_mut()
+            .draw_polyline_ex(&line, accent)
+            .width(2.6)
+            .antialiased(true)
+            .done();
+        let start = line[0];
+        self.base_mut().draw_circle(start, 4.5, ui_style::SNOW);
+        self.base_mut().draw_circle(start, 3.0, ui_style::GOOD);
+        let toward_index = if self.reversed {
+            self.points.len().saturating_sub(1)
+        } else {
+            1.min(self.points.len() - 1)
+        };
+        let toward = Vector2::new(
+            inner.position.x + self.points[toward_index].x * inner.size.x,
+            inner.position.y + self.points[toward_index].y * inner.size.y,
+        );
+        let direction = (toward - start).normalized();
+        if direction.length_squared() > 1.0e-4 {
+            let tip = start + direction * 12.0;
+            self.base_mut().draw_line(start, tip, accent);
+            let side = Vector2::new(-direction.y, direction.x) * 3.0;
+            self.base_mut()
+                .draw_line(tip, tip - direction * 5.0 + side, accent);
+            self.base_mut()
+                .draw_line(tip, tip - direction * 5.0 - side, accent);
+        }
+    }
+}
+
+impl RouteMap {
+    fn set_route(&mut self, points: &[(f32, f32)], theme: &str, reversed: bool) {
+        let unchanged =
+            self.theme == theme
+                && self.reversed == reversed
+                && self.points.len() == points.len()
+                && self.points.iter().zip(points).all(|(left, &(x, z))| {
+                    (left.x - x).abs() < 1.0e-5 && (left.y - z).abs() < 1.0e-5
+                });
+        if unchanged {
+            return;
+        }
+        self.points = points.iter().map(|&(x, z)| Vector2::new(x, z)).collect();
+        self.theme = theme.to_owned();
+        self.reversed = reversed;
+        self.base_mut().queue_redraw();
+    }
+}
+
+fn route_accent(theme: &str) -> Color {
+    match theme {
+        "farmland" => Color::from_rgb(0.95, 0.78, 0.32),
+        "desert" => Color::from_rgb(0.96, 0.56, 0.34),
+        _ => Color::from_rgb(0.48, 0.82, 0.98),
+    }
+}
+
 fn scroll_clearance<T>(scroll: &mut Gd<ScrollContainer>, control: &Gd<T>, clearance: f32)
 where
     T: godot::obj::Inherits<godot::classes::Control>,
@@ -712,7 +942,7 @@ fn spark_heights(profile: &[(f32, f32)]) -> [f32; 12] {
     }
     let min = profile.iter().map(|point| point.1).fold(f32::MAX, f32::min);
     let max = profile.iter().map(|point| point.1).fold(f32::MIN, f32::max);
-    let span = (max - min).max(1.0);
+    let span = (max - min).max(30.0);
     let start = profile[0].0;
     let end = profile[profile.len() - 1].0;
     for (index, height) in heights.iter_mut().enumerate() {

@@ -4316,7 +4316,7 @@ mod tests {
         let started = Instant::now();
         let catalog = session.course_catalog();
         eprintln!("course_catalog first call {:?}", started.elapsed());
-        assert_eq!(catalog.len(), 8);
+        assert_eq!(catalog.len(), 9);
         assert_eq!(catalog[0].name, "Penguin Pass");
         assert_eq!(catalog[0].theme, "alpine");
         assert!(matches!(catalog[0].choice, CourseChoice::PenguinPass));
@@ -4369,6 +4369,7 @@ mod tests {
                 assert_eq!(*seed, 2);
             }
             CourseChoice::PenguinPass => panic!("flat row should stay generated"),
+            CourseChoice::LonelyRoad => panic!("flat row should stay generated"),
         }
         assert_eq!(session.course_catalog()[5].name, "Flat 10 km");
         assert_eq!(session.course_choice(), &CourseChoice::PenguinPass);

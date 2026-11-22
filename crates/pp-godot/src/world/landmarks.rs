@@ -65,6 +65,58 @@ struct Kind {
 }
 
 fn kinds_for(theme: &str) -> Vec<Kind> {
+    if theme == "farmland" {
+        return vec![
+            Kind {
+                id: "barn",
+                footprint_m: 16.0,
+                road_m: 26.0,
+                site: SiteKind::Roadside,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "silo_row",
+                footprint_m: 18.0,
+                road_m: 38.0,
+                site: SiteKind::Straight,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "farmstead",
+                footprint_m: 24.0,
+                road_m: 44.0,
+                site: SiteKind::Straight,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "pasture",
+                footprint_m: 18.0,
+                road_m: 28.0,
+                site: SiteKind::Roadside,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "windmill",
+                footprint_m: 10.0,
+                road_m: 20.0,
+                site: SiteKind::Roadside,
+                rarity: 1.0,
+                spans_road: false,
+            },
+            Kind {
+                id: "hay_yard",
+                footprint_m: 14.0,
+                road_m: 18.0,
+                site: SiteKind::Roadside,
+                rarity: 1.0,
+                spans_road: false,
+            },
+        ];
+    }
     if theme == "desert" {
         return vec![
             Kind {
@@ -136,16 +188,16 @@ fn kinds_for(theme: &str) -> Vec<Kind> {
         },
         Kind {
             id: "meadow",
-            footprint_m: 12.0,
-            road_m: 16.0,
+            footprint_m: 15.0,
+            road_m: 24.0,
             site: SiteKind::Roadside,
             rarity: 1.0,
             spans_road: false,
         },
         Kind {
             id: "herd",
-            footprint_m: 12.0,
-            road_m: 18.0,
+            footprint_m: 15.0,
+            road_m: 24.0,
             site: SiteKind::Roadside,
             rarity: 1.0,
             spans_road: false,
@@ -260,6 +312,12 @@ fn spawn_one(parent: &mut Gd<Node3D>, site: &PlacedLandmark, index: usize, _them
         "ruins" | "temple" => build_temple_models(&mut root),
         "ruin" => build_ruin(&mut root),
         "wreck" => prop(&mut root, "Cart", MED_CART, Vector3::ZERO, 1.2, 3.6),
+        "barn" => build_barn(&mut root),
+        "silo_row" => build_silo_row(&mut root),
+        "farmstead" => build_farmstead(&mut root),
+        "pasture" => build_pasture(&mut root),
+        "windmill" => build_windmill(&mut root),
+        "hay_yard" => build_hay_yard(&mut root),
         _ => {}
     }
     parent.add_child(&root);
@@ -293,6 +351,98 @@ fn prop(parent: &mut Gd<Node3D>, name: &str, path: &str, position: Vector3, yaw:
     node.set_rotation(Vector3::new(0.0, yaw, 0.0));
     node.set_scale(Vector3::new(scale, scale, scale));
     parent.add_child(&node);
+}
+
+fn fence_panel_step(scale: f32) -> f32 {
+    scale * 0.76
+}
+
+fn build_fence_run(
+    root: &mut Gd<Node3D>,
+    prefix: &str,
+    start: Vector3,
+    dir_x: f32,
+    dir_z: f32,
+    count: usize,
+    scale: f32,
+) {
+    let step = fence_panel_step(scale);
+    let len = (dir_x * dir_x + dir_z * dir_z).sqrt();
+    let (dx, dz) = if len > f32::EPSILON {
+        (dir_x / len, dir_z / len)
+    } else {
+        (1.0, 0.0)
+    };
+    let yaw = (-dz).atan2(dx);
+    let path = format!("{MED}fence.gltf");
+    for i in 0..count {
+        let along = step * (i as f32 + 0.5);
+        let pos = Vector3::new(start.x + dx * along, start.y, start.z + dz * along);
+        prop(root, &format!("{prefix}{i}"), &path, pos, yaw, scale);
+    }
+}
+
+fn build_fenced_pen(
+    root: &mut Gd<Node3D>,
+    prefix: &str,
+    cols: usize,
+    rows: usize,
+    scale: f32,
+    gate_col: Option<usize>,
+) {
+    let step = fence_panel_step(scale);
+    let w = cols as f32 * step;
+    let d = rows as f32 * step;
+    let half_w = w * 0.5;
+    let half_d = d * 0.5;
+
+    let south = Vector3::new(-half_w, 0.0, half_d);
+    if let Some(gate) = gate_col {
+        if gate > 0 {
+            build_fence_run(root, &format!("{prefix}S"), south, 1.0, 0.0, gate, scale);
+        }
+        if gate + 1 < cols {
+            let skip = step * (gate as f32 + 1.0);
+            build_fence_run(
+                root,
+                &format!("{prefix}Sg"),
+                Vector3::new(south.x + skip, south.y, south.z),
+                1.0,
+                0.0,
+                cols - gate - 1,
+                scale,
+            );
+        }
+    } else {
+        build_fence_run(root, &format!("{prefix}S"), south, 1.0, 0.0, cols, scale);
+    }
+    build_fence_run(
+        root,
+        &format!("{prefix}N"),
+        Vector3::new(-half_w, 0.0, -half_d),
+        1.0,
+        0.0,
+        cols,
+        scale,
+    );
+    build_fence_run(
+        root,
+        &format!("{prefix}W"),
+        Vector3::new(-half_w, 0.0, -half_d),
+        0.0,
+        1.0,
+        rows,
+        scale,
+    );
+    build_fence_run(
+        root,
+        &format!("{prefix}E"),
+        Vector3::new(half_w, 0.0, -half_d),
+        0.0,
+        1.0,
+        rows,
+        scale,
+    );
 }
 
 fn load_model(path: &str) -> Option<Gd<godot::classes::Mesh>> {
@@ -364,24 +514,27 @@ fn build_village_models(root: &mut Gd<Node3D>) {
         0.4,
         2.4,
     );
+    const VILLAGE_FENCE: f32 = 3.8;
+    build_fence_run(
+        root,
+        "FenceL",
+        Vector3::new(-3.2, 0.0, -18.0),
+        0.0,
+        1.0,
+        12,
+        VILLAGE_FENCE,
+    );
+    build_fence_run(
+        root,
+        "FenceR",
+        Vector3::new(3.2, 0.0, -18.0),
+        0.0,
+        1.0,
+        12,
+        VILLAGE_FENCE,
+    );
     for i in 0..12 {
-        let z = -18.0 + i as f32 * 4.2;
-        prop(
-            root,
-            &format!("FenceL{i}"),
-            &format!("{MED}fence.gltf"),
-            Vector3::new(-3.2, 0.0, z),
-            0.0,
-            4.5,
-        );
-        prop(
-            root,
-            &format!("FenceR{i}"),
-            &format!("{MED}fence.gltf"),
-            Vector3::new(3.2, 0.0, z),
-            0.0,
-            4.5,
-        );
+        let z = -18.0 + (i as f32 + 0.5) * fence_panel_step(VILLAGE_FENCE);
         if i % 2 == 0 {
             prop(
                 root,
@@ -446,68 +599,64 @@ fn build_bridge(root: &mut Gd<Node3D>) {
 }
 
 fn build_animals(root: &mut Gd<Node3D>) {
-    for i in 0..8 {
-        let x = (i % 4) as f32 * 2.2 - 3.3;
-        let z = (i / 4) as f32 * 3.0 - 1.0;
-        prop(
-            root,
-            &format!("Sheep{i}"),
-            &format!("{ANIMAL}sheep.gltf"),
-            Vector3::new(x, 0.0, z),
-            i as f32 * 0.7,
-            0.55,
-        );
-    }
+    const PEN_SCALE: f32 = 3.8;
+    build_fenced_pen(root, "Pen", 7, 5, PEN_SCALE, Some(3));
+
     prop(
         root,
         "CowA",
         &format!("{ANIMAL}cow.gltf"),
-        Vector3::new(-4.5, 0.0, 3.2),
-        0.4,
+        Vector3::new(-5.2, 0.0, -2.5),
         0.5,
+        0.27,
     );
     prop(
         root,
         "CowB",
         &format!("{ANIMAL}cow.gltf"),
-        Vector3::new(2.2, 0.0, 3.6),
-        1.8,
-        0.48,
+        Vector3::new(4.6, 0.0, 2.2),
+        2.1,
+        0.26,
     );
-    for i in 0..6 {
-        let z = -4.0 + i as f32 * 1.8;
-        prop(
-            root,
-            &format!("FenceL{i}"),
-            &format!("{MED}fence.gltf"),
-            Vector3::new(-6.5, 0.0, z),
-            0.0,
-            5.0,
-        );
-        prop(
-            root,
-            &format!("FenceR{i}"),
-            &format!("{MED}fence.gltf"),
-            Vector3::new(6.5, 0.0, z),
-            0.0,
-            5.0,
-        );
-    }
+    prop(
+        root,
+        "Sheep0",
+        &format!("{ANIMAL}sheep.gltf"),
+        Vector3::new(-1.5, 0.0, 3.0),
+        0.4,
+        0.21,
+    );
+    prop(
+        root,
+        "Sheep1",
+        &format!("{ANIMAL}sheep.gltf"),
+        Vector3::new(1.2, 0.0, 3.8),
+        1.1,
+        0.20,
+    );
+    prop(
+        root,
+        "Sheep2",
+        &format!("{ANIMAL}sheep.gltf"),
+        Vector3::new(-0.4, 0.0, 1.4),
+        0.7,
+        0.22,
+    );
     prop(
         root,
         "Hay",
         &format!("{MED}hay.gltf"),
-        Vector3::new(4.0, 0.0, -2.0),
+        Vector3::new(-7.5, 0.0, 4.5),
         0.3,
-        12.0,
+        5.0,
     );
     prop(
         root,
         "Trough",
         &format!("{MED}well.gltf"),
-        Vector3::new(-2.0, 0.0, 4.5),
+        Vector3::new(7.2, 0.0, -4.2),
         1.2,
-        1.6,
+        1.4,
     );
 }
 
@@ -1238,7 +1387,401 @@ fn build_cactus(root: &mut Gd<Node3D>) {
     }
 }
 
+fn build_barn(root: &mut Gd<Node3D>) {
+    let red = standard_material(Color::from_rgb(0.55, 0.14, 0.11), 0.82, 0.0);
+    let trim = standard_material(Color::from_rgb(0.92, 0.91, 0.88), 0.65, 0.0);
+    let roof = standard_material(Color::from_rgb(0.38, 0.36, 0.34), 0.75, 0.0);
+    let silo = standard_material(Color::from_rgb(0.62, 0.64, 0.66), 0.35, 0.45);
+    add_box(
+        root,
+        "Walls",
+        Vector3::new(12.0, 5.5, 8.0),
+        Vector3::new(-2.0, 2.75, 0.0),
+        &red,
+    );
+    add_box(
+        root,
+        "RoofLo",
+        Vector3::new(13.0, 1.2, 9.0),
+        Vector3::new(-2.0, 6.2, 0.0),
+        &roof,
+    );
+    add_box(
+        root,
+        "RoofHi",
+        Vector3::new(9.0, 1.4, 7.0),
+        Vector3::new(-2.0, 7.0, 0.0),
+        &roof,
+    );
+    add_box(
+        root,
+        "DoorL",
+        Vector3::new(0.35, 3.6, 0.18),
+        Vector3::new(4.0, 1.8, 4.1),
+        &trim,
+    );
+    add_box(
+        root,
+        "DoorR",
+        Vector3::new(0.35, 3.6, 0.18),
+        Vector3::new(3.2, 1.8, 4.1),
+        &trim,
+    );
+    add_box(
+        root,
+        "Loft",
+        Vector3::new(1.4, 1.0, 0.12),
+        Vector3::new(-2.0, 4.6, 4.1),
+        &trim,
+    );
+    add_box(
+        root,
+        "Silo",
+        Vector3::new(3.2, 14.0, 3.2),
+        Vector3::new(8.0, 7.0, -1.0),
+        &silo,
+    );
+    add_box(
+        root,
+        "SiloCap",
+        Vector3::new(3.6, 1.2, 3.6),
+        Vector3::new(8.0, 14.8, -1.0),
+        &silo,
+    );
+    build_fence_run(
+        root,
+        "Fence",
+        Vector3::new(-8.0, 0.0, -6.0),
+        0.0,
+        1.0,
+        8,
+        3.8,
+    );
+    prop(
+        root,
+        "Hay",
+        &format!("{MED}hay.gltf"),
+        Vector3::new(-5.5, 0.0, 5.0),
+        0.3,
+        11.0,
+    );
+    prop(
+        root,
+        "Cart",
+        MED_CART,
+        Vector3::new(-7.0, 0.0, 2.0),
+        0.6,
+        1.4,
+    );
+}
+
+fn build_silo_row(root: &mut Gd<Node3D>) {
+    let silo = standard_material(Color::from_rgb(0.58, 0.60, 0.63), 0.32, 0.5);
+    let timber = standard_material(Color::from_rgb(0.45, 0.32, 0.22), 0.85, 0.0);
+    for (name, x) in [("SiloL", -5.5_f32), ("SiloR", 5.5)] {
+        add_box(
+            root,
+            name,
+            Vector3::new(3.8, 15.5, 3.8),
+            Vector3::new(x, 7.75, 2.0),
+            &silo,
+        );
+        add_box(
+            root,
+            &format!("{name}Cap"),
+            Vector3::new(4.2, 1.4, 4.2),
+            Vector3::new(x, 15.8, 2.0),
+            &silo,
+        );
+    }
+    add_box(
+        root,
+        "Bridge",
+        Vector3::new(12.0, 1.0, 2.2),
+        Vector3::new(0.0, 12.5, 2.0),
+        &timber,
+    );
+    prop(
+        root,
+        "Loader",
+        &format!("{MED}stable.gltf"),
+        Vector3::new(0.0, 0.0, -4.0),
+        0.1,
+        2.0,
+    );
+    prop(
+        root,
+        "HayA",
+        &format!("{MED}hay.gltf"),
+        Vector3::new(-3.0, 0.0, -3.5),
+        0.2,
+        10.0,
+    );
+    prop(
+        root,
+        "HayB",
+        &format!("{MED}hay.gltf"),
+        Vector3::new(3.5, 0.0, -3.8),
+        0.5,
+        9.0,
+    );
+    prop(
+        root,
+        "Cart",
+        MED_CART,
+        Vector3::new(7.5, 0.0, -2.0),
+        1.1,
+        1.2,
+    );
+}
+
+fn build_farmstead(root: &mut Gd<Node3D>) {
+    prop(
+        root,
+        "HouseA",
+        &format!("{MED}house_1.gltf"),
+        Vector3::new(-6.0, 0.0, 4.0),
+        0.3,
+        2.2,
+    );
+    prop(
+        root,
+        "HouseB",
+        &format!("{MED}house_3.gltf"),
+        Vector3::new(5.0, 0.0, 3.0),
+        -0.4,
+        2.0,
+    );
+    prop(
+        root,
+        "Stable",
+        &format!("{MED}stable.gltf"),
+        Vector3::new(-1.0, 0.0, -5.0),
+        0.0,
+        2.1,
+    );
+    prop(
+        root,
+        "Mill",
+        MED_MILL,
+        Vector3::new(8.0, 0.0, -2.0),
+        2.0,
+        2.0,
+    );
+    let mut sails = sail_mesh();
+    sails.set_position(Vector3::new(6.0, 6.1, -4.3));
+    root.add_child(&sails);
+    prop(
+        root,
+        "Well",
+        &format!("{MED}well.gltf"),
+        Vector3::new(1.5, 0.0, 1.0),
+        0.5,
+        2.2,
+    );
+    build_fence_run(
+        root,
+        "Fence",
+        Vector3::new(0.0, 0.0, -8.0),
+        0.0,
+        1.0,
+        10,
+        3.8,
+    );
+    prop(
+        root,
+        "Hay",
+        &format!("{MED}hay.gltf"),
+        Vector3::new(-9.0, 0.0, -1.0),
+        0.2,
+        9.5,
+    );
+    prop(
+        root,
+        "Barrel",
+        &format!("{MED}barrel.gltf"),
+        Vector3::new(3.0, 0.0, 6.0),
+        0.7,
+        7.0,
+    );
+}
+
+fn build_pasture(root: &mut Gd<Node3D>) {
+    const PASTURE_SCALE: f32 = 3.8;
+    build_fenced_pen(root, "Pasture", 9, 6, PASTURE_SCALE, Some(4));
+
+    prop(
+        root,
+        "CowA",
+        &format!("{ANIMAL}cow.gltf"),
+        Vector3::new(-7.5, 0.0, -3.5),
+        0.6,
+        0.28,
+    );
+    prop(
+        root,
+        "CowB",
+        &format!("{ANIMAL}cow.gltf"),
+        Vector3::new(6.5, 0.0, -2.0),
+        1.4,
+        0.27,
+    );
+    prop(
+        root,
+        "CowC",
+        &format!("{ANIMAL}cow.gltf"),
+        Vector3::new(-1.0, 0.0, 4.2),
+        2.0,
+        0.26,
+    );
+    prop(
+        root,
+        "Sheep0",
+        &format!("{ANIMAL}sheep.gltf"),
+        Vector3::new(4.2, 0.0, 4.5),
+        0.5,
+        0.21,
+    );
+    prop(
+        root,
+        "Sheep1",
+        &format!("{ANIMAL}sheep.gltf"),
+        Vector3::new(7.0, 0.0, 3.2),
+        1.2,
+        0.20,
+    );
+    prop(
+        root,
+        "Sheep2",
+        &format!("{ANIMAL}sheep.gltf"),
+        Vector3::new(2.0, 0.0, 2.5),
+        0.9,
+        0.22,
+    );
+    prop(
+        root,
+        "Hay",
+        &format!("{MED}hay.gltf"),
+        Vector3::new(-11.0, 0.0, 6.5),
+        0.3,
+        5.0,
+    );
+    prop(
+        root,
+        "HayB",
+        &format!("{MED}hay.gltf"),
+        Vector3::new(10.5, 0.0, -6.0),
+        0.6,
+        5.0,
+    );
+    prop(
+        root,
+        "Trough",
+        &format!("{MED}well.gltf"),
+        Vector3::new(11.0, 0.0, 6.0),
+        1.0,
+        1.4,
+    );
+}
+
+fn build_windmill(root: &mut Gd<Node3D>) {
+    let wood = standard_material(Color::from_rgb(0.52, 0.40, 0.28), 0.8, 0.0);
+    let steel = standard_material(Color::from_rgb(0.48, 0.50, 0.54), 0.45, 0.3);
+    for (index, y, size) in [
+        (0, 2.0, 2.8_f32),
+        (1, 5.5, 2.2),
+        (2, 8.5, 1.6),
+        (3, 10.5, 1.2),
+    ] {
+        add_box(
+            root,
+            &format!("Strut{index}"),
+            Vector3::new(size, 2.6, size),
+            Vector3::new(0.0, y, 0.0),
+            &wood,
+        );
+    }
+    add_box(
+        root,
+        "Nacelle",
+        Vector3::new(1.4, 1.0, 2.0),
+        Vector3::new(0.0, 11.2, 0.4),
+        &steel,
+    );
+    let mut blades = blade_mesh();
+    blades.set_position(Vector3::new(0.0, 11.2, 1.2));
+    root.add_child(&blades);
+    add_box(
+        root,
+        "Tail",
+        Vector3::new(0.2, 1.8, 2.6),
+        Vector3::new(0.0, 11.0, -1.6),
+        &wood,
+    );
+    add_box(
+        root,
+        "Tank",
+        Vector3::new(2.8, 2.2, 2.8),
+        Vector3::new(4.0, 1.1, 1.0),
+        &wood,
+    );
+    build_fence_run(
+        root,
+        "Fence",
+        Vector3::new(5.5, 0.0, -3.0),
+        0.0,
+        1.0,
+        6,
+        3.8,
+    );
+}
+
+fn build_hay_yard(root: &mut Gd<Node3D>) {
+    let shed = standard_material(Color::from_rgb(0.55, 0.14, 0.11), 0.82, 0.0);
+    add_box(
+        root,
+        "Shed",
+        Vector3::new(5.0, 3.2, 4.0),
+        Vector3::new(-5.0, 1.6, 0.0),
+        &shed,
+    );
+    for (name, x, z, yaw, scale) in [
+        ("HayA", -1.0, 0.0, 0.2, 10.0_f32),
+        ("HayB", 1.5, 1.5, 0.5, 9.5),
+        ("HayC", 3.0, -1.0, 0.8, 11.0),
+    ] {
+        prop(
+            root,
+            name,
+            &format!("{MED}hay.gltf"),
+            Vector3::new(x, 0.0, z),
+            yaw,
+            scale,
+        );
+    }
+    prop(
+        root,
+        "Cart",
+        MED_CART,
+        Vector3::new(2.0, 0.0, 3.0),
+        0.9,
+        1.3,
+    );
+    build_fence_run(
+        root,
+        "Fence",
+        Vector3::new(6.0, 0.0, -4.0),
+        0.0,
+        1.0,
+        7,
+        3.8,
+    );
+}
+
 fn add_horizon(parent: &mut Gd<Node3D>, course: &Course, field: &Field, theme: &Theme) {
+    if theme.name == "farmland" {
+        return;
+    }
     let (x, z) = horizon_anchor(course, &theme.name, 3_600.0);
     let ground = field.height(x, z);
     let mut root = Node3D::new_alloc();

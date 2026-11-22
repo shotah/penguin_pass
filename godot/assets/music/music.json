@@ -10,7 +10,8 @@
       "download_url": "https://opengameart.org/sites/default/files/trippington_in_game.ogg",
       "licence": "CC0 1.0",
       "retrieved": "2026-11-20",
-      "sha256": "633f731ac75ef12ad0ecfc49879f466f9df49dcc6a730aae3a1db209bb298f14"
+      "sha256": "633f731ac75ef12ad0ecfc49879f466f9df49dcc6a730aae3a1db209bb298f14",
+      "moods": ["solitary"]
     },
     {
       "file": "cyber-march.mp3",
@@ -22,7 +23,8 @@
       "download_url": "https://opengameart.org/sites/default/files/cybermarch.mp3",
       "licence": "CC0 1.0",
       "retrieved": "2026-11-20",
-      "sha256": "d498390c9cb4ec54b6e9f9744800bab4d2d2346e3210b0f120b8b4b8a46a38d0"
+      "sha256": "d498390c9cb4ec54b6e9f9744800bab4d2d2346e3210b0f120b8b4b8a46a38d0",
+      "moods": ["energetic"]
     },
     {
       "file": "bathing-in-the-sun.mp3",
@@ -34,7 +36,8 @@
       "download_url": "https://opengameart.org/sites/default/files/bathing_in_the_sung_electronic.mp3",
       "licence": "CC0 1.0",
       "retrieved": "2026-11-20",
-      "sha256": "dd7501ff2a0f996918b08af24d0c34b2d13fce8b9058347f5564ba613ad658e9"
+      "sha256": "dd7501ff2a0f996918b08af24d0c34b2d13fce8b9058347f5564ba613ad658e9",
+      "moods": ["solitary", "cruising", "energetic"]
     },
     {
       "file": "pro-sensory.mp3",
@@ -46,7 +49,8 @@
       "download_url": "https://opengameart.org/sites/default/files/ProSensory_0.mp3",
       "licence": "CC0 1.0",
       "retrieved": "2026-11-20",
-      "sha256": "37726858505462830e0103472b6091ebb45f38e5405f86bd159c7094a1d39e63"
+      "sha256": "37726858505462830e0103472b6091ebb45f38e5405f86bd159c7094a1d39e63",
+      "moods": ["cruising", "energetic"]
     },
     {
       "file": "rocking-the-synth-machine.mp3",
@@ -58,7 +62,8 @@
       "download_url": "https://opengameart.org/sites/default/files/rocking_the_synth_machine_3.mp3",
       "licence": "CC0 1.0",
       "retrieved": "2026-11-20",
-      "sha256": "8db556cb89fa443e8c0407f56af067b95d4b9fd8686f715412cb2f352d2e2b88"
+      "sha256": "8db556cb89fa443e8c0407f56af067b95d4b9fd8686f715412cb2f352d2e2b88",
+      "moods": ["cruising", "energetic"]
     },
     {
       "file": "forever.mp3",
@@ -70,7 +75,8 @@
       "download_url": "https://opengameart.org/sites/default/files/Forever_0.mp3",
       "licence": "CC0 1.0",
       "retrieved": "2026-11-20",
-      "sha256": "c85f1d627bd2106da3ff2fc31238130d0e24f9c491703009ffe25cd88ebdfb02"
+      "sha256": "c85f1d627bd2106da3ff2fc31238130d0e24f9c491703009ffe25cd88ebdfb02",
+      "moods": ["solitary", "cruising", "energetic"]
     },
     {
       "file": "intense-fight.mp3",
@@ -82,7 +88,8 @@
       "download_url": "https://opengameart.org/sites/default/files/intense_fight_scene_0.mp3",
       "licence": "CC0 1.0",
       "retrieved": "2026-11-20",
-      "sha256": "6b894b4bc70d6dce269cc5ba15fab9395c2b9879b1dc3393a4489a422c926ffa"
+      "sha256": "6b894b4bc70d6dce269cc5ba15fab9395c2b9879b1dc3393a4489a422c926ffa",
+      "moods": ["energetic"]
     }
   ]
 }

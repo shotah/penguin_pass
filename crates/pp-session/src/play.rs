@@ -773,6 +773,7 @@ fn segment_kind(run: &CourseRun, id: &str) -> Option<SegmentKind> {
 fn records_key(choice: &CourseChoice, reversed: bool) -> String {
     let key = match choice {
         CourseChoice::PenguinPass => "penguin_pass".to_owned(),
+        CourseChoice::LonelyRoad => "lonely_road".to_owned(),
         CourseChoice::Generated {
             terrain,
             distance_km,
@@ -785,6 +786,7 @@ fn records_key(choice: &CourseChoice, reversed: bool) -> String {
 fn badge_course(choice: &CourseChoice) -> String {
     match choice {
         CourseChoice::PenguinPass => "penguin_pass".to_owned(),
+        CourseChoice::LonelyRoad => "farmland".to_owned(),
         CourseChoice::Generated { terrain, .. } => terrain.as_str().to_owned(),
     }
 }
@@ -792,6 +794,7 @@ fn badge_course(choice: &CourseChoice) -> String {
 fn layout_seed(choice: &CourseChoice) -> u64 {
     match choice {
         CourseChoice::PenguinPass => 1,
+        CourseChoice::LonelyRoad => 2,
         CourseChoice::Generated { seed, .. } => *seed,
     }
 }

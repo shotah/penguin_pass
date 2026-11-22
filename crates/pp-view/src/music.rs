@@ -16,6 +16,48 @@ pub const DEFAULT_VOLUME_PERCENT: u8 = 60;
 /// How far the pause menu pulls the music back, in decibels.
 pub const DUCK_DB: f32 = -12.0;
 
+/// Ride music flavor. Filters bundled tracks when the rider has no custom folder.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CourseMood {
+    /// High-energy climbs and sprints.
+    #[default]
+    Energetic,
+    /// Steady tempo and rolling roads.
+    Cruising,
+    /// Open roads and sparse arrangements.
+    Solitary,
+}
+
+impl CourseMood {
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "energetic" => Some(Self::Energetic),
+            "cruising" => Some(Self::Cruising),
+            "solitary" => Some(Self::Solitary),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Energetic => "energetic",
+            Self::Cruising => "cruising",
+            Self::Solitary => "solitary",
+        }
+    }
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Energetic => "Energetic",
+            Self::Cruising => "Cruising",
+            Self::Solitary => "Solitary",
+        }
+    }
+}
+
 /// Where the music should sit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MusicScene {
@@ -35,6 +77,8 @@ pub struct TrackInfo {
     pub path: String,
     /// Line for "now playing".
     pub display_name: String,
+    /// Bundled mood tags. Empty means every mood.
+    pub moods: Vec<CourseMood>,
 }
 
 /// Bundled library after the manifest has been read.
@@ -334,6 +378,7 @@ impl Rng {
 #[derive(Clone, Debug)]
 pub struct Director {
     scene: MusicScene,
+    mood: CourseMood,
     ducked: bool,
     volume: u8,
     bundled: Library,
@@ -351,6 +396,7 @@ impl Director {
     pub fn new(bundled: Library, seed: u64) -> Self {
         Self {
             scene: MusicScene::Title,
+            mood: CourseMood::default(),
             ducked: false,
             volume: DEFAULT_VOLUME_PERCENT,
             bundled,
@@ -388,6 +434,31 @@ impl Director {
             MusicScene::Title => self.play_title(fade),
             MusicScene::Ride => self.play_ride(fade),
         }
+    }
+
+    /// Course mood. On the ride, crossfades when the current track is not in
+    /// the new playlist. A custom folder ignores mood filtering.
+    pub fn set_mood(&mut self, mood: CourseMood) -> Decision {
+        if self.mood == mood {
+            return Decision::Hold;
+        }
+        self.mood = mood;
+        self.failed.clear();
+        if self.scene != MusicScene::Ride || self.current_id.is_none() {
+            return Decision::Hold;
+        }
+        if !self.user.is_empty() {
+            return Decision::Hold;
+        }
+        let ride_ids = self.ride_ids();
+        if self
+            .current_id
+            .as_ref()
+            .is_some_and(|id| ride_ids.iter().any(|candidate| candidate == id))
+        {
+            return Decision::Hold;
+        }
+        self.play_ride(SCENE_CROSSFADE_SECS)
     }
 
     /// Pause menu. Does not change the track.
@@ -520,7 +591,7 @@ impl Director {
             if self.failed.iter().any(|failed| failed == &id) {
                 continue;
             }
-            let Some(track) = self.find_track(&id).cloned() else {
+            let Some(track) = self.find_track(&id) else {
                 continue;
             };
             self.accept(&track);
@@ -546,11 +617,21 @@ impl Director {
         self.current_scene = None;
     }
 
-    fn ride_tracks(&self) -> &[TrackInfo] {
-        if self.user.is_empty() {
-            &self.bundled.rides
+    fn ride_tracks(&self) -> Vec<TrackInfo> {
+        if !self.user.is_empty() {
+            return self.user.clone();
+        }
+        let filtered: Vec<TrackInfo> = self
+            .bundled
+            .rides
+            .iter()
+            .filter(|track| track.moods.is_empty() || track.moods.contains(&self.mood))
+            .cloned()
+            .collect();
+        if filtered.is_empty() {
+            self.bundled.rides.clone()
         } else {
-            &self.user
+            filtered
         }
     }
 
@@ -561,8 +642,18 @@ impl Director {
             .collect()
     }
 
-    fn find_track(&self, id: &str) -> Option<&TrackInfo> {
-        self.ride_tracks().iter().find(|track| track.id == id)
+    fn find_track(&self, id: &str) -> Option<TrackInfo> {
+        self.ride_tracks()
+            .into_iter()
+            .find(|track| track.id == id)
+            .or_else(|| {
+                self.bundled
+                    .rides
+                    .iter()
+                    .find(|track| track.id == id)
+                    .cloned()
+            })
+            .or_else(|| self.user.iter().find(|track| track.id == id).cloned())
     }
 }
 
@@ -583,6 +674,8 @@ struct ManifestTrack {
     licence: String,
     retrieved: String,
     sha256: String,
+    #[serde(default)]
+    moods: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -629,15 +722,26 @@ pub fn library_from_manifest(json: &str, path_prefix: &str) -> Result<Library, S
         {
             return Err(format!("{} is missing credit fields", track.file));
         }
+        let mut parsed_moods = Vec::new();
+        for mood in &track.moods {
+            let Some(parsed) = CourseMood::parse(mood) else {
+                return Err(format!("{} has unknown mood '{mood}'", track.file));
+            };
+            parsed_moods.push(parsed);
+        }
         let info = TrackInfo {
             id: format!("{path_prefix}{}", track.file),
             path: format!("{path_prefix}{}", track.file),
             display_name: track.title,
+            moods: parsed_moods,
         };
         match track.role.to_ascii_lowercase().as_str() {
             "title" => {
                 if library.title.is_none() {
-                    library.title = Some(info);
+                    library.title = Some(info.clone());
+                }
+                if !info.moods.is_empty() {
+                    library.rides.push(info);
                 }
             }
             "ride" => library.rides.push(info),
@@ -660,6 +764,16 @@ mod tests {
             id: id.to_owned(),
             path: format!("res://assets/music/{id}"),
             display_name: display.to_owned(),
+            moods: Vec::new(),
+        }
+    }
+
+    fn tagged_track(id: &str, display: &str, moods: &[CourseMood]) -> TrackInfo {
+        TrackInfo {
+            id: id.to_owned(),
+            path: format!("res://assets/music/{id}"),
+            display_name: display.to_owned(),
+            moods: moods.to_vec(),
         }
     }
 
@@ -879,5 +993,95 @@ mod tests {
         assert_eq!(library.rides[0].path, "res://assets/music/ride.mp3");
         let bad = json.replace("CC0 1.0", "CC-BY 4.0");
         assert!(library_from_manifest(&bad, "res://assets/music/").is_err());
+    }
+
+    #[test]
+    fn manifest_moods_filter_solitary_playlist() {
+        let json = r#"{
+            "tracks": [
+                {"file":"zen-theme.ogg","title":"Zen","artist":"A","role":"title","duration_secs":80.0,"source_page":"https://example.invalid/a","download_url":"https://example.invalid/a.ogg","licence":"CC0 1.0","retrieved":"2026-11-20","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","moods":["solitary"]},
+                {"file":"bathing-in-the-sun.mp3","title":"Bath","artist":"B","role":"ride","duration_secs":120.0,"source_page":"https://example.invalid/b","download_url":"https://example.invalid/b.mp3","licence":"CC0 1.0","retrieved":"2026-11-20","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","moods":["solitary","cruising","energetic"]},
+                {"file":"forever.mp3","title":"Forever","artist":"B","role":"ride","duration_secs":110.0,"source_page":"https://example.invalid/c","download_url":"https://example.invalid/c.mp3","licence":"CC0 1.0","retrieved":"2026-11-20","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","moods":["solitary","cruising","energetic"]},
+                {"file":"cyber-march.mp3","title":"Cyber","artist":"C","role":"ride","duration_secs":90.0,"source_page":"https://example.invalid/d","download_url":"https://example.invalid/d.mp3","licence":"CC0 1.0","retrieved":"2026-11-20","sha256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","moods":["energetic"]},
+                {"file":"intense-fight.mp3","title":"Fight","artist":"C","role":"ride","duration_secs":100.0,"source_page":"https://example.invalid/e","download_url":"https://example.invalid/e.mp3","licence":"CC0 1.0","retrieved":"2026-11-20","sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","moods":["energetic"]}
+            ]
+        }"#;
+        let library = library_from_manifest(json, "res://assets/music/").unwrap();
+        assert_eq!(library.title.as_ref().unwrap().display_name, "Zen");
+        assert_eq!(library.rides.len(), 5);
+        let mut director = Director::new(library, 3);
+        director.set_mood(CourseMood::Solitary);
+        assert_eq!(director.track_count(), 3);
+        let first = play(director.set_scene(MusicScene::Ride));
+        let id = first.track.id;
+        assert!(
+            ["zen-theme.ogg", "bathing-in-the-sun.mp3", "forever.mp3"]
+                .iter()
+                .any(|name| id.ends_with(name)),
+            "{id}"
+        );
+        assert_eq!(director.set_mood(CourseMood::Solitary), Decision::Hold);
+        assert!(
+            library_from_manifest(
+                &json.replace("\"solitary\"", "\"moody\""),
+                "res://assets/music/"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn set_mood_crossfades_or_holds_on_the_ride() {
+        let library = Library {
+            title: Some(track("title.ogg", "Morning")),
+            rides: vec![
+                tagged_track("warm.mp3", "Warm", &[CourseMood::Solitary]),
+                tagged_track("loud.mp3", "Loud", &[CourseMood::Energetic]),
+            ],
+        };
+        let mut director = Director::new(library, 9);
+        director.set_mood(CourseMood::Solitary);
+        let first = play(director.set_scene(MusicScene::Ride));
+        assert!(first.track.id.ends_with("warm.mp3"));
+        assert_eq!(director.set_mood(CourseMood::Solitary), Decision::Hold);
+        let crossfade = play(director.set_mood(CourseMood::Energetic));
+        assert_ne!(crossfade.track.id, first.track.id);
+        assert_eq!(crossfade.fade_secs, SCENE_CROSSFADE_SECS);
+        assert!(crossfade.track.id.ends_with("loud.mp3"));
+        assert_eq!(director.set_mood(CourseMood::Energetic), Decision::Hold);
+    }
+
+    #[test]
+    fn user_folder_ignores_mood_filtering() {
+        let library = Library {
+            title: None,
+            rides: vec![
+                tagged_track("a.mp3", "A", &[CourseMood::Energetic]),
+                tagged_track("b.mp3", "B", &[CourseMood::Solitary]),
+            ],
+        };
+        let mut director = Director::new(library, 2);
+        director.set_mood(CourseMood::Solitary);
+        let user = vec![track("/tmp/custom.mp3", "custom")];
+        director.set_user_tracks(user);
+        assert_eq!(director.track_count(), 1);
+        let ride = play(director.set_scene(MusicScene::Ride));
+        assert_eq!(ride.track.display_name, "custom");
+        assert_eq!(director.set_mood(CourseMood::Energetic), Decision::Hold);
+    }
+
+    #[test]
+    fn bundled_music_json_parses() {
+        let json = include_str!("../../../godot/assets/music/music.json");
+        let library = library_from_manifest(json, "res://assets/music/").unwrap();
+        assert!(library.title.is_some());
+        assert_eq!(library.rides.len(), 7);
+        let mut director = Director::new(library.clone(), 1);
+        director.set_mood(CourseMood::Solitary);
+        assert_eq!(director.track_count(), 3);
+        director.set_mood(CourseMood::Energetic);
+        assert_eq!(director.track_count(), 6);
+        director.set_mood(CourseMood::Cruising);
+        assert_eq!(director.track_count(), 4);
     }
 }
