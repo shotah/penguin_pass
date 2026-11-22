@@ -20,6 +20,9 @@
 #   export      Export dist/penguin-pass-linux-x86_64
 #   package     Tar the export and print its size and SHA-256
 #   licenses    Write docs/third-party-licenses.md from cargo metadata
+#   release     Bump, tag v<version>, and push. Default bump is patch.
+#               BUMP=minor, BUMP=major, or BUMP=X.Y.Z selects another version.
+#               DRY=1 is --dry-run. NOPUSH=1 commits and tags without pushing.
 #
 # PROFILE=release selects a release build. The default is debug.
 # PP_NATIVE=1 runs cargo on the host. GODOT=/path/to/godot selects the
@@ -27,8 +30,12 @@
 # Window flags belong on ./x play, not on make play.
 
 PROFILE ?= debug
+BUMP ?= patch
 
-.PHONY: toolbox build test test-unit test-integration fmt clippy lint typecheck smoke run scan fetch play export package licenses
+.PHONY: toolbox build test test-unit test-integration fmt clippy lint typecheck smoke run scan fetch play export package licenses release
 
 toolbox build test test-unit test-integration fmt clippy lint typecheck smoke run scan fetch play export package licenses:
 	PROFILE="$(PROFILE)" CRATE="$(CRATE)" ./x $@
+
+release:
+	./x release $(if $(filter 1,$(DRY)),--dry-run,) $(if $(filter 1,$(NOPUSH)),--no-push,) "$(BUMP)"
