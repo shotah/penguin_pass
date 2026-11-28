@@ -78,8 +78,10 @@ def main(argv):
     mismatch = []
     checked = 0
     root = argv[3]
-    for folder in ("assets", "themes"):
+    for folder in ("assets", "themes", "routes"):
         base = os.path.join(root, folder)
+        if not os.path.isdir(base):
+            continue
         for dirpath, dirnames, names in os.walk(base):
             dirnames[:] = [d for d in dirnames if not d.startswith(".") and d != "_incoming"]
             for name in names:
@@ -106,7 +108,7 @@ def main(argv):
         for line in mismatch[:20]:
             print(f"size {line}", file=sys.stderr)
         return 1
-    print(f"pck check ok: {checked} assets and theme files match source size")
+    print(f"pck check ok: {checked} assets, theme, and route files match source size")
     return 0
 
 

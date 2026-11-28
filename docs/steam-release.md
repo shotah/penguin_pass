@@ -67,10 +67,32 @@ macOS depot's OS to macOS.
 | Windows | `penguin-pass-windows-x86_64` | `penguin-pass.exe` |
 | macOS | `penguin-pass-macos` | `penguin-pass.app` |
 
-The Windows and macOS folders are what `.github/workflows/macos.yml` and
-`.github/workflows/windows.yml` export on a `v*` tag or a manual run. The macOS app is ad-hoc signed by
-Godot's Testing export and is not notarized. That export has not been run
-on a Mac yet. Launch options for those two depots are in `docs/cross-platform.md`.
+`.github/actions/godot-export` and `tools/export-player.sh` write all three
+desktop folders (`dist/penguin-pass-linux-x86_64`,
+`dist/penguin-pass-windows-x86_64`, `dist/penguin-pass-macos`). Each
+includes `licenses/` (on macOS, alongside `penguin-pass.app` so the signed
+`.app` bundle stays untouched). Linux comes from `./x export` on this
+machine or from `.github/workflows/flatpak.yml`. Windows and macOS zips come
+from `.github/workflows/windows.yml` and `.github/workflows/macos.yml` on a
+`v*` tag or a manual run. To upload all three from one `dist/` tree, unpack
+the release zips next to the Linux export output, then run steamcmd:
+
+```bash
+unzip -qo penguin-pass-windows-x86_64.zip -d dist
+mkdir -p dist/penguin-pass-macos
+unzip -qo penguin-pass-macos-universal.zip -d dist/penguin-pass-macos
+```
+
+The macOS app is ad-hoc signed by Godot's Testing export and is not
+notarized. Verified bundle executable:
+`penguin-pass.app/Contents/MacOS/Penguin Pass`. Steam launch options:
+
+| OS | Executable (depot-relative) | Arguments |
+| --- | --- | --- |
+| Windows | `penguin-pass.exe` | `--fullscreen` |
+| macOS | `penguin-pass.app` | `--fullscreen` |
+
+More export and codesign detail is in `docs/cross-platform.md`.
 
 ## Steam Cloud
 

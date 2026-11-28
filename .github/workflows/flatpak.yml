@@ -52,17 +52,13 @@ jobs:
 
       - uses: ./.github/actions/rust-setup
 
-      - name: Restore Godot 4.7.2
-        uses: actions/cache@v6
-        with:
-          path: tools/godot/4.7.2
-          key: godot-4.7.2-stable-linux-x86_64-editor-and-templates
-
-      - name: Download and verify Godot
-        run: ./x fetch
+      - name: Build the release library
+        run: PROFILE=release ./x build
 
       - name: Export the player
-        run: ./x export
+        uses: ./.github/actions/godot-export
+        with:
+          target: linux
 
       - name: Check glibc symbols fit the runtime
         run: |
@@ -81,15 +77,6 @@ jobs:
           sh ./packaging/flatpak/check-glibc.sh "$RUNTIME_GLIBC" \
             "$dir/penguin-pass.x86_64" \
             "$lib"
-
-      - name: Upload the export log
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: export-log
-          path: dist/logs/export.log
-          if-no-files-found: ignore
-          retention-days: 7
 
       - name: Upload the player directory
         uses: actions/upload-artifact@v7

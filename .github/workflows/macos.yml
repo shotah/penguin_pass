@@ -41,10 +41,8 @@ jobs:
     with:
       os: macos-latest
       label: macos-universal
+      target: macos
       lib: libpp_godot.release.dylib
-      editor_zip: Godot_v4.7.2-stable_macos.universal.zip
-      preset: macOS
-      out_rel: dist/penguin-pass-macos/penguin-pass.app
       zip_name: penguin-pass-macos-universal.zip
 
   release:

@@ -1,0 +1,43 @@
+name: Godot export
+description: >
+  Restore the Linux Godot 4.7.2 editor and export templates, then export the
+  player for linux, windows, or macos.
+
+inputs:
+  target:
+    description: Export target (linux, windows, or macos).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore Godot 4.7.2
+      uses: actions/cache@v6
+      with:
+        path: tools/godot/4.7.2
+        key: godot-4.7.2-stable-linux-x86_64-editor-and-templates
+
+    - name: Download and verify Godot
+      shell: bash
+      run: ./x fetch
+
+    - name: Export the player
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        case "$TARGET" in
+          linux|windows|macos) ;;
+          *) echo "godot-export: invalid target '$TARGET'" >&2; exit 1 ;;
+        esac
+        ./tools/export-player.sh "$TARGET"
+
+    - name: Upload the export log
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: export-log-${{ inputs.target }}
+        path: dist/logs/export-${{ inputs.target }}.log
+        if-no-files-found: ignore
+        retention-days: 7
