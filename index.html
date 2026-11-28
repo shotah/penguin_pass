@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Penguin Pass — Native indoor cycling for Linux &amp; Steam Deck</title>
+    <meta
+      name="description"
+      content="Ride your smart trainer with zero subscription. Native Rust + Godot 4 indoor cycling with real hill resistance, ERG workouts, offline .fit rides, and MIT open source."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Penguin Pass — Ride your smart trainer. Zero subscription." />
+    <meta
+      property="og:description"
+      content="Native indoor cycling for Linux and Steam Deck. FTMS, FE-C, Wahoo, and Zwift trainer support. Offline .fit, optional Strava, and a built-in companion dashboard."
+    />
+    <meta property="og:image" content="assets/header-capsule-920x430.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="assets/header-capsule-920x430.png" />
+    <link rel="icon" href="assets/shortcut-icon-256x256.png" type="image/png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="nav-inner">
+        <a class="brand" href="#top">
+          <img src="assets/shortcut-icon-256x256.png" width="36" height="36" alt="" />
+          Penguin Pass
+        </a>
+        <ul class="nav-links" aria-label="Primary">
+          <li><a href="#features">Features</a></li>
+          <li><a href="#gallery">Gallery</a></li>
+          <li><a href="#trainers">Trainers</a></li>
+          <li><a href="#download">Download</a></li>
+          <li><a href="#contribute">Contribute</a></li>
+        </ul>
+        <div class="nav-actions">
+          <a class="btn btn-github" href="https://github.com/shotah/penguin_pass" rel="noopener">GitHub</a>
+          <button type="button" class="menu-toggle" aria-label="Open menu" aria-expanded="false" data-menu-toggle>
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <nav class="nav-mobile" id="nav-mobile" aria-label="Mobile" hidden>
+      <ul>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#gallery">Gallery</a></li>
+        <li><a href="#trainers">Trainers</a></li>
+        <li><a href="#download">Download</a></li>
+        <li><a href="#contribute">Contribute</a></li>
+        <li>
+          <a href="https://github.com/shotah/penguin_pass" rel="noopener">GitHub</a>
+        </li>
+      </ul>
+    </nav>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="hero-inner">
+          <div class="hero-copy">
+            <h1>Ride your smart trainer. <em>Zero subscription.</em></h1>
+            <p class="hero-sub">
+              Native Rust + Godot 4 indoor cycling with real hill resistance and ERG
+              workouts, offline <code>.fit</code> rides, Linux and Steam Deck first,
+              and MIT open source.
+            </p>
+            <div class="hero-ctas">
+              <a class="btn btn-primary" href="https://github.com/shotah/penguin_pass/releases" rel="noopener"
+                >Download (GitHub Releases)</a
+              >
+              <a class="btn btn-secondary" href="https://github.com/shotah/penguin_pass" rel="noopener"
+                >Explore on GitHub</a
+              >
+            </div>
+            <div class="pill-row" role="list">
+              <span class="pill" role="listitem">Free &amp; MIT Licensed</span>
+              <span class="pill" role="listitem">Offline-First</span>
+              <span class="pill" role="listitem">FTMS · FE-C · Wahoo · Zwift</span>
+              <span class="pill" role="listitem">Linux &amp; Steam Deck</span>
+            </div>
+          </div>
+          <figure class="hero-frame">
+            <img
+              src="assets/alpine-peloton-1080.png"
+              width="1920"
+              height="1080"
+              alt="Chase view on Penguin Pass with pace riders, fish pickups, and console HUD."
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="gallery" aria-labelledby="gallery-title">
+        <div class="section-inner">
+          <span class="section-label">In-game</span>
+          <h2 class="section-title" id="gallery-title">Screenshot gallery</h2>
+          <p class="section-lead">
+            Real 1080p captures from the Steam art kit — peloton drafting, desert
+            volcanoes, structured workouts, and dynamic alpine weather.
+          </p>
+
+          <div class="gallery-tabs" role="tablist" aria-label="Screenshots" data-gallery-tabs></div>
+
+          <div class="gallery-main" data-gallery-main>
+            <img src="assets/alpine-peloton-1080.png" alt="" width="1920" height="1080" data-gallery-image />
+            <div class="gallery-caption" data-gallery-caption>Alpine Peloton &amp; Drafting</div>
+          </div>
+
+          <div class="gallery-thumbs" data-gallery-thumbs></div>
+
+          <div class="atmosphere-strip">
+            <h3>Time of day &amp; weather</h3>
+            <div class="atmosphere-grid" data-atmosphere></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="features" aria-labelledby="features-title">
+        <div class="section-inner">
+          <span class="section-label">Gameplay</span>
+          <h2 class="section-title" id="features-title">Built for real rides</h2>
+          <div class="features-grid">
+            <article class="feature-card">
+              <h3>8 Courses (+ Reverse)</h3>
+              <p>
+                <strong>Penguin Pass</strong> (built-in 5&nbsp;km alpine loop),
+                <strong>Rolling</strong> 5 / 10 / 20&nbsp;km, <strong>Mountain</strong>
+                10&nbsp;km, <strong>Desert</strong> 10 / 20&nbsp;km, and <strong>Flat</strong>
+                10&nbsp;km — rerollable seeds, dynamic weather and time of day, and
+                reverse direction with separate personal bests.
+              </p>
+            </article>
+            <article class="feature-card">
+              <h3>15 Built-In Workouts + <code>.zwo</code></h3>
+              <p>
+                Recovery through VO₂max and an FTP ramp test with ERG resistance
+                control and live ±25% difficulty bias. Import Zwift
+                <code>.zwo</code> files or pick from bundled structured sessions.
+              </p>
+            </article>
+            <article class="feature-card">
+              <h3>Real Smart-Trainer Physics</h3>
+              <p>
+                Grade simulation, aerodynamic drafting, pacing bots, timed sprint
+                and climb segments, and personal-best ghosts on every lap.
+              </p>
+            </article>
+            <article class="feature-card">
+              <h3>Zwift Controllers &amp; Steam Deck</h3>
+              <p>
+                Native BLE for Zwift Play, Click, and Ride — steering, menus,
+                powerups, and 24-speed virtual shifting. Full Steam Deck gamepad and
+                keyboard layouts.
+              </p>
+            </article>
+            <article class="feature-card">
+              <h3>Offline <code>.fit</code> + Optional Strava</h3>
+              <p>
+                Every ride saves locally as a standard <code>.fit</code> activity
+                file. Connect Strava only when you want one-click uploads with your
+                own API keys.
+              </p>
+            </article>
+            <article class="feature-card">
+              <h3>Built-In Companion Dashboard</h3>
+              <p>
+                Live telemetry and an elevation chart in any phone or tablet browser
+                on your LAN — zero companion app required.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="trainers" aria-labelledby="trainers-title">
+        <div class="section-inner">
+          <span class="section-label">Hardware</span>
+          <h2 class="section-title" id="trainers-title">Supported smart trainers</h2>
+          <p class="section-lead">
+            Honest protocol coverage from
+            <a href="https://github.com/shotah/penguin_pass/blob/main/docs/trainers.md" rel="noopener"
+              >docs/trainers.md</a
+            >
+            — FTMS, Tacx FE-C, Wahoo WCPS, Zwift <code>0xFC82</code>, plus BLE heart-rate
+            straps and CSC cadence.
+          </p>
+          <div class="trainer-legend">
+            <span><span class="badge badge-ridden">Ridden</span> Verified on real hardware</span>
+            <span
+              ><span class="badge badge-protocol">Protocol</span> Implemented — community
+              traces welcome</span
+            >
+          </div>
+          <div class="trainers-wrap">
+            <table class="trainers">
+              <thead>
+                <tr>
+                  <th>Family</th>
+                  <th>Models</th>
+                  <th>Protocol</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    Garmin / Tacx
+                    <span class="badge badge-ridden">Ridden</span>
+                  </td>
+                  <td>Neo 2T, Neo 3M, Flux S, Flux 2, Flow Smart</td>
+                  <td>Tacx FE-C or FTMS (Neo 2T: FE-C on real ride)</td>
+                </tr>
+                <tr>
+                  <td>Zwift controllers <span class="badge badge-ridden">Ridden</span></td>
+                  <td>Play, Click, Ride (not listed in trainer scan)</td>
+                  <td>Zwift BLE — menus, steering, shifting</td>
+                </tr>
+                <tr>
+                  <td>Wahoo <span class="badge badge-protocol">Protocol</span></td>
+                  <td>KICKR v6, CORE, CORE 2, MOVE, v4, v5, SNAP (2020+)</td>
+                  <td>FTMS</td>
+                </tr>
+                <tr>
+                  <td>Wahoo legacy <span class="badge badge-protocol">Protocol</span></td>
+                  <td>KICKR v1–v3, early SNAP, KICKR BIKE</td>
+                  <td>Wahoo WCPS + Cycling Power</td>
+                </tr>
+                <tr>
+                  <td>Zwift trainers <span class="badge badge-protocol">Protocol</span></td>
+                  <td>Hub, Hub One, Ride (Cog)</td>
+                  <td>FTMS; <code>0xFC82</code> fallback; 24-speed virtual gearing</td>
+                </tr>
+                <tr>
+                  <td>JetBlack <span class="badge badge-protocol">Protocol</span></td>
+                  <td>Victory, Volt</td>
+                  <td>FTMS + Zwift service where advertised</td>
+                </tr>
+                <tr>
+                  <td>Elite <span class="badge badge-protocol">Protocol</span></td>
+                  <td>Justo 2, Justo, Direto XR, Suito-T, Rivo, Avanti, …</td>
+                  <td>FTMS or FE-C</td>
+                </tr>
+                <tr>
+                  <td>Other FTMS <span class="badge badge-protocol">Protocol</span></td>
+                  <td>Saris H3/M2, Magene, Wattbike Atom, Stages SB20, IC4/C6, …</td>
+                  <td>FTMS</td>
+                </tr>
+                <tr>
+                  <td>Heart rate &amp; cadence <span class="badge badge-protocol">Protocol</span></td>
+                  <td>Garmin HRM and compatible BLE straps; CSC sensors</td>
+                  <td>BLE Heart Rate; CSC <code>0x1816</code> fill-in cadence</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="download" aria-labelledby="download-title">
+        <div class="section-inner">
+          <span class="section-label">Get riding</span>
+          <h2 class="section-title" id="download-title">Download &amp; quick start</h2>
+          <div class="download-grid">
+            <article class="download-card">
+              <h3>Linux Flatpak</h3>
+              <p>
+                Single-file Flatpak built on every push to <code>main</code> and
+                attached to versioned releases. Install with
+                <code>flatpak install --user</code> after download.
+              </p>
+              <a class="btn btn-primary" href="https://github.com/shotah/penguin_pass/releases/latest" rel="noopener"
+                >Latest prerelease</a
+              >
+            </article>
+            <article class="download-card">
+              <h3>Linux / Windows / macOS builds</h3>
+              <p>Cross-platform export artifacts and bundles on GitHub Releases as they ship.</p>
+              <a class="btn btn-secondary" href="https://github.com/shotah/penguin_pass/releases" rel="noopener"
+                >All releases</a
+              >
+            </article>
+            <article class="download-card coming-soon">
+              <h3>Steam</h3>
+              <p>Coming soon — verified on Steam Linux Runtime 4.0. Store art kit is in the repo today.</p>
+              <span class="pill">Coming Soon</span>
+            </article>
+            <article class="download-card">
+              <h3>Build from source</h3>
+              <p>SteamOS or Linux with <code>podman</code>. One fetch, then play.</p>
+              <pre class="code-block" id="build-snippet"><button type="button" class="copy-btn" data-copy-target="build-snippet" aria-label="Copy">Copy</button>git clone https://github.com/shotah/penguin_pass.git
+cd penguin_pass
+./x fetch && ./x play</pre>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="contribute" aria-labelledby="contribute-title">
+        <div class="section-inner">
+          <span class="section-label">Open source</span>
+          <h2 class="section-title" id="contribute-title">Contribute</h2>
+          <p class="section-lead">
+            Penguin Pass is MIT-licensed. Riders with Wahoo, Zwift, Elite, or JetBlack
+            trainers can help with <code>./x play --trace</code> captures. Developers
+            are welcome to open pull requests for art, sound, courses, and trainer
+            testing.
+          </p>
+          <div class="contribute-links">
+            <a class="btn btn-secondary" href="https://github.com/shotah/penguin_pass" rel="noopener">Repository</a>
+            <a
+              class="btn btn-ghost"
+              href="https://github.com/shotah/penguin_pass/blob/main/CONTRIBUTING.md"
+              rel="noopener"
+              >CONTRIBUTING.md</a
+            >
+            <a
+              class="btn btn-ghost"
+              href="https://github.com/shotah/penguin_pass/blob/main/docs/trainers.md"
+              rel="noopener"
+              >docs/trainers.md</a
+            >
+            <a
+              class="btn btn-ghost"
+              href="https://github.com/shotah/penguin_pass/blob/main/docs/trainer-trace-plan.md"
+              rel="noopener"
+              >Trainer trace plan</a
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        <strong>Penguin Pass</strong> — MIT License · Built with Rust &amp; Godot 4.7.2
+      </p>
+      <p>
+        <a href="https://github.com/shotah/penguin_pass/blob/main/docs/assets.md" rel="noopener"
+          >CC0 art credits</a
+        >
+        ·
+        <a href="https://github.com/shotah/penguin_pass" rel="noopener">GitHub</a>
+      </p>
+    </footer>
+
+    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Enlarged screenshot" hidden>
+      <button type="button" class="lightbox-close" aria-label="Close" data-lightbox-close>&times;</button>
+      <img src="" alt="" data-lightbox-img />
+      <p class="lightbox-caption" data-lightbox-cap></p>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
