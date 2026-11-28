@@ -759,8 +759,10 @@ only, by default, keeps that from mattering.
   workspace without `pp-steam`.
 - The traffic figures are arithmetic on the message layout, not
   measurements. Framing overhead was estimated.
-- Route generation producing identical bytes on Windows and macOS. The
-  design does not depend on it.
+- Route generation producing identical bytes on Windows. The
+  fingerprint tests are in that workflow, but `docs/cross-platform.md`
+  records a passing test run for macOS only. The design does not depend
+  on it.
 
 ## Sources
 
