@@ -16,7 +16,9 @@ use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 
 use godot::classes::control::MouseFilter;
-use godot::classes::{Font, FontFile, FontVariation, Label, StyleBoxFlat, Theme, ThemeDb};
+use godot::classes::{
+    Control, Font, FontFile, FontVariation, Label, Node, StyleBoxFlat, Theme, ThemeDb,
+};
 use godot::global::Error;
 use godot::obj::NewGd;
 use godot::prelude::*;
@@ -297,6 +299,29 @@ pub fn pad_box(style: &mut Gd<StyleBoxFlat>, horizontal: f32, vertical: f32) {
     style.set_content_margin(godot::builtin::Side::RIGHT, horizontal);
     style.set_content_margin(godot::builtin::Side::TOP, vertical);
     style.set_content_margin(godot::builtin::Side::BOTTOM, vertical);
+}
+
+/// Every descendant of a menu row panel ignores the pointer so clicks hit the row.
+pub fn ignore_pointer_descendants(row: &Gd<Control>) {
+    for child in row.get_children().iter_shared() {
+        if let Ok(mut control) = child.clone().try_cast::<Control>() {
+            control.set_mouse_filter(MouseFilter::IGNORE);
+            ignore_pointer_descendants(&control);
+        } else if let Ok(node) = child.clone().try_cast::<Node>() {
+            ignore_pointer_descendants_node(&node);
+        }
+    }
+}
+
+fn ignore_pointer_descendants_node(node: &Gd<Node>) {
+    for child in node.get_children().iter_shared() {
+        if let Ok(mut control) = child.clone().try_cast::<Control>() {
+            control.set_mouse_filter(MouseFilter::IGNORE);
+            ignore_pointer_descendants(&control);
+        } else if let Ok(node) = child.clone().try_cast::<Node>() {
+            ignore_pointer_descendants_node(&node);
+        }
+    }
 }
 
 /// A label in `role`, mouse-ignored. Captions are upper-cased.

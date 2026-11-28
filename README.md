@@ -104,7 +104,7 @@ Trainer  <-- BLE / FTMS or FE-C -->  pp-trainer  -->  pp-course (physics)
 ## Courses
 
 Eight courses, chosen in the game. Penguin Pass is the built-in 5 km loop
-(`crates/pp-course/courses/penguin_pass.json`). The other seven are
+(`godot/routes/penguin_pass/route.json`). The other seven are
 generated: Rolling 5 km, Rolling 10 km, Mountain 10 km, Desert 10 km,
 Flat 10 km, Rolling 20 km, and Desert 20 km. A generated route can be
 rerolled for a new seed.
@@ -118,6 +118,7 @@ Not built yet: world streaming for long routes, and an endless mode.
 
 | Path | What it holds |
 | --- | --- |
+| `AGENTS.md` | File map for people and coding agents: which crate, file, and doc to open |
 | `crates/pp-core` | Shared types: telemetry snapshot, units, rider profile |
 | `crates/pp-ftms` | Bluetooth GATT codec for FTMS, Cycling Power, FE-C, Wahoo, Zwift, CSC, and Heart Rate. No I/O |
 | `crates/pp-course` | Course data, grade lookup, bike physics |

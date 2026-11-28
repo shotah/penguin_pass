@@ -88,6 +88,8 @@ Git hooks (optional): `lefthook install` — see [`docs/dev-workflow.md`](docs/d
 
 ### Workspace map (brief)
 
+The file-level map, and the rules for changing the game, are in [`AGENTS.md`](AGENTS.md).
+
 | Path | Role |
 | --- | --- |
 | `crates/pp-ftms` | BLE GATT codecs (FTMS, FE-C, Wahoo, Zwift, power, HR, CSC)—no I/O |

@@ -191,7 +191,7 @@ impl Shell {
             Screen::Pause => self.pause_index = index.min(8),
             Screen::Workout => self.course_index = index,
             Screen::Progress => self.progress_index = index,
-            Screen::Summary => self.summary_index = index.min(2),
+            Screen::Summary => self.summary_index = index.min(2 + self.summary_extra.len()),
             Screen::ConfirmEnd | Screen::ConfirmQuit => {
                 self.confirm_index = index.min(1);
             }
@@ -847,6 +847,17 @@ mod tests {
         ));
         assert_eq!(shell.screen(), Screen::Title);
         assert!(!shell.shows_hud());
+    }
+
+    #[test]
+    fn hover_reaches_summary_extra_rows() {
+        let mut shell = Shell::new(false);
+        shell.screen = Screen::Summary;
+        shell.set_summary_extra(true, Some(200));
+        shell.hover(3);
+        assert_eq!(shell.view("", "", "", &[], "", "").selected, 3);
+        shell.hover(4);
+        assert_eq!(shell.view("", "", "", &[], "", "").selected, 4);
     }
 
     #[test]

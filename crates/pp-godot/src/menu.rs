@@ -1,8 +1,8 @@
 //! Settings overlay. The ride keeps ticking underneath.
 //!
 //! The choices live in `pp-view`. This file draws them and applies the result
-//! to the session. Keyboard: arrows, Enter, Escape. Controller: D-pad or left
-//! stick, A, B. Escape and Start open and close it.
+//! to the session. Keyboard, controller, and a row click all move focus and
+//! accept. Escape and Start open and close it.
 
 use std::path::Path;
 
@@ -96,6 +96,7 @@ impl RideMenu {
         list.set_name("RowList");
         list.add_theme_constant_override("separation", 2);
         list.set_h_size_flags(SizeFlags::EXPAND_FILL);
+        list.set_mouse_filter(MouseFilter::PASS);
 
         let mut rows = Vec::with_capacity(ROW_COUNT);
         let mut row_panels = Vec::with_capacity(ROW_COUNT);
@@ -123,6 +124,9 @@ impl RideMenu {
                 row_box.add_child(mark);
             }
             row_panel.add_child(&row_box);
+            row_panel.set_mouse_filter(MouseFilter::PASS);
+            let row: Gd<godot::classes::Control> = row_panel.clone().upcast();
+            ui_style::ignore_pointer_descendants(&row);
             list.add_child(&row_panel);
             bars.push(signal);
             rows.push(label);
@@ -186,13 +190,16 @@ impl RideMenu {
         self.state.hover(index);
     }
 
-    /// Tell each row to report hover.
+    /// Tell each row to report hover and a left click.
     pub fn bind_pointer(&mut self, game: &Gd<crate::game::Game>) {
         for (index, panel) in self.row_panels.iter().enumerate() {
             let mut panel = panel.clone();
-            let callable = Callable::from_object_method(game, "on_menu_hover")
-                .bind(&[Variant::from(index as i64)]);
-            let _ = panel.connect(&StringName::from("mouse_entered"), &callable);
+            let index = Variant::from(index as i64);
+            let hover = Callable::from_object_method(game, "on_menu_hover")
+                .bind(std::slice::from_ref(&index));
+            let click = Callable::from_object_method(game, "on_menu_click").bind(&[index]);
+            let _ = panel.connect(&StringName::from("mouse_entered"), &hover);
+            let _ = panel.connect(&StringName::from("gui_input"), &click);
         }
     }
 

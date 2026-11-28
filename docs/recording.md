@@ -1,6 +1,6 @@
 # Ride recording
 
-`pp-record` turns a ride into one FIT activity file. It does not link Godot, Bluetooth, or the network. The session crate does not call it yet. The lines to add are at the bottom.
+`pp-record` turns a ride into one FIT activity file. It does not link Godot, Bluetooth, or the network. `pp-session` already records from `Session` in `crates/pp-session/src/session.rs`. The format below is the contract. The plan at the bottom is already applied.
 
 ## What is recorded
 
@@ -70,11 +70,11 @@ A community thread, not the API reference, says a virtual upload should use sub-
 
 ## What is not here
 
-No map. No automatic upload. No Bluetooth and no network. Masses are not in the file.
+No map coordinates. Masses are not FIT fields. The file writer does not open Bluetooth or the network. Upload is `pp-strava`, described in `docs/strava.md`.
 
 ## Lines for `pp-session`
 
-Do this in `crates/pp-session`. This slice does not.
+Already applied in `crates/pp-session/src/session.rs`. The block below is the original plan.
 
 In `Cargo.toml`, under `[dependencies]`:
 

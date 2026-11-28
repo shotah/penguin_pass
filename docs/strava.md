@@ -2,7 +2,7 @@
 
 `pp-strava` uploads a finished ride to the player's own Strava account. There is no Penguin Pass server. The player creates a Strava API application on Strava's site, the game stores that application's client id and secret on this computer, and a browser login saves a token. After that, a finished FIT file can be uploaded.
 
-The crate does not link Godot. The session crate does not call it yet. The calls to add are at the bottom.
+The crate does not link Godot. `pp-session` already opens it from `crates/pp-session/src/group.rs` once a settings directory is known. The call list below is the original plan, and it matches that code.
 
 The tests talk only to a mock server on `127.0.0.1`. No request was sent to Strava's API or to its OAuth endpoints. The facts below were read from Strava's developer pages on 21 November 2026.
 
@@ -82,7 +82,7 @@ HTTP 401 on the upload causes one refresh and one more upload. A 401 from that r
 
 ## What the session calls
 
-Do this in `crates/pp-session`. This slice does not.
+Already applied in `crates/pp-session/src/group.rs`. The block below is the original plan.
 
 On the session, next to the rides directory:
 
@@ -128,4 +128,4 @@ Dropping the link stops the thread and the listener. A request already in flight
 
 `ureq`'s tls feature pulls `ring` (Apache-2.0 AND ISC) and `webpki-roots`. `webpki-roots` 0.26.9 and later are CDLA-Permissive-2.0, which is outside the licence set this repo allows. The crate pins `webpki-roots` to 0.26.8, which is MPL-2.0. The client does not read `HTTP_PROXY`.
 
-`./x licenses` records the crates linked into `pp-godot`. This crate is not linked yet, so those new crates are not in `docs/third-party-licenses.md` until the session wires it in. Re-run `./x licenses` then.
+`./x licenses` records the crates linked into `pp-godot`, including `pp-strava`. Re-run `./x licenses` after a dependency change.

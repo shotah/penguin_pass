@@ -12,8 +12,9 @@ use godot::classes::node::PhysicsInterpolationMode;
 use godot::classes::node::ProcessMode;
 use godot::classes::{
     INode3D, Input, InputEvent, InputEventJoypadButton, InputEventJoypadMotion, InputEventKey,
-    Node3D, Time,
+    InputEventMouseButton, Node3D, Time,
 };
+use godot::global::MouseButton;
 use godot::obj::{Base, Gd, WithBaseField};
 use godot::prelude::*;
 use pp_core::{Telemetry, TrainerSample};
@@ -1009,6 +1010,56 @@ impl Game {
         menu.hover(index as usize);
         menu.refresh(self.session_mut());
         self.menu = Some(menu);
+    }
+
+    /// A left click on a title, pause, course, or summary row.
+    #[func]
+    fn on_screen_click(&mut self, event: Gd<InputEvent>, index: i64) {
+        if index < 0 {
+            return;
+        }
+        let Ok(button) = event.try_cast::<InputEventMouseButton>() else {
+            return;
+        };
+        if !button.is_pressed() || button.get_button_index() != MouseButton::LEFT {
+            return;
+        }
+        if self.pending_course.is_some() {
+            return;
+        }
+        let screen = self.shell.screen();
+        if matches!(screen, Screen::Riding | Screen::Settings) {
+            return;
+        }
+        self.shell.hover(index as usize);
+        self.shell_command(Command::Accept, true);
+        self.refresh_screens();
+        self.stop_pointer_click();
+    }
+
+    /// A left click on a settings row.
+    #[func]
+    fn on_menu_click(&mut self, event: Gd<InputEvent>, index: i64) {
+        if index < 0 {
+            return;
+        }
+        let Ok(button) = event.try_cast::<InputEventMouseButton>() else {
+            return;
+        };
+        if !button.is_pressed() || button.get_button_index() != MouseButton::LEFT {
+            return;
+        }
+        if self.shell.screen() != Screen::Settings {
+            return;
+        }
+        let Some(mut menu) = self.menu.take() else {
+            return;
+        };
+        menu.hover(index as usize);
+        menu.refresh(self.session_mut());
+        self.menu = Some(menu);
+        self.menu_command(Command::Accept, true);
+        self.stop_pointer_click();
     }
 
     /// Lay a pattern of fish ahead of the rider, for pictures. No session field.
@@ -2618,6 +2669,16 @@ impl Game {
     fn push_sound(&mut self, event: pp_view::sound::SoundEvent) {
         if let Some(sound) = self.sound.as_mut() {
             sound.bind_mut().push_event(event);
+        }
+    }
+
+    fn stop_pointer_click(&mut self) {
+        if let Some(mut viewport) = self.base().get_viewport() {
+            if let Some(mut hovered) = viewport.gui_get_hovered_control() {
+                hovered.accept_event();
+            } else {
+                viewport.set_input_as_handled();
+            }
         }
     }
 

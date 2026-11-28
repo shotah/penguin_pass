@@ -301,7 +301,8 @@ the distance to the finish on a route that ends.
 ### Chips
 
 All chips: height 36, radius 18, 14 px side padding, 8 px between parts,
-at y 32.
+at y 32. The climb and sprint panel is centred, 420 by 64, and its top
+is this same y 32.
 
 | Chip | Position | Content |
 | --- | --- | --- |

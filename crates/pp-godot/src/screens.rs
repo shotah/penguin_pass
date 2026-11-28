@@ -143,6 +143,7 @@ impl Screens {
         let mut row_list = VBoxContainer::new_alloc();
         row_list.set_name("RowList");
         row_list.add_theme_constant_override("separation", 4);
+        row_list.set_mouse_filter(MouseFilter::PASS);
         let mut rows = Vec::new();
         let mut row_panels = Vec::new();
         let mut sparks = Vec::new();
@@ -210,6 +211,9 @@ impl Screens {
             row_box.add_child(&overview);
 
             row_panel.add_child(&row_box);
+            row_panel.set_mouse_filter(MouseFilter::PASS);
+            let row: Gd<Control> = row_panel.clone().upcast();
+            ui_style::ignore_pointer_descendants(&row);
             row_list.add_child(&row_panel);
             sparks.push(spark);
             course_overviews.push(overview);
@@ -366,13 +370,16 @@ impl Screens {
         }
     }
 
-    /// Tell each row to report hover.
+    /// Tell each row to report hover and a left click.
     pub fn bind_pointer(&mut self, game: &Gd<crate::game::Game>) {
         for (index, panel) in self.row_panels.iter().enumerate() {
             let mut panel = panel.clone();
-            let callable = Callable::from_object_method(game, "on_screen_hover")
-                .bind(&[Variant::from(index as i64)]);
-            let _ = panel.connect(&StringName::from("mouse_entered"), &callable);
+            let index = Variant::from(index as i64);
+            let hover = Callable::from_object_method(game, "on_screen_hover")
+                .bind(std::slice::from_ref(&index));
+            let click = Callable::from_object_method(game, "on_screen_click").bind(&[index]);
+            let _ = panel.connect(&StringName::from("mouse_entered"), &hover);
+            let _ = panel.connect(&StringName::from("gui_input"), &click);
         }
     }
 

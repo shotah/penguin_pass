@@ -125,7 +125,8 @@ The earlier "airport runway" look was the chase camera: about 2 m high,
 4.6 m back, nearly level, looking 40 m down a straight. At that height a
 6 m black ribbon filled the horizontal field of view and had no verge to
 read against. The chase camera is now lower and closer (about 1.5 m high,
-3 m back) and the ribbon has shoulders.
+3 m back), aimed a little above the road ahead so the rider sits lower
+in the frame, and the ribbon has shoulders.
 
 Terrain is chunked on a 128 m grid. Cells within about 80 m of the road use
 4 m quads; the rest use 16 m, and chunks far from both the origin and the

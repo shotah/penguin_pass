@@ -94,9 +94,11 @@ impl CameraRig {
             // road into a black wedge that filled the frame.
             (
                 point(rider_global, Vector3::new(0.7, 1.48, 3.05)),
-                // The road just ahead of the front wheel, not the horizon.
-                // The camera stays put; the bike lifts above the bottom console.
-                point(rider_global, Vector3::new(0.0, 0.05, -1.2)),
+                // Ahead of the front wheel, a little above the road. The
+                // higher aim sits the rider lower so the head clears the
+                // top chips and the climb panel. The wheels stay above the
+                // console band.
+                point(rider_global, Vector3::new(0.0, 0.36, -1.2)),
                 50.0,
             )
         };

@@ -25,6 +25,14 @@ use crate::ui_style::{
     surface,
 };
 
+/// Top edge of the trainer, menu, and dashboard chips, in design pixels.
+/// The climb and sprint panel shares this edge.
+const TOP_ROW_Y: f32 = 32.0;
+/// Height of those top chips, in design pixels.
+const TOP_CHIP_H: f32 = 36.0;
+/// Climb and sprint panel height, in design pixels.
+const SEGMENT_H: f32 = 64.0;
+
 /// Full-screen HUD layer.
 /// Zwift-controller chip beside the trainer name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1184,7 +1192,7 @@ fn paint_chips(board: &mut ConsoleBoard, frame: DesignFrame) {
     let kind = board.model.chip.kind;
     let name = board.model.chip.name.clone();
     let detail = board.model.chip.detail.clone();
-    let y = frame.y(32.0);
+    let y = frame.y(TOP_ROW_Y);
     let trainer_w = paint_trainer(board, frame, frame.x(32.0), y, kind, &name, &detail);
     let menu_w = paint_menu(
         board,
@@ -1211,7 +1219,7 @@ fn paint_chips(board: &mut ConsoleBoard, frame: DesignFrame) {
         let mut pad_y = y;
         if pad_x + pad_w > menu_left - gap {
             pad_x = frame.x(32.0);
-            pad_y = y + frame.len(36.0) + gap;
+            pad_y = y + frame.len(TOP_CHIP_H) + gap;
         }
         paint_pad(board, frame, pad_x, pad_y, board.pad);
     }
@@ -1867,9 +1875,9 @@ fn paint_segment(
 ) {
     let font = ui_style::font_text(Weight::SemiBold);
     let width = frame.len(420.0);
-    let height = frame.len(64.0);
+    let height = frame.len(SEGMENT_H);
     let x = (board.base().get_size().x - width) * 0.5;
-    let y = frame.y(78.0);
+    let y = frame.y(TOP_ROW_Y);
     paint_pill(board, frame, x, y, width, height);
     draw_text(
         board,
@@ -1917,8 +1925,17 @@ fn paint_ghost_chip(board: &mut ConsoleBoard, frame: DesignFrame, text: &str) {
     let font = ui_style::font_text(Weight::SemiBold);
     let word = measure(&font, text, frame.px(16.0));
     let width = word + frame.len(28.0);
-    let x = (board.base().get_size().x - width) * 0.5;
-    let y = frame.y(28.0);
+    // The climb panel owns the top centre. Park the ghost under the right
+    // chips so the two do not stack on the rider's head.
+    let segment_open = !board.chrome.segment_name.is_empty();
+    let (x, y) = if segment_open {
+        (
+            frame.x(1248.0) - width,
+            frame.y(TOP_ROW_Y + TOP_CHIP_H + 8.0),
+        )
+    } else {
+        ((board.base().get_size().x - width) * 0.5, frame.y(28.0))
+    };
     paint_pill(board, frame, x, y, width, frame.len(32.0));
     draw_text(
         board,
