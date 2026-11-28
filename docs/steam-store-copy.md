@@ -52,7 +52,7 @@ Drop custom Zwift [code].zwo[/code] files into the [code]workouts[/code] folder 
 [list]
 [*] Each ride saves as an offline [code].fit[/code] activity file
 [*] Optional Strava upload with your own API keys
-[*] Built-in LAN TV / tablet dashboard—open a browser on the same Wi-Fi; no extra app to install
+[*] Built-in LAN companion dashboard—open live metrics in a phone or tablet browser on the same Wi-Fi; no extra app to install
 [*] Zwift Play / Click / Ride controller support for lanes, power, and menus
 [*] Full keyboard, gamepad, and Steam Deck controls; chase and handlebar cameras
 [/list]

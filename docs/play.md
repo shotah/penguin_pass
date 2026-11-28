@@ -29,7 +29,7 @@ From the repo root:
 `./x fetch` is once, until Godot is upgraded. `./x play` is the game.
 The first play builds the library inside the Steam Runtime toolbox, which
 takes longer than later plays. The command passes Godot's `--fullscreen`.
-On a normal start the game loads your settings, starts the LAN TV page when
+On a normal start the game loads your settings, starts the companion dashboard when
 that is enabled, and auto-connects to a remembered trainer if there is one.
 With no trainer it uses the simulated rider. Flags for a run that must not
 touch Bluetooth are below, and the full list is in `docs/game.md`.
@@ -57,8 +57,8 @@ Anything after a literal `--` is passed to the game:
 | `--settings <path>` | Settings file, instead of the one under `user://` |
 | `--fake-trainer` | Two fake trainers, no radio |
 | `--no-bluetooth` | Do not use Bluetooth |
-| `--dashboard-port <n>` | TV page port. `0` picks a free port |
-| `--dashboard-loopback` | TV page listens on 127.0.0.1 only |
+| `--dashboard-port <n>` | Companion dashboard port. `0` picks a free port |
+| `--dashboard-loopback` | Companion dashboard listens on 127.0.0.1 only |
 | `--skip-title` | Start on the road instead of the title screen |
 | `--play-through` | Title, Start, a short ride, End ride, then Quit |
 | `--no-music` | Start with the music bus muted |
@@ -141,7 +141,7 @@ What was tested is the desktop launch, written up at the bottom.
 
 The simulated rider is the keyboard, or the Steam Deck gamepad. Hold the
 power keys and the 25 W step repeats. Esc or Start opens the menu (rider
-and bike weight, FTP, trainer difficulty, the TV page, full screen, restart,
+and bike weight, FTP, trainer difficulty, the companion dashboard, full screen, restart,
 quit). The bindings and the menu are written up in `docs/game.md`.
 
 | Action | Keyboard | Steam Deck |

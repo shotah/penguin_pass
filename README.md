@@ -66,8 +66,8 @@ Night riding with the bike headlight (part of the time-of-day and weather system
 Timed segment finish card and an active Aero powerup.
 </td>
 <td width="400" valign="top">
-<img src="docs/img/tv/round3-1080.png" alt="TV dashboard web page for Penguin Pass, a 5 km loop: 345 watts in zone 6 anaerobic, 11.8 km/h, 10 percent grade, 68 rpm, 176 bpm, and the course profile." width="400"><br>
-TV dashboard, a web page on the LAN (now with live workout, segment, draft, fish, and powerup widgets).
+<img src="docs/img/tv/round3-1080.png" alt="Companion dashboard web page for Penguin Pass, a 5 km loop: 345 watts in zone 6 anaerobic, 11.8 km/h, 10 percent grade, 68 rpm, 176 bpm, and the course profile." width="400"><br>
+Companion dashboard, a web page on the LAN (now with live workout, segment, draft, fish, and powerup widgets).
 </td>
 </tr>
 </table>
@@ -87,7 +87,7 @@ Trainer  <-- BLE / FTMS or FE-C -->  pp-trainer  -->  pp-course (physics)
                                      pp-godot (GDExtension, Godot 4 scene)
                                          |
                                          v
-                                     pp-cast  -->  TV / tablet browser
+                                     pp-cast  -->  phone / tablet browser
 ```
 
 - A trainer reports power, cadence, and speed. The game owns the
@@ -122,8 +122,8 @@ Not built yet: world streaming for long routes, and an endless mode.
 | `crates/pp-ftms` | Bluetooth GATT codec for FTMS, Cycling Power, FE-C, Wahoo, Zwift, CSC, and Heart Rate. No I/O |
 | `crates/pp-course` | Course data, grade lookup, bike physics |
 | `crates/pp-trainer` | `Trainer` trait, BLE trainer (BlueZ), simulated trainer |
-| `crates/pp-cast` | LAN TV dashboard: HTTP page plus live telemetry stream |
-| `crates/pp-session` | Ride loop without Godot: settings file, trainer connect, TV dashboard |
+| `crates/pp-cast` | LAN companion dashboard: HTTP page plus live telemetry stream |
+| `crates/pp-session` | Ride loop without Godot: settings file, trainer connect, companion dashboard |
 | `crates/pp-world` | Which world chunks to load around the rider, and per-chunk seeds |
 | `crates/pp-rider` | The bike and rider as generated meshes, with pedalling poses |
 | `crates/pp-routegen` | Routes generated from a seed, a distance, and a terrain preset |
@@ -197,7 +197,7 @@ and `./x clippy` in parallel when Rust or Cargo files are staged.
 `./x play` opens the title screen. Start ride, or pick a course first.
 Chase and handlebar cameras, a pause menu, and an end-of-ride summary
 are in the game. Settings are saved between sessions: rider and bike
-weight, FTP, trainer difficulty, resistance on or off, the TV dashboard,
+weight, FTP, trainer difficulty, resistance on or off, the companion dashboard,
 full screen, music volume, and an optional music folder.
 
 Music is seven bundled CC0 tracks, or the player's own folder of mp3,
@@ -227,9 +227,11 @@ Three tiers, in the order they arrive:
    non-Steam shortcut. Install Steam Link on the TV and start the
    shortcut from the library. Game Mode and streaming have not been
    tried from this checkout.
-2. **TV dashboard.** The game serves a web page on the LAN with live
+2. **Companion dashboard.** The game serves a web page on the LAN with live
    power, speed, cadence, grade, and course position. Open it from a
-   browser. Checked on the desktop, not yet on a TV.
+   browser on a phone or tablet while the game itself runs on your TV or
+   monitor. Checked on the desktop, not yet from a companion device on the
+   LAN.
 3. **Chromecast video.** Cast the game view itself. Not built yet.
 
 ## Roadmap
@@ -244,9 +246,10 @@ Three tiers, in the order they arrive:
 - [ ] M2: standing-start acceleration tuned from a traced ride on the
   real trainer (see `docs/trainer-trace-plan.md`)
 - [x] M3: 5 km mountain loop, HUD, ride session
-- [x] M4: TV dashboard (checked in a desktop browser, not yet on a TV)
+- [x] M4: companion dashboard (checked in a desktop browser, not yet from a
+  phone or tablet on the LAN)
 - [x] M4: settings menu (rider and bike weight, FTP, trainer difficulty,
-  trainer pairing, TV dashboard on or off), saved between sessions
+  trainer pairing, companion dashboard on or off), saved between sessions
 - [x] M5: Steam export presets, release checklist, Steam store & library
   art kit (`packaging/steam/assets/`, `docs/steam-assets.md`), and
   Windows/macOS cross-platform CI + SteamPipe depots (`docs/cross-platform.md`,
@@ -302,7 +305,7 @@ Three tiers, in the order they arrive:
   and weather (clear, cloudy, rain, snow/dust, fog, auto)
 - [x] M14: ride any course in reverse (Forward / Reverse toggle in the
   Course picker, with separate `:rev` personal bests and ghost)
-- [x] M14: TV dashboard upgraded with live workout, timed segment,
+- [x] M14: companion dashboard upgraded with live workout, timed segment,
   drafting, fish/combo, powerup, and reverse status widgets
 - [x] M14: 15 built-in structured workouts (with TSS, IF, and kJ),
   Zwift `.zwo` import, and ERG mode (built and tested; first real ERG

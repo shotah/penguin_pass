@@ -43,11 +43,11 @@ pub const MAX_TRAINER_DIFFICULTY: f32 = 1.0;
 /// Default trainer difficulty, as a fraction of the real road grade.
 pub const DEFAULT_TRAINER_DIFFICULTY: f32 = 0.5;
 
-/// Lowest TCP port the TV dashboard may bind.
+/// Lowest TCP port the companion dashboard may bind.
 pub const MIN_DASHBOARD_PORT: u16 = 1024;
-/// Highest TCP port the TV dashboard may bind.
+/// Highest TCP port the companion dashboard may bind.
 pub const MAX_DASHBOARD_PORT: u16 = 65535;
-/// Default TCP port for the TV dashboard.
+/// Default TCP port for the companion dashboard.
 pub const DEFAULT_DASHBOARD_PORT: u16 = 7878;
 
 /// Lowest music volume. `0` is silent.
@@ -63,7 +63,7 @@ const HEADER: &str = "\
 # Masses are kilograms. ftp_w is watts. trainer_difficulty is the fraction
 # of the real road grade sent to the trainer (0.0 to 1.0). On-screen speed
 # always uses the real grade. This only scales what the legs feel.
-# tv_dashboard_port is a TCP port from 1024 to 65535.
+# dashboard_port is a TCP port from 1024 to 65535.
 # control_trainer: when false, the game only reads the trainer and never sends grade.
 # Delete last_trainer_id to forget the remembered trainer.
 # course: \"penguin_pass\", or { terrain = \"desert\", distance_km = 10, seed = 7 }.
@@ -133,15 +133,16 @@ pub struct Settings {
     /// stored as `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_trainer_id: Option<String>,
-    /// Whether the LAN TV dashboard is served.
-    #[serde(default = "default_true")]
-    pub tv_dashboard_enabled: bool,
-    /// TCP port for the TV dashboard. Valid range [`MIN_DASHBOARD_PORT`] to [`MAX_DASHBOARD_PORT`].
+    /// Whether the LAN companion dashboard is served.
+    #[serde(alias = "tv_dashboard_enabled", default = "default_true")]
+    pub dashboard_enabled: bool,
+    /// TCP port for the companion dashboard. Valid range [`MIN_DASHBOARD_PORT`] to [`MAX_DASHBOARD_PORT`].
     #[serde(
+        alias = "tv_dashboard_port",
         default = "default_dashboard_port",
         deserialize_with = "de_dashboard_port"
     )]
-    pub tv_dashboard_port: u16,
+    pub dashboard_port: u16,
     /// Whether the game window starts in fullscreen. The session stores this;
     /// Godot applies it to the window.
     #[serde(default = "default_true")]
@@ -269,8 +270,8 @@ impl Default for Settings {
             ftp_w: default_ftp_w(),
             trainer_difficulty: default_trainer_difficulty(),
             last_trainer_id: None,
-            tv_dashboard_enabled: default_true(),
-            tv_dashboard_port: default_dashboard_port(),
+            dashboard_enabled: default_true(),
+            dashboard_port: default_dashboard_port(),
             fullscreen: default_true(),
             control_trainer: default_true(),
             course: CourseChoice::PenguinPass,
@@ -387,8 +388,8 @@ impl Settings {
             MIN_TRAINER_DIFFICULTY,
             MAX_TRAINER_DIFFICULTY,
         );
-        settings.tv_dashboard_port = round_u16(
-            f64::from(settings.tv_dashboard_port),
+        settings.dashboard_port = round_u16(
+            f64::from(settings.dashboard_port),
             DEFAULT_DASHBOARD_PORT,
             MIN_DASHBOARD_PORT,
             MAX_DASHBOARD_PORT,
@@ -630,7 +631,7 @@ fn notes_from(value: &toml::Value) -> Result<Vec<String>, String> {
                 MAX_TRAINER_DIFFICULTY,
             )?,
             "ftp_w" => note_u16(&mut notes, key, item, DEFAULT_FTP_W, MIN_FTP_W, MAX_FTP_W)?,
-            "tv_dashboard_port" => note_u16(
+            "dashboard_port" | "tv_dashboard_port" => note_u16(
                 &mut notes,
                 key,
                 item,
@@ -638,7 +639,8 @@ fn notes_from(value: &toml::Value) -> Result<Vec<String>, String> {
                 MIN_DASHBOARD_PORT,
                 MAX_DASHBOARD_PORT,
             )?,
-            "tv_dashboard_enabled"
+            "dashboard_enabled"
+            | "tv_dashboard_enabled"
             | "fullscreen"
             | "control_trainer"
             | "arcade"
@@ -1106,8 +1108,8 @@ mod tests {
         assert_eq!(settings.ftp_w, 200);
         assert_eq!(settings.trainer_difficulty, 0.5);
         assert_eq!(settings.last_trainer_id, None);
-        assert!(settings.tv_dashboard_enabled);
-        assert_eq!(settings.tv_dashboard_port, 7878);
+        assert!(settings.dashboard_enabled);
+        assert_eq!(settings.dashboard_port, 7878);
         assert!(settings.fullscreen);
         assert!(settings.control_trainer);
         assert_eq!(settings.music_volume, 60);
@@ -1144,8 +1146,8 @@ mod tests {
             ftp_w: 275,
             trainer_difficulty: 0.8,
             last_trainer_id: Some("AA:BB:CC:DD:EE:FF".to_owned()),
-            tv_dashboard_enabled: false,
-            tv_dashboard_port: 9000,
+            dashboard_enabled: false,
+            dashboard_port: 9000,
             fullscreen: false,
             control_trainer: false,
             course: CourseChoice::Generated {
@@ -1279,8 +1281,8 @@ mod tests {
         assert_eq!(loaded.settings.rider_mass_kg, 75.0);
         assert_eq!(loaded.settings.bike_mass_kg, 9.0);
         assert_eq!(loaded.settings.trainer_difficulty, 0.5);
-        assert!(loaded.settings.tv_dashboard_enabled);
-        assert_eq!(loaded.settings.tv_dashboard_port, 7878);
+        assert!(loaded.settings.dashboard_enabled);
+        assert_eq!(loaded.settings.dashboard_port, 7878);
         assert!(loaded.settings.fullscreen);
         assert!(loaded.settings.control_trainer);
         assert_eq!(loaded.settings.last_trainer_id, None);
@@ -1409,7 +1411,7 @@ rider_mass_kg = 500
 bike_mass_kg = -inf
 ftp_w = nan
 trainer_difficulty = inf
-tv_dashboard_port = 80
+dashboard_port = 80
 fullscreen = false
 ",
         );
@@ -1420,14 +1422,14 @@ fullscreen = false
         assert_eq!(loaded.settings.bike_mass_kg, 4.0);
         assert_eq!(loaded.settings.ftp_w, 200);
         assert_eq!(loaded.settings.trainer_difficulty, 1.0);
-        assert_eq!(loaded.settings.tv_dashboard_port, 1024);
+        assert_eq!(loaded.settings.dashboard_port, 1024);
         assert!(!loaded.settings.fullscreen);
         let warning = loaded.warning.expect("corrections are reported");
         assert!(warning.contains("rider_mass_kg"), "{warning}");
         assert!(warning.contains("bike_mass_kg"), "{warning}");
         assert!(warning.contains("ftp_w"), "{warning}");
         assert!(warning.contains("trainer_difficulty"), "{warning}");
-        assert!(warning.contains("tv_dashboard_port"), "{warning}");
+        assert!(warning.contains("dashboard_port"), "{warning}");
 
         let in_memory = Settings {
             rider_mass_kg: f32::NAN,
@@ -1495,6 +1497,20 @@ fullscreen = false
         let warning = loaded.warning.expect("out of range");
         assert!(warning.contains("ambient_volume"), "{warning}");
         assert!(warning.contains("effects_volume"), "{warning}");
+    }
+
+    #[test]
+    fn legacy_tv_dashboard_keys_load_without_warnings() {
+        let dir = TempDir::new();
+        let path = write(
+            &dir,
+            "legacy.toml",
+            "tv_dashboard_enabled = false\ntv_dashboard_port = 9000\n",
+        );
+        let loaded = Settings::load(&path);
+        assert_eq!(loaded.warning, None, "{:?}", loaded.warning);
+        assert!(!loaded.settings.dashboard_enabled);
+        assert_eq!(loaded.settings.dashboard_port, 9000);
     }
 
     #[test]

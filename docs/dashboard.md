@@ -1,6 +1,6 @@
-# TV dashboard status fields
+# Companion dashboard status fields
 
-Penguin Pass can publish a few more facts on the [TV dashboard](tv.md).
+Penguin Pass can publish a few more facts on the [companion dashboard](companion-dashboard.md).
 They cover a structured workout, a timed segment, drafting, fish, a
 powerup, and a course ridden in reverse. Each one is optional. A
 `RideStatus` payload from before these fields still parses, and the page

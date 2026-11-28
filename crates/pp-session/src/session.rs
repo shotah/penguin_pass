@@ -1,4 +1,4 @@
-//! The ride: physics, trainer, and the TV dashboard on one frame tick.
+//! The ride: physics, trainer, and the companion dashboard on one frame tick.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -45,7 +45,7 @@ pub const SIM_POWER_MAX_W: u16 = 1500;
 /// Coasting (0 W) reports 0 rpm.
 pub const SIM_PEDAL_CADENCE_RPM: f32 = 85.0;
 
-/// Spacing of the elevation chart sent to the TV dashboard, in meters.
+/// Spacing of the elevation chart sent to the companion dashboard, in meters.
 pub const DASHBOARD_PROFILE_STEP_M: f64 = 20.0;
 
 /// How long a trainer stays on the pairing list after its last advertisement, in seconds.
@@ -54,7 +54,7 @@ pub const DASHBOARD_PROFILE_STEP_M: f64 = 20.0;
 /// advertisement intervals for a trainer that broadcasts about once a second.
 pub const PAIRING_HOLD_S: f64 = 8.0;
 
-/// Where the TV dashboard is in its background start.
+/// Where the companion dashboard is in its background start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DashboardRun {
     /// The dashboard is switched off.
@@ -183,9 +183,9 @@ pub struct SessionOptions {
     /// Called from [`Session::start_scan`] the first time a trainer is needed.
     pub trainer_factory: Box<dyn TrainerFactory>,
     /// Interface the dashboard binds. The game uses an unspecified address
-    /// so a TV on the LAN can open the page. Tests use loopback.
+    /// so a phone or tablet on the LAN can open the page. Tests use loopback.
     pub dashboard_host: IpAddr,
-    /// Port override. `None` uses [`Settings::tv_dashboard_port`].
+    /// Port override. `None` uses [`Settings::dashboard_port`].
     ///
     /// `Some(0)` asks the operating system for a free port each time the
     /// dashboard starts. A fixed override ignores later port edits in
@@ -904,7 +904,7 @@ impl Session {
     /// Distance, the ride clock, laps, and the summary go back to zero.
     /// The phase becomes [`RidePhase::Ready`]. The trainer connection and
     /// the simulated power target stay. The next ticks keep trainer I/O,
-    /// scanning, pairing, the live readout, and the TV dashboard running,
+    /// scanning, pairing, the live readout, and the companion dashboard running,
     /// and they send grade 0 instead of the road grade.
     pub fn hold_at_start(&mut self) {
         self.phase = RidePhase::Ready;
@@ -1061,7 +1061,7 @@ impl Session {
     /// The phase, the trainer connection, and the other settings stay.
     /// [`Settings::course_reversed`] is honored, so a reversed session stays
     /// reversed. Course facts, the road ahead, the summary, and the lap
-    /// length follow the new course. The TV dashboard is told, and
+    /// length follow the new course. The companion dashboard is told, and
     /// [`RideEvent::CourseSelected`] is queued. The event name ends with
     /// ` (Reverse)` when the course is ridden backward. On failure the old
     /// course stays and the string is a plain sentence.
@@ -1091,7 +1091,7 @@ impl Session {
     /// `Ok(())` and no event when `reversed` already matches. Otherwise the
     /// course is rebuilt from [`Self::course_choice`], the ride returns to
     /// the start line, segment records use a `:rev` key when `reversed` is
-    /// true, the TV course profile is refreshed, and settings are saved when
+    /// true, the dashboard course profile is refreshed, and settings are saved when
     /// a settings path is known. [`RideEvent::CourseSelected`] carries
     /// [`CourseChoice::label_with_direction`], so the toast ends with
     /// ` (Reverse)` when `reversed` is true.
@@ -2342,12 +2342,12 @@ impl Session {
     }
 
     fn dashboard_endpoint(&self) -> Option<SocketAddr> {
-        if !self.settings.tv_dashboard_enabled {
+        if !self.settings.dashboard_enabled {
             return None;
         }
         let port = self
             .dashboard_port_override
-            .unwrap_or(self.settings.tv_dashboard_port);
+            .unwrap_or(self.settings.dashboard_port);
         Some(SocketAddr::new(self.dashboard_host, port))
     }
 
@@ -3124,7 +3124,7 @@ mod tests {
 
     fn offline() -> Settings {
         Settings {
-            tv_dashboard_enabled: false,
+            dashboard_enabled: false,
             ..Settings::default()
         }
     }
@@ -3715,14 +3715,14 @@ mod tests {
         assert_eq!(session.status().dashboard_urls, urls);
 
         let mut settings = session.settings().clone();
-        settings.tv_dashboard_enabled = false;
+        settings.dashboard_enabled = false;
         session.apply_settings(settings);
         assert!(session.status().dashboard_urls.is_empty());
         assert!(session.status().dashboard_error.is_none());
         assert_eq!(session.tick(0.1).power_w, 180.0);
 
         let mut settings = session.settings().clone();
-        settings.tv_dashboard_enabled = true;
+        settings.dashboard_enabled = true;
         session.apply_settings(settings);
         let status = wait_dashboard(&mut session, |status| {
             !status.dashboard_urls.is_empty() || status.dashboard_error.is_some()
@@ -3762,7 +3762,7 @@ mod tests {
         let port_b = free_port();
         let mut session = Session::with_options(
             Settings {
-                tv_dashboard_port: port_a,
+                dashboard_port: port_a,
                 ..Settings::default()
             },
             SessionOptions {
@@ -3783,7 +3783,7 @@ mod tests {
         assert!(urls[0].contains(&format!(":{port_a}/")), "{urls:?}");
 
         let mut settings = session.settings().clone();
-        settings.tv_dashboard_port = port_b;
+        settings.dashboard_port = port_b;
         session.apply_settings(settings);
         let status = wait_dashboard(&mut session, |status| {
             status
@@ -3818,7 +3818,7 @@ mod tests {
         });
 
         let mut settings = session.settings().clone();
-        settings.tv_dashboard_enabled = true;
+        settings.dashboard_enabled = true;
         let started = Instant::now();
         session.apply_settings(settings);
         let elapsed = started.elapsed();
@@ -3840,7 +3840,7 @@ mod tests {
         );
 
         let mut settings = session.settings().clone();
-        settings.tv_dashboard_enabled = false;
+        settings.dashboard_enabled = false;
         let started = Instant::now();
         session.apply_settings(settings);
         let elapsed = started.elapsed();
@@ -4458,7 +4458,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).expect("temp");
         let path = dir.join("old.toml");
-        std::fs::write(&path, "ftp_w = 210\ntv_dashboard_enabled = false\n").expect("write");
+        std::fs::write(&path, "ftp_w = 210\ndashboard_enabled = false\n").expect("write");
         let loaded = crate::Settings::load(&path);
         assert!(loaded.warning.is_none(), "{:?}", loaded.warning);
         assert_eq!(loaded.settings.course, CourseChoice::PenguinPass);

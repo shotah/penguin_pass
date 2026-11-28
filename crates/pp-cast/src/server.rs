@@ -158,7 +158,7 @@ impl CastServer {
         self.local_addr
     }
 
-    /// URLs a rider can open on a TV or phone.
+    /// URLs a rider can open in a phone or tablet browser.
     ///
     /// When the socket is bound to a specific address, the only URL is that
     /// address. When it is bound to all interfaces, each non-loopback IPv4

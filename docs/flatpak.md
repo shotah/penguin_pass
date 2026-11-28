@@ -123,7 +123,7 @@ Each line is one finish argument. This is the whole list.
 | `--device=dri` | GPU. Vulkan, and Godot's GL fallback. |
 | `--device=input` | Game controllers. They show up as evdev devices under `/dev/input`. Flatpak 1.15.6 added this (stable in 1.16, January 2025). This Deck has Flatpak 1.18.4, and Ubuntu 26.04, which builds the bundle, ships Flatpak 1.16.6, so both sides understand it. `--device=all` would also expose cameras, raw USB, and every other device node. Controllers do not need that. |
 | `--share=ipc` | X11 shared memory, for a session that is not Wayland. |
-| `--share=network` | The game serves the TV dashboard as a web page on the LAN. |
+| `--share=network` | The game serves the companion dashboard as a web page on the LAN. |
 | `--socket=wayland` | The window on a Wayland session. Desktop Mode on this Deck is Wayland. |
 | `--socket=fallback-x11` | The window on X11, and only when Wayland is not available. Game Mode's gamescope may be that case. |
 | `--socket=pulseaudio` | Audio. PipeWire on SteamOS provides this socket. |

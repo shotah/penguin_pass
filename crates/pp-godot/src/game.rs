@@ -2,7 +2,7 @@
 //!
 //! Each frame reads the trainer through [`pp_session::Session`], steps the
 //! ride, publishes telemetry, then moves the bike and the HUD. The session
-//! owns the physics, the trainer link, and the TV dashboard.
+//! owns the physics, the trainer link, and the companion dashboard.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -303,7 +303,7 @@ impl INode3D for Game {
             let mut hud = hud.bind_mut();
             hud.set_profile(&profile, course.length_m());
             hud.set_status(sim::STATUS);
-            hud.set_tv_url("");
+            hud.set_dashboard_url("");
         }
 
         if !skip_title {
@@ -570,10 +570,10 @@ impl Game {
         self.hud_mut(|hud| hud.status_text())
     }
 
-    /// TV dashboard slot.
+    /// Companion dashboard slot.
     #[func]
-    pub fn hud_tv_text(&mut self) -> GString {
-        self.hud_mut(|hud| hud.tv_text())
+    pub fn hud_dashboard_text(&mut self) -> GString {
+        self.hud_mut(|hud| hud.dashboard_text())
     }
 
     /// Samples loaded into the elevation strip.
@@ -652,9 +652,9 @@ impl Game {
     ///
     /// Plug-in: `pp-cast` calls this with the URL it is serving.
     #[func]
-    pub fn set_tv_url(&mut self, url: GString) {
+    pub fn set_dashboard_url(&mut self, url: GString) {
         if let Some(hud) = self.hud.as_mut() {
-            hud.bind_mut().set_tv_url(&url.to_string());
+            hud.bind_mut().set_dashboard_url(&url.to_string());
         }
     }
 
@@ -1285,7 +1285,7 @@ impl Game {
         )
     }
 
-    fn tv_sentence(&self) -> String {
+    fn dashboard_sentence(&self) -> String {
         self.session()
             .status()
             .dashboard_urls
@@ -1297,7 +1297,7 @@ impl Game {
     fn present(&mut self, telemetry: &Telemetry, dt: f64) {
         self.last = *telemetry;
         let status = self.status_sentence(telemetry);
-        let tv = self.tv_sentence();
+        let dashboard = self.dashboard_sentence();
         let hide_hud = self.launch.as_ref().is_some_and(|launch| launch.no_hud);
         let show = self.shell.shows_hud() && !hide_hud;
         let hud_node = self.hud.clone();
@@ -1306,7 +1306,7 @@ impl Game {
             let mut hud = hud_node.bind_mut();
             hud.apply_telemetry(telemetry);
             hud.set_status(&status);
-            hud.set_tv_url(&tv);
+            hud.set_dashboard_url(&dashboard);
             hud.present(self.session(), dt);
             if let Some((name, detail)) = self.trainer_preview.clone() {
                 hud.debug_trainer_text(&name, &detail);

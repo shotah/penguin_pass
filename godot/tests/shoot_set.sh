@@ -9,8 +9,8 @@ SHOT_DIR=$(mktemp -d /tmp/penguin-pass-shot-XXXXXX)
 SETTINGS="$SHOT_DIR/settings.toml"
 cat >"$SETTINGS" <<'EOF'
 fullscreen = false
-tv_dashboard_enabled = true
-tv_dashboard_port = 7878
+dashboard_enabled = true
+dashboard_port = 7878
 EOF
 GODOT_BIN=${GODOT:-flatpak run org.godotengine.Godot}
 $GODOT_BIN --audio-driver Dummy --path "$ROOT/godot" --script res://tests/shot.gd -- \

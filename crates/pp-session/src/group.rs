@@ -495,7 +495,7 @@ mod tests {
 
     fn quiet() -> Settings {
         Settings {
-            tv_dashboard_enabled: false,
+            dashboard_enabled: false,
             ..Settings::default()
         }
     }
@@ -805,7 +805,7 @@ athlete = \"Ada Lovelace\"
     fn lonely_road_spawns_no_bots_penguin_pass_keeps_bots() {
         let mut lonely = Session::new(Settings {
             bots_count: 8,
-            tv_dashboard_enabled: false,
+            dashboard_enabled: false,
             ..Settings::default()
         });
         lonely
@@ -817,7 +817,7 @@ athlete = \"Ada Lovelace\"
 
         let mut pass = Session::new(Settings {
             bots_count: 8,
-            tv_dashboard_enabled: false,
+            dashboard_enabled: false,
             ..Settings::default()
         });
         pass.set_course(CourseChoice::PenguinPass)

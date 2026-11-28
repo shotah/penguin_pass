@@ -37,8 +37,8 @@ pub struct HudText {
     pub elevation: String,
     /// Bottom status line.
     pub status: String,
-    /// TV slot. Empty means the HUD prints a dash.
-    pub tv: String,
+    /// Companion dashboard slot. Empty means the HUD prints a dash.
+    pub dashboard: String,
 }
 
 /// Build the HUD strings for one snapshot.
@@ -47,7 +47,7 @@ pub fn hud_text(
     status_line: &str,
     warning: &str,
     never_paired: bool,
-    tv_url: &str,
+    dashboard_url: &str,
 ) -> HudText {
     HudText {
         power: format_power_w(telemetry.power_w),
@@ -61,7 +61,7 @@ pub fn hud_text(
         elapsed: format_elapsed(telemetry.elapsed_s),
         elevation: format_elevation_m(telemetry.elevation_m),
         status: status_sentence(telemetry.elapsed_s, status_line, warning, never_paired),
-        tv: tv_url.to_owned(),
+        dashboard: dashboard_url.to_owned(),
     }
 }
 
@@ -137,7 +137,7 @@ mod tests {
         assert_eq!(text.heart, "142");
         assert_eq!(text.distance, "0.25");
         assert_eq!(text.elapsed, "0:01:05");
-        assert_eq!(text.tv, "http://127.0.0.1:9/");
+        assert_eq!(text.dashboard, "http://127.0.0.1:9/");
         assert_eq!(text.status, SIM_STATUS);
     }
 }

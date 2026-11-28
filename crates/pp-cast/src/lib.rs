@@ -1,4 +1,4 @@
-//! LAN TV dashboard for Penguin Pass.
+//! LAN companion dashboard for Penguin Pass.
 //!
 //! The game calls [`CastServer::publish`] once per frame with the latest
 //! [`pp_core::Telemetry`]. A browser on the same network opens one of the

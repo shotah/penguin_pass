@@ -29,7 +29,7 @@ fi
 # The flatpak has its own /tmp, so the settings file lives in the repo.
 mkdir -p "$HERE/.cache" "$ROOT/godot/.godot"
 SETTINGS="$HERE/.cache/ingame-settings.toml"
-printf 'fullscreen = false\ntv_dashboard_enabled = true\n' >"$SETTINGS"
+printf 'fullscreen = false\ndashboard_enabled = true\n' >"$SETTINGS"
 SAFE=(--no-bluetooth --no-music --no-sound --settings "$SETTINGS" --dashboard-port 0 --dashboard-loopback)
 
 # Script mode loads only the extensions named in this list (see ./x smoke).

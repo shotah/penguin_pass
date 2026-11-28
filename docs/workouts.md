@@ -8,7 +8,7 @@ Power on a step is a fraction of FTP. `1.0` is threshold. Time is seconds. Watts
 
 FTP is `Settings.ftp_w` in `pp-session`: a `u16` in watts, from 50 to 600, default 200. The same number is copied onto `pp_core::RiderProfile.ftp_w`. Pass `f32::from(settings.ftp_w)` into the run. The run keeps that value; a settings change means a new run.
 
-Zones are Coggan's seven levels in `pp_session::power_zone`. The ride console calls that function and draws `Z3 TEMPO` and the rest. The TV page in `pp-cast` uses the same bounds. This crate does not carry a zone table. Colour a target by calling `power_zone` with the target watts and the same FTP. Sweet spot, over-under, and the other names below are workout labels, not zone names.
+Zones are Coggan's seven levels in `pp_session::power_zone`. The ride console calls that function and draws `Z3 TEMPO` and the rest. The companion dashboard in `pp-cast` uses the same bounds. This crate does not carry a zone table. Colour a target by calling `power_zone` with the target watts and the same FTP. Sweet spot, over-under, and the other names below are workout labels, not zone names.
 
 `pp-workout` does not depend on `pp-session`. The session will depend on this crate, and `pp-session` already pulls in the trainer.
 

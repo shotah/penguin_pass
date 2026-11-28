@@ -1,4 +1,4 @@
-//! HTTP contract for the TV dashboard. Each test binds `127.0.0.1:0`.
+//! HTTP contract for the companion dashboard. Each test binds `127.0.0.1:0`.
 
 use futures_util::StreamExt;
 use pp_cast::{

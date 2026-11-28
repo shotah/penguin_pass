@@ -9,7 +9,7 @@ SHOT_DIR=$(mktemp -d /tmp/penguin-pass-hud-XXXXXX)
 SETTINGS="$SHOT_DIR/settings.toml"
 cat >"$SETTINGS" <<'EOF'
 fullscreen = false
-tv_dashboard_enabled = false
+dashboard_enabled = false
 EOF
 GODOT_BIN=${GODOT:-flatpak run org.godotengine.Godot}
 $GODOT_BIN --audio-driver Dummy --path "$ROOT/godot" --script res://tests/hud_shot.gd -- \

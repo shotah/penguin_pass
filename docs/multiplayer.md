@@ -506,7 +506,7 @@ per rider.
 | Workouts and ERG | Per rider. Two riders can do different workouts on the same road. |
 | Rider weight, FTP, trainer difficulty | Per rider. Never sent. |
 | FIT recording, Strava | Per rider. Unchanged. |
-| TV dashboard | Per rider. Unchanged at first. |
+| Companion dashboard | Per rider. Unchanged at first. |
 | Restart, change course | Host only, and only while gathering. For a client, "End ride" leaves the group. |
 | Pause | There is none, as today. |
 
@@ -584,7 +584,7 @@ machine with no Steam at all. Those builds are compiled without the
 | Find on a LAN | The host advertises `_penguinpass._udp` with `mdns-sd`. Others see a list. No typing. |
 | Join elsewhere | "Join an address". A VPN address, or a forwarded port. |
 | Names | A new `display_name` setting |
-| Sandbox | The Flatpak already has `--share=network` for the TV dashboard |
+| Sandbox | The Flatpak already has `--share=network` for the companion dashboard |
 
 The Steam build includes direct connect too. That is what lets a Steam
 rider and a Flatpak rider share a ride, and it is how two copies are
@@ -681,7 +681,7 @@ Each step ends in something that can be ridden or tested.
   simpler. The star holds for a few dozen. Beyond that it needs a
   different design.
 - **Group workouts** with a shared plan.
-- **The TV dashboard** showing the group.
+- **The companion dashboard** showing the group.
 - **iroh join codes.**
 
 ## Asynchronous play

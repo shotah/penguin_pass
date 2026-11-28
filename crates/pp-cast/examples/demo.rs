@@ -37,7 +37,7 @@ fn main() {
         }
     };
 
-    println!("Penguin Pass TV dashboard");
+    println!("Penguin Pass companion dashboard");
     for url in server.urls() {
         println!("  {url}");
     }

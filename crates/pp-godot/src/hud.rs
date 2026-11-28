@@ -48,9 +48,9 @@ pub struct Hud {
     chip: Chip,
     scratch: String,
     status: String,
-    tv_label: String,
-    tv_address: String,
-    tv_visible: bool,
+    dashboard_label: String,
+    dashboard_address: String,
+    dashboard_visible: bool,
     have_connection: bool,
     dirty: bool,
     profile_dirty: bool,
@@ -91,9 +91,9 @@ impl ICanvasLayer for Hud {
             chip,
             scratch,
             status: String::new(),
-            tv_label: "TV —".to_owned(),
-            tv_address: String::new(),
-            tv_visible: false,
+            dashboard_label: "Dashboard —".to_owned(),
+            dashboard_address: String::new(),
+            dashboard_visible: false,
             have_connection: false,
             dirty: true,
             profile_dirty: false,
@@ -209,10 +209,10 @@ impl Hud {
         GString::from(self.status.as_str())
     }
 
-    /// TV dashboard slot.
+    /// Companion dashboard slot.
     #[func]
-    pub fn tv_text(&mut self) -> GString {
-        GString::from(self.tv_label.as_str())
+    pub fn dashboard_text(&mut self) -> GString {
+        GString::from(self.dashboard_label.as_str())
     }
 
     /// How many samples the elevation strip is holding.
@@ -441,20 +441,20 @@ impl Hud {
     }
 
     /// LAN dashboard address. Empty clears the slot to an em dash and hides the chip.
-    pub fn set_tv_url(&mut self, url: &str) {
+    pub fn set_dashboard_url(&mut self, url: &str) {
         let shown = if url.is_empty() {
-            "TV —".to_owned()
+            "Dashboard —".to_owned()
         } else {
-            format!("TV {url}")
+            format!("Dashboard {url}")
         };
-        if self.tv_label != shown {
-            self.tv_label = shown;
+        if self.dashboard_label != shown {
+            self.dashboard_label = shown;
         }
         let visible = !url.is_empty();
-        if self.tv_visible != visible || self.tv_address != url {
-            self.tv_visible = visible;
-            self.tv_address.clear();
-            self.tv_address.push_str(url);
+        if self.dashboard_visible != visible || self.dashboard_address != url {
+            self.dashboard_visible = visible;
+            self.dashboard_address.clear();
+            self.dashboard_address.push_str(url);
             self.dirty = true;
             self.sync_board();
         }
@@ -495,8 +495,8 @@ impl Hud {
         }
         let dirty = self.dirty;
         let model = dirty.then(|| self.model.clone());
-        let tv_visible = self.tv_visible;
-        let tv_address = dirty.then(|| self.tv_address.clone());
+        let dashboard_visible = self.dashboard_visible;
+        let dashboard_address = dirty.then(|| self.dashboard_address.clone());
         let spin = self.spin;
         let profile = self
             .profile_dirty
@@ -509,9 +509,9 @@ impl Hud {
         let mut redraw = false;
         if let Some(model) = model {
             board.model = model;
-            board.tv_visible = tv_visible;
-            if let Some(address) = tv_address {
-                board.tv_address = address;
+            board.dashboard_visible = dashboard_visible;
+            if let Some(address) = dashboard_address {
+                board.dashboard_address = address;
             }
             board.spin = spin;
             redraw = true;
@@ -653,14 +653,14 @@ struct ConsoleBoard {
     geo: u64,
     laid_geo: u64,
     laid_out: bool,
-    tv_visible: bool,
+    dashboard_visible: bool,
     show_hint: bool,
     show_lane: bool,
     fish_text: String,
     prompts: pp_view::prompts::RidePrompts,
     chrome: RideChrome,
     pad: PadBadge,
-    tv_address: String,
+    dashboard_address: String,
     spin: f32,
     panel: Gd<StyleBoxFlat>,
     chip_style: Gd<StyleBoxFlat>,
@@ -685,7 +685,7 @@ impl IControl for ConsoleBoard {
             geo: 0,
             laid_geo: u64::MAX,
             laid_out: false,
-            tv_visible: false,
+            dashboard_visible: false,
             show_hint: true,
             show_lane: true,
             fish_text: String::new(),
@@ -696,7 +696,7 @@ impl IControl for ConsoleBoard {
             ),
             chrome: RideChrome::default(),
             pad: PadBadge::Off,
-            tv_address: String::new(),
+            dashboard_address: String::new(),
             spin: 0.0,
             panel: surface(Surface::Console),
             chip_style: surface(Surface::Chip),
@@ -1193,9 +1193,9 @@ fn paint_chips(board: &mut ConsoleBoard, frame: DesignFrame) {
         y,
         kind == ChipKind::Simulated,
     );
-    if board.tv_visible && !board.tv_address.is_empty() {
-        let address = board.tv_address.clone();
-        paint_tv(
+    if board.dashboard_visible && !board.dashboard_address.is_empty() {
+        let address = board.dashboard_address.clone();
+        paint_dashboard(
             board,
             frame,
             frame.x(1248.0) - menu_w - frame.len(8.0),
@@ -1302,7 +1302,13 @@ fn paint_menu(
     paint_prompt(board, frame, right - prompt_width(frame, &text), y, &text)
 }
 
-fn paint_tv(board: &mut ConsoleBoard, frame: DesignFrame, right: f32, y: f32, address: &str) {
+fn paint_dashboard(
+    board: &mut ConsoleBoard,
+    frame: DesignFrame,
+    right: f32,
+    y: f32,
+    address: &str,
+) {
     let font = ui_style::font_text(Weight::Medium);
     let size = frame.px(18.0);
     let icon = frame.len(20.0);
@@ -1311,7 +1317,7 @@ fn paint_tv(board: &mut ConsoleBoard, frame: DesignFrame, right: f32, y: f32, ad
     let x = right - width;
     paint_pill(board, frame, x, y, width, frame.len(36.0));
     let mid = Vector2::new(x + frame.len(14.0) + frame.len(10.0), y + frame.len(18.0));
-    paint_tv_icon(board, frame, mid);
+    paint_dashboard_icon(board, frame, mid);
     draw_text(
         board,
         &font,
@@ -1568,10 +1574,10 @@ fn paint_keyboard(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2)
     }
 }
 
-fn paint_tv_icon(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2) {
+fn paint_dashboard_icon(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2) {
     let rect = Rect2::new(
-        center - Vector2::new(frame.len(9.0), frame.len(6.0)),
-        Vector2::new(frame.len(18.0), frame.len(12.0)),
+        center - Vector2::new(frame.len(5.5), frame.len(8.0)),
+        Vector2::new(frame.len(11.0), frame.len(16.0)),
     );
     board
         .base_mut()
@@ -1582,8 +1588,8 @@ fn paint_tv_icon(board: &mut ConsoleBoard, frame: DesignFrame, center: Vector2) 
     board
         .base_mut()
         .draw_line_ex(
-            center + Vector2::new(0.0, frame.len(6.0)),
-            center + Vector2::new(0.0, frame.len(9.0)),
+            center + Vector2::new(-frame.len(2.5), frame.len(5.0)),
+            center + Vector2::new(frame.len(2.5), frame.len(5.0)),
             MIST,
         )
         .width(frame.len(1.5).max(1.0))

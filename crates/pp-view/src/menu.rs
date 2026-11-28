@@ -447,7 +447,7 @@ impl MenuState {
                 on_off(settings.zwift_controllers),
                 zwift_note(snap)
             ),
-            format!("TV dashboard    {}", dashboard_value(snap)),
+            format!("Companion dashboard    {}", dashboard_value(snap)),
             format!("Full screen    {}", on_off(settings.fullscreen)),
             format!("Music volume    {}%", settings.music_volume),
             format!("Ambient sound    {}%", settings.ambient_volume),
@@ -611,7 +611,7 @@ fn toggled(mut settings: Settings, index: usize) -> Settings {
         20 => settings.ghost = !settings.ghost,
         25 => settings.strava_auto_upload = !settings.strava_auto_upload,
         8 => settings.zwift_controllers = !settings.zwift_controllers,
-        9 => settings.tv_dashboard_enabled = !settings.tv_dashboard_enabled,
+        9 => settings.dashboard_enabled = !settings.dashboard_enabled,
         10 => settings.fullscreen = !settings.fullscreen,
         _ => {}
     }
@@ -818,17 +818,19 @@ fn dashboard_value(snap: &Snapshot) -> String {
 
 fn dashboard_detail(snap: &Snapshot) -> String {
     if let Some(error) = &snap.dashboard_error {
-        return format!("The TV page did not start: {error}");
+        return format!("The companion dashboard did not start: {error}");
     }
     match snap.dashboard {
         DashboardRun::Running => snap
             .dashboard_urls
             .first()
-            .map(|url| format!("Open {url} on the TV or a phone."))
-            .unwrap_or_else(|| "The TV page is running.".to_owned()),
-        DashboardRun::Starting => "The TV page is starting.".to_owned(),
-        DashboardRun::Off => "Turn this on to show the ride on another screen.".to_owned(),
-        DashboardRun::Failed => "The TV page did not start.".to_owned(),
+            .map(|url| format!("Open {url} in a phone or tablet browser."))
+            .unwrap_or_else(|| "The companion dashboard is running.".to_owned()),
+        DashboardRun::Starting => "The companion dashboard is starting.".to_owned(),
+        DashboardRun::Off => {
+            "Turn this on to view live metrics in a phone or tablet browser.".to_owned()
+        }
+        DashboardRun::Failed => "The companion dashboard did not start.".to_owned(),
     }
 }
 

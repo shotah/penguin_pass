@@ -176,7 +176,7 @@ instrument keeps one shape on every display.
 The default digits are proportional. Turn on the OpenType feature `tnum`
 for every number that can change while it is on screen: all HUD numbers,
 the live strip, settings values, summary figures, the seed cells, and the
-TV page. Names and sentences keep the default digits (`Tacx Neo 2T`
+companion dashboard. Names and sentences keep the default digits (`Tacx Neo 2T`
 looks wrong with fixed-width digits). In Godot: a `FontVariation` per
 weight with `opentype_features` set to `tnum` = 1.
 
@@ -306,7 +306,7 @@ at y 32.
 | Chip | Position | Content |
 | --- | --- | --- |
 | Trainer | left edge x 32 | Mark, name (20 px SemiBold), state (18 px `mist`) |
-| TV | 8 px left of the menu chip | Screen icon, address (18 px `mist`). Absent when the dashboard is off |
+| Dashboard | 8 px left of the menu chip | Screen icon, address (18 px `mist`). Absent when the dashboard is off |
 | Menu | right edge x 1248 | Menu glyph (or `Esc` keycap), `Menu` |
 
 Trainer chip states, each with its own mark:
@@ -326,7 +326,7 @@ after the first power change and returns when the pause menu closes.
 
 ![Steady](img/ui/hud-steady.png)
 
-Steady: tempo on the first ramp, switchback ahead, trainer controlled, TV dashboard on.
+Steady: tempo on the first ramp, switchback ahead, trainer controlled, companion dashboard on.
 
 ![Climb](img/ui/hud-climb.png)
 
@@ -334,7 +334,7 @@ Hard effort: Z6 on the +10.0 % pitch. Red ladder position, red grade, red road i
 
 ![Summit](img/ui/hud-summit.png)
 
-Summit, the brightest frame: no heart-rate strap (em dash), a trainer that only reports power, TV off.
+Summit, the brightest frame: no heart-rate strap (em dash), a trainer that only reports power, dashboard off.
 
 ![Descent](img/ui/hud-descent.png)
 
@@ -368,7 +368,7 @@ A 100 km route: the skyline holds the whole route and the last row reads `LEFT`.
 
 Measured on the mockups: console 14.7 %, skyline 2.0 % (its filled
 area), chips 1.9 %. Total **18.6 %** in the full state, 17.9 % with the
-TV chip absent, 18.5 % with the power hint. Counting the skyline as its
+Dashboard chip absent, 18.5 % with the power hint. Counting the skyline as its
 whole 30 px box gives 20.2 %.
 
 ### Half-size check
@@ -429,7 +429,7 @@ Row kinds:
   `On` or `Off` 12 px left of it. On: `good` track, knob right, tick in
   the knob. Off: `slate` track, knob left. Focused: `ink` track with a
   `sun` knob when on; a 2.5 px `ink` outline with an `ink` knob when off.
-  Extra text (the TV address) sits 44 px left of the word, 20 px `mist`.
+  Extra text (the dashboard address) sits 44 px left of the word, 20 px `mist`.
 
 "Editing" is a look, not a mode. Left and right change a value row at
 once. The row shows the editing chip from the first change until 800 ms
@@ -523,7 +523,7 @@ Rider weight changed mid-ride: the amber line says when it applies.
 
 ![TV error](img/ui/settings-tv-error.png)
 
-The TV dashboard could not start: the reason replaces the address. Keyboard glyphs.
+The companion dashboard could not start: the reason replaces the address. Keyboard glyphs.
 
 Rows, top to bottom. First row at y 108.
 
@@ -535,7 +535,7 @@ Rows, top to bottom. First row at y 108.
 | Rider weight | value | 30.0 to 200.0 kg, step 0.5, default 75.0 kg | Your weight in riding kit. Heavier riders climb slower at the same power. |
 | Bike weight | value | 4.0 to 30.0 kg, step 0.5, default 9.0 kg | Bike plus bottles. Added to rider weight to work out your speed. |
 | FTP | value | 50 to 600 W, step 5, default 200 W | The power you can hold for an hour. It sets the power zones on the ride screen. |
-| TV dashboard | toggle | default on; address or error beside it | Ride numbers on a TV or phone on the same Wi-Fi. Open the address in its browser. |
+| Companion dashboard | toggle | default on; address or error beside it | Ride numbers on a phone or tablet on the same Wi-Fi. Open the address in its browser. |
 | Full screen | toggle | | Fill the whole display. Off puts the game in a window. |
 | Restart ride | action | opens the confirm dialog | Go back to the start line. Time and distance return to zero. |
 | Quit | action | opens the confirm dialog | End this ride and see the summary. |
@@ -686,17 +686,17 @@ Two panels from y 92 to 716: list x 64, width 456; preview x 544, width
 On a keyboard the seed can be typed directly. The same distance,
 terrain, and seed always build the same route, and the panel says so.
 
-## TV dashboard web page
+## Companion dashboard web page
 
-![TV dashboard](img/ui/tv-dashboard-1080.png)
+![Companion dashboard](img/ui/tv-dashboard-1080.png)
 
 The web page at 1920 x 1080: power takes the left half, four tiles, the course along the bottom.
 
-![TV dashboard reconnecting](img/ui/tv-dashboard-reconnecting.png)
+![Companion dashboard reconnecting](img/ui/tv-dashboard-reconnecting.png)
 
 Stream dropped: the last numbers dim to 40 %, the status reads `Reconnecting` with a spinner.
 
-![TV dashboard on a phone](img/ui/tv-dashboard-phone.png)
+![Companion dashboard on a phone](img/ui/tv-dashboard-phone.png)
 
 The same page on a phone held upright (390 x 844 CSS px, drawn at 2x).
 
@@ -838,7 +838,7 @@ placeholder model.
   for each found trainer as 0 to 4 bars.
 - A reason string when pairing fails, and a distinct "Bluetooth
   unavailable" state.
-- The start error of the TV dashboard as a short string.
+- The start error of the companion dashboard as a short string.
 - Ride totals for the summary: time, distance, ascent, average and
   maximum power, average cadence, average heart rate if a strap was
   present, lap count, and each lap's time.
@@ -847,7 +847,7 @@ placeholder model.
   that keeps the rider right of x 500.
 - For the course picker: a route generator that takes distance, terrain,
   and seed, and returns the outline and the profile.
-- The TV page needs the font files served by the game.
+- The companion dashboard needs the font files served by the game.
 
 ## Build order
 
@@ -868,7 +868,7 @@ placeholder model.
 9. **Dialog and toasts.**
 10. **Title.**
 11. **Summary.**
-12. **TV page restyle.**
+12. **Companion dashboard restyle.**
 13. **Course picker,** when the generator exists.
 
 ## Regenerating the mockups

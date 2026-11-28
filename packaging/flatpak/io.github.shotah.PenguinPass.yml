@@ -17,7 +17,7 @@ finish-args:
   - --device=input
   # X11 shared memory, for a session that is not Wayland.
   - --share=ipc
-  # LAN HTTP server for the TV dashboard.
+  # LAN HTTP server for the companion dashboard.
   - --share=network
   - --socket=wayland
   # X11 only when Wayland is not available.

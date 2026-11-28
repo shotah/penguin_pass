@@ -1,17 +1,19 @@
-# TV dashboard
+# Companion dashboard
 
-Penguin Pass serves a live ride page on the home network. A TV, tablet, or
-phone on the same Wi-Fi opens it in a browser. The page is ride telemetry:
+Penguin Pass serves a live ride page on the home network. A phone or
+tablet on the same Wi-Fi opens it in a browser. The page is ride telemetry:
 power, speed, cadence, heart rate, grade, and where you are on the lap.
 It is not the game picture.
 
-## Open it on a TV
+## Open it on a phone or tablet
 
 1. Start a ride, or start the demo below. The game prints one or more
    `http://` addresses.
-2. Put the TV on the same Wi-Fi as the computer running the game.
-3. Open the TV browser and type one of those addresses. The default port
-   is 7878, so a typical address looks like `http://192.168.1.20:7878/`.
+2. Put the phone or tablet on the same Wi-Fi as the computer running the
+   game.
+3. Open a browser on that device and type one of those addresses. The
+   default port is 7878, so a typical address looks like
+   `http://192.168.1.20:7878/`.
 
 The numbers update about four times a second. If the browser loses the
 stream, the page says `Reconnecting`, dims the numbers, and tries again
@@ -24,9 +26,9 @@ A missing sensor is an em dash, not a zero.
 The layout matches the game UI. Power is the large number on the left,
 coloured by zone once the game has sent an FTP. Speed, grade, cadence,
 and heart rate sit beside it. Time, distance, elevation, and lap are
-across the top on a TV and along the bottom on a phone. Under the numbers
-is the lap profile, ridden in grey and ahead coloured by gradient, plus
-the next kilometre.
+across the top on a wide screen and along the bottom on a phone. Under
+the numbers is the lap profile, ridden in grey and ahead coloured by
+gradient, plus the next kilometre.
 
 The page serves its own copy of Barlow Semi Condensed. Nothing is loaded
 from the internet. The font licence is at `/fonts/OFL.txt`.
@@ -54,8 +56,8 @@ is the power-zone and gradient table the page colours from.
 ## Try it without the game
 
 Build the demo in the container (SteamOS has no compiler on the host),
-then run the binary on the host. The container network cannot see the TV.
-From the repo root:
+then run the binary on the host. The container network cannot see other
+devices on the LAN. From the repo root:
 
 ```bash
 podman run --rm \
@@ -72,7 +74,8 @@ target/debug/examples/demo
 The demo rides a synthetic 5 km hilly loop and prints the addresses.
 Ctrl-C stops it.
 
-To open the page on this computer instead of a TV, bind loopback:
+To open the page on this computer instead of a phone or tablet on the
+LAN, bind loopback:
 
 ```bash
 target/debug/examples/demo 127.0.0.1:7878

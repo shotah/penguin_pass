@@ -44,7 +44,7 @@ pub fn is_route_id(id: &str) -> bool {
         .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-'))
 }
 
-/// One sample of the elevation chart used by the HUD and the TV dashboard.
+/// One sample of the elevation chart used by the HUD and the companion dashboard.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ProfilePoint {
     /// Distance along the 3D centerline from the start line, in meters.

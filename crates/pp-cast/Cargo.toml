@@ -1,6 +1,6 @@
 [package]
 name = "pp-cast"
-description = "LAN TV dashboard for Penguin Pass ride telemetry"
+description = "LAN companion dashboard for Penguin Pass ride telemetry"
 version.workspace = true
 license.workspace = true
 edition.workspace = true

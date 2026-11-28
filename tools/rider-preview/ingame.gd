@@ -89,7 +89,7 @@ func _init() -> void:
 		var settings_path := "/tmp/penguin-pass-rider-%d.toml" % OS.get_process_id()
 		var settings_file := FileAccess.open(settings_path, FileAccess.WRITE)
 		if settings_file != null:
-			settings_file.store_string("fullscreen = false\ntv_dashboard_enabled = false\n")
+			settings_file.store_string("fullscreen = false\ndashboard_enabled = false\n")
 			settings_file.close()
 		OS.set_environment("PENGUIN_PASS_SETTINGS", settings_path)
 

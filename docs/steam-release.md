@@ -390,7 +390,7 @@ pasting a guessed table into the store page.
   (`crates/pp-godot/src/world/landmarks.rs`) keep the mesh and call `free()`
   on the generated scene while the engine is still up. Checked on this
   tree's `./x export`: ten windowed `--quit-after 3` runs exited 0, menu
-  Quit exited 0, and three runs with the TV dashboard bound to an ephemeral
+  Quit exited 0, and three runs with the companion dashboard bound to an ephemeral
   port exited 0. A `--verbose` quit printed no ObjectDB line and no glibc
   double-free line. Those runs passed `--no-bluetooth --fake-trainer`,
   `--audio-driver Dummy`, and a temp `--settings` file.

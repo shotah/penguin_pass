@@ -57,7 +57,7 @@ impl RiderProfile {
     }
 }
 
-/// Per-frame ride snapshot sent to the HUD and the TV dashboard.
+/// Per-frame ride snapshot sent to the HUD and the companion dashboard.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Telemetry {
     /// Current power, in watts.

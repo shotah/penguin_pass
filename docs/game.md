@@ -27,7 +27,7 @@ Game (Node3D)
             ├── Spacer
             └── Bottom (PanelContainer)
                 ├── Elevation
-                └── StatusRow          trainer status, TV url
+                └── StatusRow          trainer status, dashboard URL
 ```
 
 `Hud` and `ElevationStrip` are Rust `Control` classes. The strip draws the
@@ -68,8 +68,8 @@ Settings also has `Time of day`, `Weather`, `Other riders`, and `Strava`.
 The bottom line is the session status: the simulated rider and the Up/Down
 hint, or the trainer's name and whether resistance follows the road. Until a
 trainer has been paired, the first few seconds say how to open the menu.
-Heart rate appears when the trainer sends it. The TV slot shows the dashboard
-address when that page is running.
+Heart rate appears when the trainer sends it. The dashboard slot shows the
+dashboard address when that page is running.
 
 ## Session
 
@@ -89,8 +89,8 @@ saved setting.
 | `--settings <path>` | Read and write this file instead of `user://settings.toml` |
 | `--fake-trainer` | Discover two named fakes. No Bluetooth |
 | `--no-bluetooth` | Scanning reports that Bluetooth is off. The ride continues |
-| `--dashboard-port <n>` | Bind the TV page on this port. `0` picks a free port |
-| `--dashboard-loopback` | Bind the TV page on 127.0.0.1 only |
+| `--dashboard-port <n>` | Bind the companion dashboard on this port. `0` picks a free port |
+| `--dashboard-loopback` | Bind the companion dashboard on 127.0.0.1 only |
 | `--quit-from-menu` | On the first frame, confirm Quit in the menu. For the export exit check |
 | `--skip-title` | Start already riding. Shots and scripted checks use this |
 | `--play-through` | Title, Start, ride, End ride, then Quit. The release exit check |
@@ -102,7 +102,7 @@ Tests and `./godot/tests/shoot_set.sh` always pass `--fake-trainer` or
 in the environment before the scene loads.
 
 The menu is Esc / Start. It changes rider weight, bike weight, FTP, trainer
-difficulty, whether resistance follows the road, the TV page, and full
+difficulty, whether resistance follows the road, the companion dashboard, and full
 screen. Changes apply immediately and are saved. Restart and Quit each ask
 for a yes. A failed save shows a message and leaves the ride running.
 

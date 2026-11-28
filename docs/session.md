@@ -1,6 +1,6 @@
 # Ride session
 
-`pp-session` is the Godot-free ride. It owns the Penguin Pass [`Ride`](../crates/pp-course/src/ride.rs), the active trainer, a copy of the user settings, and the optional TV dashboard. The frame loop calls `Session::tick` and reads plain data back. It does not link Godot.
+`pp-session` is the Godot-free ride. It owns the Penguin Pass [`Ride`](../crates/pp-course/src/ride.rs), the active trainer, a copy of the user settings, and the optional companion dashboard. The frame loop calls `Session::tick` and reads plain data back. It does not link Godot.
 
 ## What a tick does
 
@@ -77,8 +77,8 @@ bike_mass_kg = 9.0
 ftp_w = 200
 trainer_difficulty = 0.5
 last_trainer_id = "AA:BB:CC:DD:EE:FF"
-tv_dashboard_enabled = true
-tv_dashboard_port = 7878
+dashboard_enabled = true
+dashboard_port = 7878
 fullscreen = true
 control_trainer = true
 music_volume = 60
@@ -92,8 +92,8 @@ music_folder = "/home/rider/Music/rides"
 | `ftp_w` | 200 | 50 to 600 W |
 | `trainer_difficulty` | 0.5 | 0.0 to 1.0 |
 | `last_trainer_id` | absent | trainer address or name |
-| `tv_dashboard_enabled` | true | true or false |
-| `tv_dashboard_port` | 7878 | 1024 to 65535 |
+| `dashboard_enabled` | true | true or false |
+| `dashboard_port` | 7878 | 1024 to 65535 |
 | `fullscreen` | true | true or false |
 | `control_trainer` | true | true sends grade; false only reads |
 | `course` | `penguin_pass` | `"penguin_pass"`, or `{ terrain, distance_km, seed }` |
@@ -103,6 +103,9 @@ music_folder = "/home/rider/Music/rides"
 | `zwift_controllers` | false | true or false |
 | `heart_rate_id` | absent | Bluetooth address of a heart-rate strap |
 | `heart_rate_name` | absent | advertised name of that strap |
+
+Older settings files may still use `tv_dashboard_enabled` or
+`tv_dashboard_port`; those legacy keys are accepted on load.
 
 `fullscreen` is stored here. Godot applies it to the window. The session does not.
 
@@ -169,9 +172,9 @@ The HUD refreshes numbers a few times a second. `tick` still runs every frame. T
 
 **Connection chip.** `connection`, not the status line. `phase` is idle, searching, connecting, connected, reconnecting, or failed. `resistance` is `Controlled` or `ReadingOnly`. Reading only covers the settings toggle. When the trainer itself refuses control, `resistance` is still `ReadingOnly` and the status line says the trainer reports power only and cannot change resistance. `plain_failure` turns the trainer's `control not permitted` text into that same sentence. `bluetooth_available` is false when the adapter cannot start. `failure_reason` is one sentence when the link failed; `failure_detail` is the raw text for the log.
 
-**TV chip.** `status().dashboard`, `dashboard_urls`, and `dashboard_error`. Each publish also sends `CastServer::publish_status` with FTP, the link phase, the resistance mode, and the 3-second power.
+**Dashboard chip.** `status().dashboard`, `dashboard_urls`, and `dashboard_error`. Each publish also sends `CastServer::publish_status` with FTP, the link phase, the resistance mode, and the 3-second power.
 
-**Heart-rate strap.** The strap link is separate from the trainer. Nothing is spawned until `set_heart_rate_factory`. Pass `BleHeartRateFactory` for a real strap, a factory that returns `SimHeartRate` for the fake mode, and leave it unset when Bluetooth is off. A remembered `heart_rate_id` is connected as soon as the factory is set. `heart_rate_entries` is the nearby list, strongest first, with the same signal bars as the trainer list. `connect_heart_rate` remembers that strap. `forget_heart_rate` clears the two settings fields and disconnects. `heart_rate_state` is the trainer crate's `ConnectionState`. `heart_rate_name` is the live name, or the remembered name when the link is down. The readout, the summary, the TV telemetry, and the ride trace use the strap's bpm when it has one, and the trainer's bpm otherwise. `HeartRateConnected` and `HeartRateLost` fire once per transition. A strap drop does not touch the trainer or the grade.
+**Heart-rate strap.** The strap link is separate from the trainer. Nothing is spawned until `set_heart_rate_factory`. Pass `BleHeartRateFactory` for a real strap, a factory that returns `SimHeartRate` for the fake mode, and leave it unset when Bluetooth is off. A remembered `heart_rate_id` is connected as soon as the factory is set. `heart_rate_entries` is the nearby list, strongest first, with the same signal bars as the trainer list. `connect_heart_rate` remembers that strap. `forget_heart_rate` clears the two settings fields and disconnects. `heart_rate_state` is the trainer crate's `ConnectionState`. `heart_rate_name` is the live name, or the remembered name when the link is down. The readout, the summary, the dashboard telemetry, and the ride trace use the strap's bpm when it has one, and the trainer's bpm otherwise. `HeartRateConnected` and `HeartRateLost` fire once per transition. A strap drop does not touch the trainer or the grade.
 
 **Pairing rows.** `pairing` returns the list, strongest first, ties by name then id. `signal_bars` maps RSSI to 0..=4 and `signal_word` is the label. Unknown RSSI is 0 bars. A trainer stays for `PAIRING_HOLD_S` (8 s) after it was last seen. `remembered` flags `last_trainer_id`. `search_again` drops the current scan and starts a new one. Each row carries `ftms`, `cycling_power`, and `fec` from the advertisement. A device can take resistance when `ftms` or `fec` is set. A row with only `cycling_power` is a power meter.
 
@@ -181,11 +184,11 @@ The HUD refreshes numbers a few times a second. `tick` still runs every frame. T
 
 **Title screen.** A new session starts in `Riding`, so a game that never calls these keeps moving. `hold_at_start` zeros the ride and waits in `Ready`. In `Ready`, `tick` still scans, pairs, updates `readout`, and publishes the dashboard, but distance, the ride clock, laps, and `summary` stay put, and a controlled trainer is sent grade 0. Pedalling does not move the bike. `begin_ride` leaves `Ready` and starts the clock from zero. It does nothing in `Riding` or `Ended`. `end_ride` is `Ended`, and `ride_ended` agrees. `restart` still clears the ride and runs it (`Riding`). `phase` reports the three.
 
-**Course picker.** `course_catalog` is six routes, built once in the background at startup and cached: Penguin Pass, Rolling 5 km (seed 3), Rolling 10 km (seed 3), Mountain 10 km (seed 11), Desert 10 km (seed 7), Flat 10 km (seed 1). Each row has length, ascent, grade range, theme, and at most 64 profile points. `set_course` builds the choice, resets the ride to zero, keeps the current phase and the trainer, refreshes facts, the road ahead, the summary, and the lap length, tells the TV, and queues `CourseSelected`. A failure leaves the old course and returns a sentence. `reroll(index)` replaces one generated row with the next seed (`None` for Penguin Pass or a bad index) and does not change the ride. `CourseChoice::theme_name` is `desert` or `alpine`. `label` is `Penguin Pass` or `Desert 10 km`.
+**Course picker.** `course_catalog` is six routes, built once in the background at startup and cached: Penguin Pass, Rolling 5 km (seed 3), Rolling 10 km (seed 3), Mountain 10 km (seed 11), Desert 10 km (seed 7), Flat 10 km (seed 1). Each row has length, ascent, grade range, theme, and at most 64 profile points. `set_course` builds the choice, resets the ride to zero, keeps the current phase and the trainer, refreshes facts, the road ahead, the summary, and the lap length, tells the dashboard, and queues `CourseSelected`. A failure leaves the old course and returns a sentence. `reroll(index)` replaces one generated row with the next seed (`None` for Penguin Pass or a bad index) and does not change the ride. `CourseChoice::theme_name` is `desert` or `alpine`. `label` is `Penguin Pass` or `Desert 10 km`.
 
 **Toasts.** `drain_events`. The queue holds 32 and drops the oldest. It reports a trainer connecting, the link dropping, a reconnect, control refused, a lap finished, a dashboard bind failure, `save_settings`, `note_settings_load` when the file was damaged, `CourseSelected`, and `CourseUnavailable` when a saved course could not be built.
 
-**TV course.** The dashboard profile follows `set_course`. `GET /api/course` returns the new outline, and an open page refreshes it.
+**Dashboard course.** The dashboard profile follows `set_course`. `GET /api/course` returns the new outline, and an open page refreshes it.
 
 **Music.** `settings().music_volume` is 0 to 100, default 60. `settings().music_folder` is the rider's folder, or absent. `missing_music_folder` is that path when it is not on disk.
 

@@ -880,7 +880,7 @@ mod tests {
 
     fn quiet() -> Settings {
         Settings {
-            tv_dashboard_enabled: false,
+            dashboard_enabled: false,
             ..Settings::default()
         }
     }

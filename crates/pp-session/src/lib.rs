@@ -1,7 +1,7 @@
 //! Ride orchestration for Penguin Pass.
 //!
 //! [`Session`] owns the course [`pp_course::Ride`], the active trainer, the
-//! optional TV dashboard, and a copy of [`Settings`]. Godot calls
+//! optional companion dashboard, and a copy of [`Settings`]. Godot calls
 //! [`Session::tick`] once per frame. That call does not wait on Bluetooth or
 //! the network.
 //!
@@ -9,7 +9,7 @@
 //! use pp_session::{ActiveSource, Session, Settings};
 //!
 //! let settings = Settings {
-//!     tv_dashboard_enabled: false,
+//!     dashboard_enabled: false,
 //!     ..Settings::default()
 //! };
 //! let mut session = Session::new(settings);

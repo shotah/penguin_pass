@@ -55,7 +55,7 @@ func _init() -> void:
 			var settings_path := settings_dir.path_join("settings.toml")
 			var settings_file := FileAccess.open(settings_path, FileAccess.WRITE)
 			if settings_file != null:
-				var body := "fullscreen = false\ntv_dashboard_enabled = true\n"
+				var body := "fullscreen = false\ndashboard_enabled = true\n"
 				if _steam:
 					body += "time_of_day = \"day\"\nweather = \"clear\"\nbots_count = 8\n"
 				settings_file.store_string(body)

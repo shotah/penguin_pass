@@ -1,4 +1,4 @@
-//! Coggan power zones used by the HUD ladder and the TV page.
+//! Coggan power zones used by the HUD ladder and the companion dashboard.
 
 /// One training zone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

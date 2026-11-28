@@ -94,7 +94,7 @@ Git hooks (optional): `lefthook install` — see [`docs/dev-workflow.md`](docs/d
 | `crates/pp-trainer` | Trainer trait, BlueZ BLE backend, simulated trainer |
 | `crates/pp-course` / `pp-routegen` / `pp-world` | Course data, generated routes, world chunks |
 | `crates/pp-session` | Ride loop, settings, workouts, FIT export |
-| `crates/pp-cast` | LAN TV dashboard |
+| `crates/pp-cast` | LAN companion dashboard |
 | `crates/pp-godot` | GDExtension: scene, HUD, input, rendering glue |
 | `godot/` | Godot 4 project, scenes, export presets |
 
